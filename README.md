@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Task Manager — Этап 1: Data Layer
 
-## Getting Started
+## Быстрый старт (требуется Bun)
 
-First, run the development server:
+bun install
+bun run db:generate
+bun run db:migrate
+bun run db:seed
+bun run dev
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Полный сброс: bun run db:reset
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## FSD структура
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+src/
+  shared/db/         -- schema.ts, client.ts, migrate.ts, seed.ts
+  shared/types/      -- index.ts (Drizzle-инферы + enriched типы)
+  shared/config/     -- roles.ts (8 ролей, цвета)
+  shared/lib/        -- utils.ts
+  entities/          -- user/, epic/, task/
+  features/          -- task-board/, task-form/, epic-filter/, role-badge/
+  widgets/           -- sidebar/, header/, task-list/
+  pages/             -- dashboard/, epic-detail/
+  app/               -- layout, providers, api routes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## ERD
 
-## Learn More
+users (id, name, login, role, initials)
+epics (id, title, description, color, start_date, end_date)
+tasks (id, epic_id FK, title, status, priority, due_date, sort_order)
+subtasks (id, task_id FK, title, is_completed, sort_order)
+task_assignees (id, task_id FK, user_id FK) -- M:N junction, UNIQUE(task_id, user_id)
 
-To learn more about Next.js, take a look at the following resources:
+## Seed: 5 эпиков, 26 задач, 55+ подзадач
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Итоговая проверка | Квартальные проверки | Приём пополнения | Агитация | Наука и МВТФ Армия

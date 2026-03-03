@@ -5,6 +5,7 @@
  */
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
+import { useShallow } from "zustand/react/shallow";
 import type { EpicWithTasks, TaskView, TaskStatus, TaskPriority } from "@/shared/types";
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error";
@@ -174,7 +175,16 @@ export const useTaskStore = create<TaskStore>()(
 );
 
 export const useSyncStatus = () =>
-  useTaskStore((s) => ({ status: s.syncStatus, lastSyncedAt: s.lastSyncedAt }));
+  useTaskStore(
+    useShallow((s) => ({ 
+      status: s.syncStatus, 
+      lastSyncedAt: s.lastSyncedAt 
+    }))
+  );
 
 export const useActiveEpic = () =>
-  useTaskStore((s) => s.activeEpicId ? s.epics.find((e) => e.id === s.activeEpicId) : null);
+  useTaskStore(
+    useShallow((s) => 
+      s.activeEpicId ? s.epics.find((e) => e.id === s.activeEpicId) : null
+    )
+  );

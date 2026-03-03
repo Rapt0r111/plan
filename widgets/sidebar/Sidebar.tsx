@@ -30,10 +30,10 @@ function SyncBadge() {
   const { status, lastSyncedAt } = useSyncStatus();
 
   const config = {
-    idle:    { dot: "bg-slate-500",   label: "LOCAL", text: "IDLE" },
+    idle: { dot: "bg-slate-500", label: "LOCAL", text: "IDLE" },
     syncing: { dot: "bg-amber-400 animate-pulse", label: "LOCAL", text: "SYNCING" },
-    synced:  { dot: "bg-emerald-400", label: "LOCAL", text: "SYNCED" },
-    error:   { dot: "bg-red-400",     label: "LOCAL", text: "ERROR" },
+    synced: { dot: "bg-emerald-400", label: "LOCAL", text: "SYNCED" },
+    error: { dot: "bg-red-400", label: "LOCAL", text: "ERROR" },
   } as const;
 
   const { dot, label, text } = config[status];
@@ -68,8 +68,8 @@ export function Sidebar({ epics, users }: Props) {
   const pathname = usePathname();
 
   const overallTotal = epics.reduce((s, e) => s + e.taskCount, 0);
-  const overallDone  = epics.reduce((s, e) => s + e.doneCount, 0);
-  const overallPct   = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
+  const overallDone = epics.reduce((s, e) => s + e.doneCount, 0);
+  const overallPct = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
 
   return (
     <aside
@@ -90,10 +90,10 @@ export function Sidebar({ epics, users }: Props) {
             {/* Logo mark */}
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--accent-400)] to-[var(--accent-500)] flex items-center justify-center shadow-[0_0_12px_var(--accent-glow)]">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <rect x="1" y="1" width="5" height="5" rx="1.5" fill="white" fillOpacity="0.9"/>
-                <rect x="8" y="1" width="5" height="5" rx="1.5" fill="white" fillOpacity="0.5"/>
-                <rect x="1" y="8" width="5" height="5" rx="1.5" fill="white" fillOpacity="0.5"/>
-                <rect x="8" y="8" width="5" height="5" rx="1.5" fill="white" fillOpacity="0.9"/>
+                <rect x="1" y="1" width="5" height="5" rx="1.5" fill="white" fillOpacity="0.9" />
+                <rect x="8" y="1" width="5" height="5" rx="1.5" fill="white" fillOpacity="0.5" />
+                <rect x="1" y="8" width="5" height="5" rx="1.5" fill="white" fillOpacity="0.5" />
+                <rect x="8" y="8" width="5" height="5" rx="1.5" fill="white" fillOpacity="0.9" />
               </svg>
             </div>
             <span className="font-semibold text-sm tracking-tight text-[var(--text-primary)]">
@@ -101,7 +101,7 @@ export function Sidebar({ epics, users }: Props) {
             </span>
           </div>
           <div className="ml-auto">
-            <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[var(--glass-02)] text-[var(--text-muted)] border border-[var(--glass-border)]">
+            <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[var(--glass-02)] text-(--text-muted) border border-[var(--glass-border)]">
               v2
             </span>
           </div>
@@ -109,7 +109,10 @@ export function Sidebar({ epics, users }: Props) {
 
         {/* ── Primary Nav ───────────────────────────────────────────────── */}
         <nav className="px-3 pt-4 space-y-0.5">
-          {[{ href: "/dashboard", label: "Обзор", icon: DashboardIcon }].map(({ href, label, icon: Icon }) => {
+          {([
+            { href: "/dashboard", label: "Обзор", icon: DashboardIcon },
+            { href: "/board", label: "Доска", icon: BoardIcon },
+          ] as const).map(({ href, label, icon: Icon }) => {
             const active = pathname === href;
             return (
               <Link
@@ -132,7 +135,7 @@ export function Sidebar({ epics, users }: Props) {
         {/* ── Overall progress ─────────────────────────────────────────── */}
         <div className="mx-3 mt-4 mb-1 px-3 py-2.5 rounded-xl bg-[var(--glass-01)] border border-[var(--glass-border)]">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs text-[var(--text-muted)]">Общий прогресс</span>
+            <span className="text-xs text-(--text-muted)">Общий прогресс</span>
             <span className="text-xs font-mono font-semibold" style={{ color: "var(--accent-400)" }}>
               {overallPct}%
             </span>
@@ -147,14 +150,14 @@ export function Sidebar({ epics, users }: Props) {
               }}
             />
           </div>
-          <p className="mt-1 text-xs text-[var(--text-muted)] font-mono">
+          <p className="mt-1 text-xs text-(--text-muted) font-mono">
             {overallDone}/{overallTotal} задач
           </p>
         </div>
 
         {/* ── Epics list ────────────────────────────────────────────────── */}
         <div className="px-3 pt-4 flex-1 overflow-y-auto min-h-0">
-          <p className="px-3 pb-2 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest">
+          <p className="px-3 pb-2 text-xs font-semibold text-(--text-muted) uppercase tracking-widest">
             Эпики
           </p>
           <div className="space-y-0.5">
@@ -211,7 +214,7 @@ export function Sidebar({ epics, users }: Props) {
 
         {/* ── Team section ─────────────────────────────────────────────── */}
         <div className="mx-3 mb-3 px-3 py-3 rounded-xl bg-[var(--glass-01)] border border-[var(--glass-border)]">
-          <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-2">
+          <p className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-2">
             Команда
           </p>
           <TeamAvatars users={users} maxVisible={6} />
@@ -234,10 +237,23 @@ function DashboardIcon({ active }: { active: boolean }) {
       className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")}
       viewBox="0 0 16 16" fill="currentColor"
     >
-      <rect x="1" y="1" width="6" height="6" rx="1.5" fillOpacity={active ? 1 : 0.7}/>
-      <rect x="9" y="1" width="6" height="6" rx="1.5" fillOpacity={active ? 0.7 : 0.4}/>
-      <rect x="1" y="9" width="6" height="6" rx="1.5" fillOpacity={active ? 0.7 : 0.4}/>
-      <rect x="9" y="9" width="6" height="6" rx="1.5" fillOpacity={active ? 1 : 0.7}/>
+      <rect x="1" y="1" width="6" height="6" rx="1.5" fillOpacity={active ? 1 : 0.7} />
+      <rect x="9" y="1" width="6" height="6" rx="1.5" fillOpacity={active ? 0.7 : 0.4} />
+      <rect x="1" y="9" width="6" height="6" rx="1.5" fillOpacity={active ? 0.7 : 0.4} />
+      <rect x="9" y="9" width="6" height="6" rx="1.5" fillOpacity={active ? 1 : 0.7} />
+    </svg>
+  );
+}
+
+function BoardIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")}
+      viewBox="0 0 16 16" fill="currentColor"
+    >
+      <rect x="1" y="1" width="4" height="14" rx="1.5" fillOpacity={active ? 1 : 0.6}/>
+      <rect x="6" y="1" width="4" height="9"  rx="1.5" fillOpacity={active ? 0.8 : 0.4}/>
+      <rect x="11" y="1" width="4" height="11" rx="1.5" fillOpacity={active ? 0.6 : 0.3}/>
     </svg>
   );
 }

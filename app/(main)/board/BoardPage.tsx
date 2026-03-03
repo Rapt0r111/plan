@@ -84,12 +84,12 @@ export function BoardPage() {
                                 className="flex flex-col items-center justify-center py-24 text-center"
                             >
                                 <div className="w-12 h-12 rounded-2xl bg-[var(--glass-02)] flex items-center justify-center mb-4 border border-[var(--glass-border)]">
-                                    <svg className="w-6 h-6 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                    <svg className="w-6 h-6 text-(--text-muted)" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                         <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
                                     </svg>
                                 </div>
                                 <p className="text-sm font-medium text-[var(--text-secondary)]">Ничего не найдено</p>
-                                <p className="text-xs text-[var(--text-muted)] mt-1">Попробуйте изменить фильтры</p>
+                                <p className="text-xs text-(--text-muted) mt-1">Попробуйте изменить фильтры</p>
                             </motion.div>
                         )}
                     </AnimatePresence>

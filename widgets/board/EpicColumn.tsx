@@ -83,7 +83,7 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false }: Props) {
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">{epic.title}</h2>
           {epic.description && (
-            <p className="text-xs text-[var(--text-muted)] truncate mt-0.5">{epic.description}</p>
+            <p className="text-xs text-(--text-muted) truncate mt-0.5">{epic.description}</p>
           )}
         </div>
 
@@ -93,7 +93,7 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false }: Props) {
               {filteredTasks.length}/{epic.tasks.length}
             </span>
           ) : (
-            <span className="text-xs font-mono text-[var(--text-muted)]">{epic.tasks.length}</span>
+            <span className="text-xs font-mono text-(--text-muted)">{epic.tasks.length}</span>
           )}
 
           <span
@@ -104,7 +104,7 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false }: Props) {
           </span>
 
           <motion.svg
-            className="w-4 h-4 text-[var(--text-muted)]"
+            className="w-4 h-4 text-(--text-muted)"
             viewBox="0 0 16 16" fill="none" stroke="currentColor"
             strokeWidth="1.5" strokeLinecap="round"
             animate={{ rotate: collapsed ? -90 : 0 }}
@@ -150,7 +150,7 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false }: Props) {
                     <div className="flex items-center gap-2 mb-2 px-1">
                       <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLOR[key] }} />
                       <span className="text-xs font-semibold text-[var(--text-secondary)]">{label}</span>
-                      <span className="text-xs font-mono text-[var(--text-muted)]">{tasks.length}</span>
+                      <span className="text-xs font-mono text-(--text-muted)">{tasks.length}</span>
                     </div>
 
                     <div
@@ -163,7 +163,7 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false }: Props) {
                     >
                       {tasks.length === 0 ? (
                         <div className={cn(
-                          "flex items-center justify-center h-10 rounded-lg text-xs text-[var(--text-muted)]",
+                          "flex items-center justify-center h-10 rounded-lg text-xs text-(--text-muted)",
                           "border border-dashed border-[var(--glass-border)] transition-colors",
                           isDropActive && "border-[var(--accent-500)] text-[var(--accent-400)]"
                         )}>

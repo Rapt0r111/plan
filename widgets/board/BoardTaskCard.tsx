@@ -64,25 +64,25 @@ export function BoardTaskCard({ task, dragProps }: { task: TaskView; dragProps: 
 
         <div className="flex-1 min-w-0">
           <p className={cn("text-xs font-medium leading-snug",
-            liveTask.status === "done" ? "line-through text-[var(--text-muted)]" : "text-[var(--text-primary)]"
+            liveTask.status === "done" ? "line-through text-(--text-muted)" : "text-[var(--text-primary)]"
           )}>
             {liveTask.title}
           </p>
           {liveTask.description && (
-            <p className="text-xs text-[var(--text-muted)] mt-0.5 line-clamp-1">{liveTask.description}</p>
+            <p className="text-xs text-(--text-muted) mt-0.5 line-clamp-1">{liveTask.description}</p>
           )}
           <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
             {liveTask.assignees.slice(0, 2).map((a) => (
               <RoleBadge key={a.id} roleMeta={a.roleMeta} size="sm" showLabel={false} />
             ))}
             {liveTask.assignees.length > 0 && (
-              <span className="text-xs text-[var(--text-muted)] truncate">
+              <span className="text-xs text-(--text-muted) truncate">
                 {liveTask.assignees[0].roleMeta.label}
                 {liveTask.assignees.length > 1 && ` +${liveTask.assignees.length - 1}`}
               </span>
             )}
             {liveTask.dueDate && (
-              <span className="ml-auto text-xs font-mono text-[var(--text-muted)]">{formatDate(liveTask.dueDate)}</span>
+              <span className="ml-auto text-xs font-mono text-(--text-muted)">{formatDate(liveTask.dueDate)}</span>
             )}
           </div>
         </div>
@@ -90,7 +90,7 @@ export function BoardTaskCard({ task, dragProps }: { task: TaskView; dragProps: 
         {liveTask.subtasks.length > 0 && (
           <button
             onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
-            className="shrink-0 flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+            className="shrink-0 flex items-center gap-1 text-xs text-(--text-muted) hover:text-[var(--text-secondary)] transition-colors"
           >
             <span className="font-mono">{liveTask.progress.done}/{liveTask.progress.total}</span>
             <svg className={cn("w-3 h-3 transition-transform", expanded && "rotate-180")}
@@ -115,7 +115,7 @@ export function BoardTaskCard({ task, dragProps }: { task: TaskView; dragProps: 
               <input type="checkbox" checked={st.isCompleted}
                 onChange={() => toggleSubtask(liveTask.id, st.id, st.isCompleted)}
                 className="w-3 h-3 rounded accent-indigo-500" />
-              <span className={cn("text-xs", st.isCompleted ? "line-through text-[var(--text-muted)]" : "text-[var(--text-secondary)]")}>
+              <span className={cn("text-xs", st.isCompleted ? "line-through text-(--text-muted)" : "text-[var(--text-secondary)]")}>
                 {st.title}
               </span>
             </label>

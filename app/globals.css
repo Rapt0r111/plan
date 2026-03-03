@@ -167,3 +167,17 @@ body {
 .stagger > *:nth-child(4) { animation-delay: 120ms; }
 .stagger > *:nth-child(5) { animation-delay: 160ms; }
 .stagger > *:nth-child(6) { animation-delay: 200ms; }
+
+/* ── Drag & Drop ──────────────────────────────────────────────────────────── */
+[data-dragging="true"] {
+  opacity: 0.35;
+  transform: scale(0.97) rotate(1deg);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+  z-index: 50;
+}
+
+/* ── Card 3D tilt perspective ─────────────────────────────────────────────── */
+.card-3d {
+  perspective: 800px;
+  perspective-origin: center center;
+}

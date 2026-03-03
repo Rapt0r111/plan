@@ -112,7 +112,7 @@ export function SmartFilters({ filters, onChange }: Props) {
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-xs text-[var(--text-muted)] font-medium shrink-0">{label}:</span>
+      <span className="text-xs text-(--text-muted) font-medium shrink-0">{label}:</span>
       {children}
     </div>
   );

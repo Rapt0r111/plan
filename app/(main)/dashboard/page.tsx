@@ -3,20 +3,22 @@ import { getAllUsers } from "@/entities/user/userRepository";
 import { Header } from "@/widgets/header/Header";
 import { EpicCard } from "@/widgets/epic-card/EpicCard";
 import { RoleBadge } from "@/features/role-badge/RoleBadge";
+import { WorkloadBalancer } from "@/features/workload/WorkloadBalancer";
+
 import Link from "next/link";
 
 export default async function DashboardPage() {
   const [epics, users] = await Promise.all([getAllEpics(), getAllUsers()]);
 
   const totalTasks = epics.reduce((s, e) => s + e.taskCount, 0);
-  const doneTasks  = epics.reduce((s, e) => s + e.doneCount, 0);
+  const doneTasks = epics.reduce((s, e) => s + e.doneCount, 0);
   const overallPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   const stats = [
-    { label: "Всего задач",  value: totalTasks,             color: "#a78bfa" },
-    { label: "Выполнено",    value: doneTasks,              color: "#34d399" },
-    { label: "В работе",     value: totalTasks - doneTasks, color: "#38bdf8" },
-    { label: "Прогресс",     value: `${overallPct}%`,       color: "#f59e0b" },
+    { label: "Всего задач", value: totalTasks, color: "#a78bfa" },
+    { label: "Выполнено", value: doneTasks, color: "#34d399" },
+    { label: "В работе", value: totalTasks - doneTasks, color: "#38bdf8" },
+    { label: "Прогресс", value: `${overallPct}%`, color: "#f59e0b" },
   ];
 
   return (
@@ -35,10 +37,10 @@ export default async function DashboardPage() {
             }}
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-              <rect x="1" y="1" width="6" height="6" rx="1.5"/>
-              <rect x="9" y="1" width="6" height="6" rx="1.5" fillOpacity="0.5"/>
-              <rect x="1" y="9" width="6" height="6" rx="1.5" fillOpacity="0.5"/>
-              <rect x="9" y="9" width="6" height="6" rx="1.5"/>
+              <rect x="1" y="1" width="6" height="6" rx="1.5" />
+              <rect x="9" y="1" width="6" height="6" rx="1.5" fillOpacity="0.5" />
+              <rect x="1" y="9" width="6" height="6" rx="1.5" fillOpacity="0.5" />
+              <rect x="9" y="9" width="6" height="6" rx="1.5" />
             </svg>
             Доска
           </Link>
@@ -54,7 +56,7 @@ export default async function DashboardPage() {
               className="rounded-2xl p-4 transition-all"
               style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}
             >
-              <p className="text-xs text-[var(--text-muted)] mb-1.5">{s.label}</p>
+              <p className="text-xs text-(--text-muted) mb-1.5">{s.label}</p>
               <p className="text-2xl font-semibold font-mono" style={{ color: s.color }}>
                 {s.value}
               </p>
@@ -64,7 +66,7 @@ export default async function DashboardPage() {
 
         {/* Epics grid */}
         <section>
-          <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">Эпики</h2>
+          <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">Эпики</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {epics.map((epic) => (
               <EpicCard key={epic.id} epic={epic} />
@@ -74,7 +76,7 @@ export default async function DashboardPage() {
 
         {/* Team */}
         <section>
-          <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">Команда</h2>
+          <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">Команда</h2>
           <div
             className="rounded-2xl overflow-hidden"
             style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}
@@ -96,6 +98,12 @@ export default async function DashboardPage() {
               </div>
             ))}
           </div>
+        </section>
+        <section>
+          <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">
+            Нагрузка
+          </h2>
+          <WorkloadBalancer />
         </section>
       </div>
     </div>

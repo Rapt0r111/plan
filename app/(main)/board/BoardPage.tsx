@@ -21,7 +21,8 @@ import { useTaskStore } from "@/shared/store/useTaskStore";
 import { SmartFilters, EMPTY_FILTERS, applyFilters } from "@/features/filters/SmartFilters";
 import { EpicColumn } from "@/widgets/board/EpicColumn";
 import type { FilterState } from "@/features/filters/SmartFilters";
-
+import { TaskView } from "@/shared/types";
+import { TaskSlideover } from "@/features/task-details/TaskSlideover";
 const containerVariants = {
     hidden: {},
     visible: {
@@ -45,12 +46,11 @@ const columnVariants = {
 export function BoardPage() {
     const epics = useTaskStore((s) => s.epics);
     const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+    const [activeTask, setActiveTask] = useState<TaskView | null>(null); // ← ДОБАВИТЬ
 
     // Filter epics: show column if it has matching tasks OR filters are empty
     const visibleEpics = useMemo(() => {
-        if (!filters.roles.length && !filters.statuses.length && !filters.priorities.length) {
-            return epics;
-        }
+        if (!filters.roles.length && !filters.statuses.length && !filters.priorities.length) return epics;
         return epics.filter((e) => applyFilters(e.tasks, filters).length > 0);
     }, [epics, filters]);
 
@@ -59,14 +59,9 @@ export function BoardPage() {
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
-            {/* ── Filter bar ─────────────────────────────────────────────────── */}
             <div
                 className="shrink-0 px-6 py-3 border-b"
-                style={{
-                    background: "rgba(8,9,15,0.7)",
-                    backdropFilter: "blur(16px)",
-                    borderColor: "var(--glass-border)",
-                }}
+                style={{ background: "rgba(8,9,15,0.7)", backdropFilter: "blur(16px)", borderColor: "var(--glass-border)" }}
             >
                 <SmartFilters filters={filters} onChange={setFilters} />
             </div>
@@ -96,29 +91,23 @@ export function BoardPage() {
 
                     {/* Column grid */}
                     <motion.div
-                        variants={containerVariants}
-                        initial="hidden"
-                        animate="visible"
+                        variants={containerVariants} initial="hidden" animate="visible"
                         className="grid gap-5"
-                        style={{
-                            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))",
-                        }}
+                        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 420px), 1fr))" }}
                     >
                         <AnimatePresence mode="popLayout">
                             {visibleEpics.map((epic) => (
-                                <motion.div
-                                    key={epic.id}
-                                    variants={columnVariants}
-                                    exit="exit"
-                                    layout
-                                >
-                                    <EpicColumn epic={epic} filters={filters} />
+                                <motion.div key={epic.id} variants={columnVariants} exit="exit" layout>
+                                    {/* ↓ Передаём onOpenTask в колонку */}
+                                    <EpicColumn epic={epic} filters={filters} onOpenTask={setActiveTask} />
                                 </motion.div>
                             ))}
                         </AnimatePresence>
                     </motion.div>
                 </div>
             </div>
+            <TaskSlideover task={activeTask} onClose={() => setActiveTask(null)} />
+
         </div>
     );
 }

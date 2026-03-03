@@ -68,8 +68,8 @@ export default async function DashboardPage() {
         <section>
           <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">Эпики</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {epics.map((epic) => (
-              <EpicCard key={epic.id} epic={epic} />
+            {epics.map((epic, index) => (
+              <EpicCard key={epic.id} epic={epic} index={index} />
             ))}
           </div>
         </section>

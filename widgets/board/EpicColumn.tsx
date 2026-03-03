@@ -17,25 +17,26 @@ import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
 
 const STATUS_SECTIONS: { key: TaskStatus; label: string }[] = [
   { key: "in_progress", label: "В работе" },
-  { key: "todo",        label: "К работе" },
-  { key: "blocked",     label: "Заблокировано" },
-  { key: "done",        label: "Готово" },
+  { key: "todo", label: "К работе" },
+  { key: "blocked", label: "Заблокировано" },
+  { key: "done", label: "Готово" },
 ];
 
 const STATUS_COLOR: Record<TaskStatus, string> = {
   in_progress: "#38bdf8",
-  todo:        "#64748b",
-  blocked:     "#f87171",
-  done:        "#34d399",
+  todo: "#64748b",
+  blocked: "#f87171",
+  done: "#34d399",
 };
 
 interface Props {
   epic: EpicWithTasks;
   filters: FilterState;
   defaultCollapsed?: boolean;
+  onOpenTask?: (task: TaskView) => void; // ← ДОБАВИТЬ
 }
 
-export function EpicColumn({ epic, filters, defaultCollapsed = false }: Props) {
+export function EpicColumn({ epic, filters, defaultCollapsed = false, onOpenTask }: Props) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const { getDragProps, getDropProps } = useBoardDnD();
 
@@ -110,7 +111,7 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false }: Props) {
             animate={{ rotate: collapsed ? -90 : 0 }}
             transition={{ duration: 0.2 }}
           >
-            <path d="M4 6l4 4 4-4"/>
+            <path d="M4 6l4 4 4-4" />
           </motion.svg>
         </div>
       </div>
@@ -179,7 +180,11 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false }: Props) {
                               exit={{ opacity: 0, scale: 0.95 }}
                               transition={{ duration: 0.18, delay: idx * 0.04 }}
                             >
-                              <BoardTaskCard task={task} dragProps={getDragProps(task.id)} />
+                              <BoardTaskCard
+                                task={task}
+                                dragProps={getDragProps(task.id)}
+                                onOpen={onOpenTask} // ← ДОБАВИТЬ
+                              />
                             </motion.div>
                           ))}
                         </motion.div>

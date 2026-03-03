@@ -9,10 +9,10 @@ import { useTaskStore } from "@/shared/store/useTaskStore";
 import type { TaskView, TaskStatus } from "@/shared/types";
 
 const STATUS_CFG: Record<TaskStatus, { label: string; bg: string; text: string }> = {
-  todo:        { label: "К работе",     bg: "rgba(100,116,139,0.18)", text: "#94a3b8" },
-  in_progress: { label: "В работе",      bg: "rgba(14,165,233,0.18)",  text: "#38bdf8" },
-  done:        { label: "Готово",        bg: "rgba(16,185,129,0.18)",  text: "#34d399" },
-  blocked:     { label: "Заблокировано", bg: "rgba(239,68,68,0.18)",   text: "#f87171" },
+  todo: { label: "К работе", bg: "rgba(100,116,139,0.18)", text: "#94a3b8" },
+  in_progress: { label: "В работе", bg: "rgba(14,165,233,0.18)", text: "#38bdf8" },
+  done: { label: "Готово", bg: "rgba(16,185,129,0.18)", text: "#34d399" },
+  blocked: { label: "Заблокировано", bg: "rgba(239,68,68,0.18)", text: "#f87171" },
 };
 
 const PRIORITY_DOT: Record<string, string> = {
@@ -26,7 +26,7 @@ interface DragProps {
   onDragEnd: () => void;
 }
 
-export function BoardTaskCard({ task, dragProps }: { task: TaskView; dragProps: DragProps }) {
+export function BoardTaskCard({ task, dragProps, onOpen, }: { task: TaskView; dragProps: DragProps, onOpen?: (task: TaskView) => void; }) {
   const [expanded, setExpanded] = useState(false);
   const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
@@ -44,6 +44,7 @@ export function BoardTaskCard({ task, dragProps }: { task: TaskView; dragProps: 
     <div
       {...dragProps}
       data-priority={liveTask.priority}
+      onClick={() => onOpen?.(liveTask)}
       className={cn(
         "rounded-xl overflow-hidden cursor-grab active:cursor-grabbing transition-all duration-200 select-none",
         isDragging
@@ -95,7 +96,7 @@ export function BoardTaskCard({ task, dragProps }: { task: TaskView; dragProps: 
             <span className="font-mono">{liveTask.progress.done}/{liveTask.progress.total}</span>
             <svg className={cn("w-3 h-3 transition-transform", expanded && "rotate-180")}
               viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M2 4l4 4 4-4"/>
+              <path d="M2 4l4 4 4-4" />
             </svg>
           </button>
         )}

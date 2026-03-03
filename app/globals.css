@@ -1,39 +1,169 @@
-/* 1. Standard imports go at the very top */
+/* ═══════════════════════════════════════════════════════
+   globals.css — Premium Deep Dark Design System 2026
+   Palette: Deep Cosmos (#08090f base) + Amethyst accents
+   ═══════════════════════════════════════════════════════ */
+
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
 
-/* 2. Replace @tailwind directives with a single import */
 @import "tailwindcss";
 
-/* 3. Change :root to @theme so Tailwind registers your design tokens */
+/* ── Design Tokens ───────────────────────────────────────────────────────── */
 @theme {
-  --sidebar-w: 240px;
-  --header-h: 56px;
-  --radius: 10px;
+  /* Typography — DM Sans chosen for optical warmth at small sizes */
   --font-sans: 'DM Sans', sans-serif;
   --font-mono: 'DM Mono', monospace;
+
+  /* Layout */
+  --sidebar-w: 256px;
+  --header-h: 56px;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-lg: 20px;
+
+  /* Core palette — Deep Cosmos */
+  --bg-base:       #08090f;
+  --bg-surface:    #0e0f1a;
+  --bg-elevated:   #13152a;
+  --bg-overlay:    #1a1d35;
+
+  /* Glass layers */
+  --glass-01: rgba(255,255,255,0.03);
+  --glass-02: rgba(255,255,255,0.06);
+  --glass-03: rgba(255,255,255,0.10);
+  --glass-border: rgba(255,255,255,0.08);
+  --glass-border-active: rgba(255,255,255,0.18);
+
+  /* Text scale */
+  --text-primary:   rgba(255,255,255,0.93);
+  --text-secondary: rgba(255,255,255,0.55);
+  --text-muted:     rgba(255,255,255,0.30);
+
+  /* Accent — Amethyst system */
+  --accent-500: #8b5cf6;
+  --accent-400: #a78bfa;
+  --accent-300: #c4b5fd;
+  --accent-glow: rgba(139,92,246,0.25);
+  --accent-glow-strong: rgba(139,92,246,0.45);
+
+  /* Status colors */
+  --status-todo:        rgba(100,116,139,0.20);
+  --status-todo-text:   #94a3b8;
+  --status-progress:    rgba(14,165,233,0.18);
+  --status-progress-text: #38bdf8;
+  --status-done:        rgba(16,185,129,0.18);
+  --status-done-text:   #34d399;
+  --status-blocked:     rgba(239,68,68,0.18);
+  --status-blocked-text: #f87171;
+
+  /* Priority colors */
+  --priority-critical: #ef4444;
+  --priority-high:     #f97316;
+  --priority-medium:   #eab308;
+  --priority-low:      #475569;
 }
 
-* { box-sizing: border-box; }
+/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { color-scheme: dark; }
 
 body {
   font-family: var(--font-sans);
-  background: #F8FAFC;
-  color: #0F172A;
+  background: var(--bg-base);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Subtle noise grain — adds tactility without noise */
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 99px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.10);
+  border-radius: 99px;
+  transition: background 0.2s;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 
-/* Priority left-border on task cards */[data-priority="critical"] { border-left: 3px solid #EF4444; }[data-priority="high"]     { border-left: 3px solid #F97316; }
-[data-priority="medium"]   { border-left: 3px solid #EAB308; }
-[data-priority="low"]      { border-left: 3px solid #94A3B8; }
+/* ── Priority left-border system ─────────────────────────────────────────── */
+[data-priority="critical"] { border-left: 2px solid var(--priority-critical); }
+[data-priority="high"]     { border-left: 2px solid var(--priority-high); }
+[data-priority="medium"]   { border-left: 2px solid var(--priority-medium); }
+[data-priority="low"]      { border-left: 2px solid var(--priority-low); }
 
-/* 4. Wrap custom classes using @apply in the components layer */
+/* ── Component utilities ──────────────────────────────────────────────────── */
 @layer components {
+  /* Glass morphism panel — the foundational UI surface */
+  .glass {
+    background: var(--glass-01);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid var(--glass-border);
+  }
+
+  .glass-md {
+    background: var(--glass-02);
+    backdrop-filter: blur(24px) saturate(200%);
+    -webkit-backdrop-filter: blur(24px) saturate(200%);
+    border: 1px solid var(--glass-border);
+  }
+
+  .glass-elevated {
+    background: var(--bg-elevated);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05) inset;
+  }
+
+  /* Accent glow — draws eye without hard contrast */
+  .glow-accent {
+    box-shadow: 0 0 20px var(--accent-glow), 0 0 60px var(--accent-glow);
+  }
+
+  /* Status pills */
   .status-pill {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+
+  /* Frosted nav item */
+  .nav-item {
+    @apply flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all duration-150;
+  }
+  .nav-item:hover {
+    background: var(--glass-02);
+    color: var(--text-primary);
+  }
+  .nav-item.active {
+    background: var(--accent-glow);
+    color: var(--accent-400);
+    border: 1px solid rgba(139,92,246,0.3);
   }
 }
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 6px var(--accent-glow); }
+  50%       { box-shadow: 0 0 18px var(--accent-glow-strong); }
+}
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.animate-fade-up  { animation: fadeUp 0.3s ease forwards; }
+.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+.animate-spin-slow { animation: spin-slow 3s linear infinite; }
+
+/* Staggered children for list reveals */
+.stagger > * { animation: fadeUp 0.25s ease both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(6) { animation-delay: 200ms; }

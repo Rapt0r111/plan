@@ -1,17 +1,41 @@
+/**
+ * @file Header.tsx — widgets/header
+ * Sticky frosted-glass top bar. The blur + subtle border creates a
+ * clear separation from content beneath without blocking peripheral vision.
+ */
+import type { ReactNode } from "react";
+
 interface Props {
   title: string;
   subtitle?: string;
-  actions?: React.ReactNode;
+  actions?: ReactNode;
 }
 
 export function Header({ title, subtitle, actions }: Props) {
   return (
-    <header className="h-14 bg-white border-b border-slate-200 flex items-center px-6 gap-4 sticky top-0 z-10">
+    <header
+      className="sticky top-0 z-10 flex items-center px-6 gap-4"
+      style={{
+        height: "var(--header-h)",
+        background: "rgba(8,9,15,0.80)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        borderBottom: "1px solid var(--glass-border)",
+      }}
+    >
       <div className="flex-1 min-w-0">
-        <h1 className="text-sm font-semibold text-slate-900 truncate">{title}</h1>
-        {subtitle && <p className="text-xs text-slate-500 truncate">{subtitle}</p>}
+        <h1 className="text-sm font-semibold text-(--text-primary) truncate">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="text-xs text-(--text-muted) truncate font-mono">
+            {subtitle}
+          </p>
+        )}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && (
+        <div className="flex items-center gap-2 shrink-0">{actions}</div>
+      )}
     </header>
   );
 }

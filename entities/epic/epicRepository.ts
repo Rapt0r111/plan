@@ -94,3 +94,29 @@ export async function getEpicById(id: number): Promise<EpicWithTasks | null> {
     },
   };
 }
+
+/**
+ * getAllEpicsWithTasks — полная гидратация для Board view.
+ * Server-side вызов в /board/page.tsx → StoreHydrator → Zustand.
+ * Instant DnD без клиентского waterfall.
+ */
+export async function getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
+  const epicRows = await db
+    .select({
+      id: epics.id,
+      title: epics.title,
+      description: epics.description,
+      color: epics.color,
+      startDate: epics.startDate,
+      endDate: epics.endDate,
+      createdAt: epics.createdAt,
+      updatedAt: epics.updatedAt,
+    })
+    .from(epics);
+
+  const results = await Promise.all(
+    epicRows.map((e) => getEpicById(e.id))
+  );
+
+  return results.filter((e): e is EpicWithTasks => e !== null);
+}

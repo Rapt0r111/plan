@@ -1,23 +1,29 @@
 "use client";
 /**
- * @file InfiniteTimeline.tsx — features/timeline (v4)
+ * @file InfiniteTimeline.tsx — features/timeline (v5)
  *
- * FIXES vs v3:
- *  • Bars no longer show overlapping text ("0% · просрочен" + "подробнее")
- *  • "подробнее" hint is an absolute overlay, doesn't fight with bar content
- *  • Modal shows subtasks expandable per task
- *  • Sticky label col uses a separate fixed-width flex layout (no SVG)
- *  • Correct overdue detection: only if endDate < today AND pct < 1
- *  • Today pill anchored to ruler, not floating mid-canvas
+ * 2026 UI/UX upgrade:
+ *  ✦ MagneticCheckbox on every task row (magnetic pull + Space hotkey)
+ *  ✦ Aurora Pointer on epic bars (two-layer specular + colored aurora)
+ *  ✦ Soft Pop spring burst on completion (stiffness 400, damping 25)
+ *  ✦ Animated strikethrough via scaleX layout animation
+ *  ✦ Fluid archive: completed tasks sink to bottom section with LayoutGroup
+ *  ✦ layoutId morph between active ↔ archived states
+ *
+ * Architecture: FSD-compliant. Zustand for all status mutations (optimistic).
  */
 
 import {
     useRef, useCallback, useMemo, useState, useEffect,
 } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import {
+    motion, AnimatePresence, LayoutGroup,
+} from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { formatDate } from "@/shared/lib/utils";
+import { MagneticCheckbox } from "@/shared/ui/MagneticCheckbox";
+import { useShinyEffect } from "@/shared/lib/hooks/useShinyEffect";
 import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -139,102 +145,141 @@ function Ring({ pct, color, size = 40 }: { pct: number; color: string; size?: nu
     );
 }
 
-// ─── Subtask row (expandable inside modal) ────────────────────────────────────
+// ─── Modal task card with Magnetic checkbox + Soft Pop + Archive ──────────────
 
-function SubtaskList({ subtasks }: { subtasks: TaskView["subtasks"] }) {
-    if (!subtasks.length) return null;
-    return (
-        <div className="mt-2 ml-4 space-y-1 border-l-2 pl-3" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-            {subtasks.map((st) => {
-                const isDone = st.isCompleted; 
-                return (
-                    <div key={st.id} className="flex items-center gap-2 py-1">
-                        <div
-                            className="w-3.5 h-3.5 rounded-sm shrink-0 flex items-center justify-center"
-                            style={{
-                                background: isDone ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.05)",
-                                border: `1px solid ${isDone ? "#34d399" : "rgba(255,255,255,0.1)"}`,
-                            }}
-                        >
-                            {isDone && (
-                                <svg className="w-2 h-2" viewBox="0 0 8 8" fill="none"
-                                    stroke="#34d399" strokeWidth="1.5" strokeLinecap="round">
-                                    <path d="M1.5 4L3 5.5L6.5 2" />
-                                </svg>
-                            )}
-                        </div>
-                        <span
-                            className="text-xs flex-1 min-w-0 truncate"
-                            style={{
-                                color: isDone ? "var(--text-muted)" : "var(--text-secondary)",
-                                textDecoration: isDone ? "line-through" : "none",
-                            }}
-                        >
-                            {st.title}
-                        </span>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
+// Замените компонент ModalTaskCard в InfiniteTimeline.tsx на следующий код:
 
-// ─── Task card in modal ───────────────────────────────────────────────────────
-
-function ModalTaskCard({ task, index }: { task: TaskView; index: number }) {
+function ModalTaskCard({
+    task,
+    index,
+    epicColor,
+}: {
+    task: TaskView;
+    index: number;
+    epicColor: string;
+}) {
+    const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
+    const toggleSubtask = useTaskStore((s) => s.toggleSubtask); // Достаем ваш готовый метод
+    
+    const liveTask = useTaskStore((s) => s.getTask(task.id)) ?? task;
+    const isDone = liveTask.status === "done";
+    const cfg = S[liveTask.status];
     const [open, setOpen] = useState(false);
-    const cfg = S[task.status];
-    const hasSubtasks = task.subtasks.length > 0;
-    const donePct = task.progress.total > 0
-        ? Math.round((task.progress.done / task.progress.total) * 100) : 0;
+    const [isPopping, setIsPopping] = useState(false);
+
+    const hasSubtasks = liveTask.subtasks.length > 0;
+    const donePct = liveTask.progress.total > 0
+        ? Math.round((liveTask.progress.done / liveTask.progress.total) * 100) : 0;
+
+    const handleToggleDone = useCallback(() => {
+        setIsPopping(true);
+        setTimeout(() => {
+            // Стор сам автоматически завершит все подзадачи, если статус перейдет в "done"
+            updateTaskStatus(liveTask.id, isDone ? "todo" : "done");
+            setIsPopping(false);
+        }, 140);
+    }, [isDone, liveTask.id, updateTaskStatus]);
+
+    const rowRef = useRef<HTMLDivElement>(null);
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.03, duration: 0.18 }}
-            className="rounded-xl overflow-hidden"
-            style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}
+            layout
+            layoutId={`task-${liveTask.id}`}
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: isPopping ? 1.04 : 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            transition={{
+                layout: { type: "spring", stiffness: 280, damping: 28 },
+                scale: { type: "spring", stiffness: 400, damping: 25 },
+                opacity: { duration: 0.25, delay: index * 0.02 },
+                y: { type: "spring", stiffness: 300, damping: 30, delay: index * 0.02 },
+            }}
+            className="rounded-xl overflow-hidden relative"
+            style={{
+                background: "var(--glass-01)",
+                border: `1px solid ${isDone ? "rgba(52,211,153,0.12)" : "var(--glass-border)"}`,
+                boxShadow: isDone ? `0 0 12px rgba(52,211,153,0.06)` : "none",
+            }}
+            ref={rowRef}
+            tabIndex={0}
+            onKeyDown={(e) => {
+                if (e.key === " ") { e.preventDefault(); handleToggleDone(); }
+            }}
         >
-            {/* Main row */}
+            <AnimatePresence>
+                {isDone && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 pointer-events-none rounded-xl"
+                        style={{
+                            background: "linear-gradient(135deg, rgba(52,211,153,0.04) 0%, transparent 60%)",
+                            borderLeft: "2px solid rgba(52,211,153,0.25)",
+                        }}
+                    />
+                )}
+            </AnimatePresence>
+
             <div
-                className="flex items-center gap-3 px-3 py-2.5"
+                className="flex items-center gap-2.5 px-3 py-2.5"
                 style={{ cursor: hasSubtasks ? "pointer" : "default" }}
                 onClick={() => hasSubtasks && setOpen((p) => !p)}
             >
-                {/* Status dot */}
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cfg.color }} />
+                <div onClick={(e) => e.stopPropagation()}>
+                    <MagneticCheckbox
+                        checked={isDone}
+                        onChange={handleToggleDone}
+                        size="sm"
+                        accentColor={isDone ? "#34d399" : epicColor}
+                    />
+                </div>
 
-                {/* Title */}
-                <span
-                    className="text-sm flex-1 min-w-0 truncate"
-                    style={{
-                        color: task.status === "done" ? "var(--text-muted)" : "var(--text-secondary)",
-                        textDecoration: task.status === "done" ? "line-through" : "none",
-                    }}
-                >
-                    {task.title}
-                </span>
+                <div className="flex-1 min-w-0 relative">
+                    <span
+                        className="text-sm block min-w-0 truncate transition-colors duration-300"
+                        style={{ color: isDone ? "var(--text-muted)" : "var(--text-secondary)" }}
+                    >
+                        {liveTask.title}
+                    </span>
+                    <AnimatePresence>
+                        {isDone && (
+                            <motion.div
+                                key="strike"
+                                initial={{ scaleX: 0, originX: 0 }}
+                                animate={{ scaleX: 1 }}
+                                exit={{ scaleX: 0 }}
+                                transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                                className="absolute top-1/2 left-0 right-0 h-px pointer-events-none"
+                                style={{
+                                    background: "rgba(52,211,153,0.55)",
+                                    marginTop: -0.5,
+                                }}
+                            />
+                        )}
+                    </AnimatePresence>
+                </div>
 
-                {/* Subtask progress pill */}
                 {hasSubtasks && (
                     <div className="flex items-center gap-1.5 shrink-0">
                         <div className="w-14 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--glass-02)" }}>
-                            <div
+                            <motion.div
                                 className="h-full rounded-full"
-                                style={{ width: `${donePct}%`, backgroundColor: cfg.color }}
+                                animate={{ width: `${donePct}%` }}
+                                transition={{ duration: 0.5 }}
+                                style={{ backgroundColor: cfg.color }}
                             />
                         </div>
                         <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                            {task.progress.done}/{task.progress.total}
+                            {liveTask.progress.done}/{liveTask.progress.total}
                         </span>
                     </div>
                 )}
 
-                {/* Assignees */}
-                {task.assignees.length > 0 && (
+                {liveTask.assignees.length > 0 && (
                     <div className="flex -space-x-1 shrink-0">
-                        {task.assignees.slice(0, 3).map((a) => (
+                        {liveTask.assignees.slice(0, 3).map((a) => (
                             <div
                                 key={a.id}
                                 title={a.roleMeta.label}
@@ -247,25 +292,27 @@ function ModalTaskCard({ task, index }: { task: TaskView; index: number }) {
                     </div>
                 )}
 
-                {/* Due date */}
-                {task.dueDate && (
+                {liveTask.dueDate && (
                     <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
-                        {formatDate(task.dueDate)}
+                        {formatDate(liveTask.dueDate)}
                     </span>
                 )}
 
-                {/* Status chip */}
-                <span
+                <motion.span
+                    layout
                     className="text-[9px] font-mono px-1.5 py-0.5 rounded-full shrink-0"
-                    style={{ background: cfg.bg, color: cfg.color }}
+                    animate={{
+                        background: isDone ? S.done.bg : cfg.bg,
+                        color: isDone ? S.done.color : cfg.color,
+                    }}
+                    transition={{ duration: 0.3 }}
                 >
-                    {cfg.label}
-                </span>
+                    {isDone ? S.done.label : cfg.label}
+                </motion.span>
 
-                {/* Chevron */}
                 {hasSubtasks && (
                     <svg
-                        className="w-3 h-3 shrink-0 transition-transform"
+                        className="w-3 h-3 shrink-0 transition-transform duration-200"
                         style={{ color: "var(--text-muted)", transform: open ? "rotate(90deg)" : "rotate(0)" }}
                         viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
                     >
@@ -274,7 +321,6 @@ function ModalTaskCard({ task, index }: { task: TaskView; index: number }) {
                 )}
             </div>
 
-            {/* Subtask accordion */}
             <AnimatePresence>
                 {open && (
                     <motion.div
@@ -286,7 +332,55 @@ function ModalTaskCard({ task, index }: { task: TaskView; index: number }) {
                         style={{ borderTop: "1px solid var(--glass-border)" }}
                     >
                         <div className="px-3 py-2.5">
-                            <SubtaskList subtasks={task.subtasks} />
+                            <div className="ml-4 space-y-0.5 border-l-2 pl-3" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+                                {liveTask.subtasks.map((st) => (
+                                    <div 
+                                        key={st.id} 
+                                        className="flex items-center gap-2.5 py-1.5 px-2 -mx-2 rounded-md cursor-pointer transition-colors hover:bg-[rgba(255,255,255,0.04)]"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            // Вызываем toggleSubtask из стора 
+                                            toggleSubtask(liveTask.id, st.id, st.isCompleted);
+                                        }}
+                                    >
+                                        <div
+                                            className="w-4 h-4 rounded-[4px] shrink-0 flex items-center justify-center transition-colors duration-200"
+                                            style={{
+                                                background: st.isCompleted ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.05)",
+                                                border: `1px solid ${st.isCompleted ? "#34d399" : "rgba(255,255,255,0.15)"}`,
+                                            }}
+                                        >
+                                            <AnimatePresence>
+                                                {st.isCompleted && (
+                                                    <motion.svg 
+                                                        initial={{ scale: 0.5, opacity: 0 }}
+                                                        animate={{ scale: 1, opacity: 1 }}
+                                                        exit={{ scale: 0.5, opacity: 0 }}
+                                                        className="w-2.5 h-2.5" 
+                                                        viewBox="0 0 8 8" 
+                                                        fill="none"
+                                                        stroke="#34d399" 
+                                                        strokeWidth="1.5" 
+                                                        strokeLinecap="round" 
+                                                        strokeLinejoin="round"
+                                                    >
+                                                        <path d="M1.5 4L3 5.5L6.5 2" />
+                                                    </motion.svg>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
+                                        <span
+                                            className="text-xs flex-1 min-w-0 truncate transition-all duration-300"
+                                            style={{
+                                                color: st.isCompleted ? "var(--text-muted)" : "var(--text-secondary)",
+                                                textDecoration: st.isCompleted ? "line-through" : "none",
+                                            }}
+                                        >
+                                            {st.title}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </motion.div>
                 )}
@@ -295,25 +389,147 @@ function ModalTaskCard({ task, index }: { task: TaskView; index: number }) {
     );
 }
 
-// ─── MODAL ────────────────────────────────────────────────────────────────────
+// ─── Shiny Epic Bar ───────────────────────────────────────────────────────────
+
+function EpicBar({
+    bar,
+    hovered,
+    onHover,
+    onClick,
+}: {
+    bar: Bar;
+    hovered: boolean;
+    onHover: (v: boolean) => void;
+    onClick: () => void;
+}) {
+    const { epic, barX, barW, pct, hasDates, overdue } = bar;
+    const donePct = Math.round(pct * 100);
+    const accentColor = overdue ? "#f87171" : epic.color;
+
+    // Aurora Pointer Effect
+    const { shineStyle, auroraStyle, onMouseMove, onMouseLeave: shineLeave } = useShinyEffect({
+        accentColor,
+        intensity: 0.09,
+        auroraIntensity: 0.14,
+        stiffness: 300,
+        damping: 22,
+    });
+
+    const handleMouseLeave = () => {
+        onHover(false);
+        shineLeave();
+    };
+
+    return (
+        <motion.div
+            className="absolute top-1/2 -translate-y-1/2 rounded-lg overflow-hidden"
+            style={{
+                left: barX,
+                width: barW,
+                height: LANE_H - 20,
+                cursor: "pointer",
+                background: hovered ? `${accentColor}1c` : `${accentColor}0e`,
+                border: `1px solid ${accentColor}${hovered ? "55" : "28"}`,
+                pointerEvents: "auto",
+            }}
+            animate={{
+                boxShadow: hovered ? `0 0 20px ${accentColor}28, 0 4px 16px rgba(0,0,0,0.3)` : "none",
+            }}
+            transition={{ duration: 0.18 }}
+            onMouseEnter={() => onHover(true)}
+            onMouseLeave={handleMouseLeave}
+            onMouseMove={onMouseMove}
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            onPointerDown={(e) => { e.stopPropagation(); }}
+        >
+            {/* Aurora shine layers */}
+            <motion.div className="absolute inset-0 pointer-events-none" style={shineStyle} />
+            <motion.div className="absolute inset-0 pointer-events-none" style={auroraStyle} />
+
+            {/* Top accent stripe */}
+            <div
+                className="absolute top-0 left-0 right-0"
+                style={{ height: 2, background: accentColor, opacity: hovered ? 0.85 : 0.45 }}
+            />
+
+            {/* Progress fill */}
+            {pct > 0 && (
+                <div
+                    className="absolute inset-y-0 left-0 rounded-l-lg"
+                    style={{
+                        width: `${donePct}%`,
+                        background: `${accentColor}1a`,
+                        borderRight: `1px solid ${accentColor}30`,
+                        transition: "width 0.5s ease",
+                    }}
+                />
+            )}
+
+            {/* Bar info — only when not hovering */}
+            {!hovered && (
+                <div className="relative h-full flex flex-col justify-center px-2.5 overflow-hidden">
+                    <span className="text-[11px] font-semibold font-mono leading-tight" style={{ color: accentColor }}>
+                        {donePct}%{overdue ? " · просроч." : ""}
+                    </span>
+                    {hasDates && epic.endDate && barW >= 120 && (
+                        <span className="text-[9px] font-mono leading-tight mt-0.5"
+                            style={{ color: "rgba(255,255,255,0.25)" }}>
+                            {epic.startDate ? formatDate(epic.startDate) : "?"} → {formatDate(epic.endDate)}
+                        </span>
+                    )}
+                </div>
+            )}
+
+            {/* Hover CTA */}
+            {hovered && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="relative h-full flex items-center justify-center gap-1.5"
+                >
+                    <span className="text-[11px] font-medium font-mono" style={{ color: accentColor }}>
+                        подробнее
+                    </span>
+                    <svg className="w-3 h-3" style={{ color: accentColor }}
+                        viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                        <path d="M2 6h8M6 2l4 4-4 4" />
+                    </svg>
+                </motion.div>
+            )}
+        </motion.div>
+    );
+}
+
+// ─── MODAL with task archive ──────────────────────────────────────────────────
 
 function EpicModal({ epic, onClose }: { epic: EpicWithTasks; onClose: () => void }) {
-    const pct = epic.progress.total > 0
-        ? Math.round((epic.progress.done / epic.progress.total) * 100) : 0;
+    // Always read live tasks from store
+    const liveEpic = useTaskStore((s) => s.getEpic(epic.id)) ?? epic;
+    const pct = liveEpic.progress.total > 0
+        ? Math.round((liveEpic.progress.done / liveEpic.progress.total) * 100) : 0;
 
     const byStatus = useMemo(() => {
         const g: Record<TaskStatus, TaskView[]> = { in_progress: [], todo: [], blocked: [], done: [] };
-        for (const t of epic.tasks) g[t.status]?.push(t);
+        for (const t of liveEpic.tasks) g[t.status]?.push(t);
         return g;
-    }, [epic]);
+    }, [liveEpic]);
 
-    // Active filter tab
     const [filter, setFilter] = useState<TaskStatus | "all">("all");
 
-    const shownTasks = useMemo(() => {
-        if (filter === "all") return STATUS_ORDER.flatMap((s) => byStatus[s]);
+    // Split active vs archived for fluid layout
+    const activeTasks = useMemo(() => {
+        const active = STATUS_ORDER.filter((s) => s !== "done").flatMap((s) => byStatus[s]);
+        if (filter === "all") return active;
+        if (filter === "done") return [];
         return byStatus[filter];
     }, [filter, byStatus]);
+
+    const archivedTasks = useMemo(() => {
+        if (filter !== "all" && filter !== "done") return [];
+        return byStatus["done"];
+    }, [filter, byStatus]);
+
+    const showArchive = archivedTasks.length > 0 && (filter === "all" || filter === "done");
 
     useEffect(() => {
         const fn = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -337,18 +553,18 @@ function EpicModal({ epic, onClose }: { epic: EpicWithTasks; onClose: () => void
             >
                 <motion.div
                     key="panel"
-                    initial={{ opacity: 0, scale: 0.95, y: 16 }}
+                    initial={{ opacity: 0, scale: 0.94, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: 16 }}
-                    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                    exit={{ opacity: 0, scale: 0.94, y: 20 }}
+                    transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                     className="w-full flex flex-col"
                     style={{
                         maxWidth: 640,
-                        maxHeight: "86vh",
+                        maxHeight: "88vh",
                         background: "var(--bg-elevated)",
                         border: "1px solid var(--glass-border)",
                         borderRadius: 20,
-                        boxShadow: `0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px ${epic.color}18`,
+                        boxShadow: `0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px ${liveEpic.color}18`,
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >
@@ -357,42 +573,40 @@ function EpicModal({ epic, onClose }: { epic: EpicWithTasks; onClose: () => void
                         className="shrink-0 px-5 pt-5 pb-4"
                         style={{
                             borderBottom: "1px solid var(--glass-border)",
-                            background: `linear-gradient(135deg, ${epic.color}0e 0%, transparent 55%)`,
+                            background: `linear-gradient(135deg, ${liveEpic.color}0e 0%, transparent 55%)`,
                             borderRadius: "20px 20px 0 0",
                         }}
                     >
                         <div className="flex items-start gap-3">
-                            {/* Icon */}
                             <div
                                 className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-base font-bold font-mono"
                                 style={{
-                                    background: `${epic.color}1a`,
-                                    border: `1.5px solid ${epic.color}45`,
-                                    color: epic.color,
+                                    background: `${liveEpic.color}1a`,
+                                    border: `1.5px solid ${liveEpic.color}45`,
+                                    color: liveEpic.color,
                                 }}
                             >
-                                {epic.title.charAt(0).toUpperCase()}
+                                {liveEpic.title.charAt(0).toUpperCase()}
                             </div>
 
                             <div className="flex-1 min-w-0">
                                 <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-                                    {epic.title}
+                                    {liveEpic.title}
                                 </h2>
-                                {epic.description && (
+                                {liveEpic.description && (
                                     <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "var(--text-muted)" }}>
-                                        {epic.description}
+                                        {liveEpic.description}
                                     </p>
                                 )}
-                                {epic.startDate && (
+                                {liveEpic.startDate && (
                                     <p className="text-[10px] font-mono mt-1" style={{ color: "var(--text-muted)" }}>
-                                        {formatDate(epic.startDate)} → {epic.endDate ? formatDate(epic.endDate) : "…"}
+                                        {formatDate(liveEpic.startDate)} → {liveEpic.endDate ? formatDate(liveEpic.endDate) : "…"}
                                     </p>
                                 )}
                             </div>
 
-                            {/* Ring + close */}
                             <div className="flex items-center gap-2 shrink-0">
-                                <Ring pct={pct} color={epic.color} size={44} />
+                                <Ring pct={pct} color={liveEpic.color} size={44} />
                                 <button
                                     onClick={onClose}
                                     className="w-7 h-7 rounded-xl flex items-center justify-center transition-all hover:opacity-70"
@@ -410,33 +624,29 @@ function EpicModal({ epic, onClose }: { epic: EpicWithTasks; onClose: () => void
                         <div className="mt-4">
                             <div className="flex justify-between mb-1">
                                 <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                                    {epic.progress.done} из {epic.progress.total} задач выполнено
+                                    {liveEpic.progress.done} из {liveEpic.progress.total} задач выполнено
                                 </span>
                             </div>
                             <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--glass-02)" }}>
                                 <motion.div
                                     className="h-full rounded-full"
-                                    initial={{ width: 0 }}
                                     animate={{ width: `${pct}%` }}
                                     transition={{ duration: 0.7, ease: "easeOut" }}
-                                    style={{ backgroundColor: epic.color, boxShadow: `0 0 8px ${epic.color}50` }}
+                                    style={{ backgroundColor: liveEpic.color, boxShadow: `0 0 8px ${liveEpic.color}50` }}
                                 />
                             </div>
                             {/* Status breakdown strip */}
-                            {epic.progress.total > 0 && (
+                            {liveEpic.progress.total > 0 && (
                                 <div className="flex h-1 mt-1.5 rounded-full overflow-hidden gap-px">
                                     {STATUS_ORDER.map((s) => {
                                         const n = byStatus[s].length;
                                         if (!n) return null;
                                         return (
-                                            <div
+                                            <motion.div
                                                 key={s}
+                                                layout
                                                 title={`${S[s].label}: ${n}`}
-                                                style={{
-                                                    flex: n,
-                                                    backgroundColor: S[s].color,
-                                                    opacity: 0.55,
-                                                }}
+                                                style={{ flex: n, backgroundColor: S[s].color, opacity: 0.55 }}
                                             />
                                         );
                                     })}
@@ -450,19 +660,17 @@ function EpicModal({ epic, onClose }: { epic: EpicWithTasks; onClose: () => void
                         className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 overflow-x-auto"
                         style={{ borderBottom: "1px solid var(--glass-border)" }}
                     >
-                        {/* "Все" tab */}
                         <button
                             onClick={() => setFilter("all")}
                             className="px-3 py-1 rounded-lg text-[11px] font-mono font-medium transition-all shrink-0"
                             style={{
-                                background: filter === "all" ? `${epic.color}20` : "var(--glass-01)",
-                                color: filter === "all" ? epic.color : "var(--text-muted)",
-                                border: filter === "all" ? `1px solid ${epic.color}40` : "1px solid var(--glass-border)",
+                                background: filter === "all" ? `${liveEpic.color}20` : "var(--glass-01)",
+                                color: filter === "all" ? liveEpic.color : "var(--text-muted)",
+                                border: filter === "all" ? `1px solid ${liveEpic.color}40` : "1px solid var(--glass-border)",
                             }}
                         >
-                            Все · {epic.tasks.length}
+                            Все · {liveEpic.tasks.length}
                         </button>
-
                         {STATUS_ORDER.map((s) => {
                             const n = byStatus[s].length;
                             if (!n) return null;
@@ -483,21 +691,83 @@ function EpicModal({ epic, onClose }: { epic: EpicWithTasks; onClose: () => void
                         })}
                     </div>
 
-                    {/* ── Task list ── */}
+                    {/* ── Task list with fluid archive ── */}
                     <div
-                        className="flex-1 overflow-y-auto px-4 py-3 space-y-2"
+                        className="flex-1 overflow-y-auto px-4 py-3"
                         style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.08) transparent" }}
                     >
-                        {shownTasks.length === 0 ? (
-                            <div className="flex flex-col items-center py-12 gap-3">
-                                <span className="text-4xl opacity-20">📋</span>
-                                <p className="text-sm" style={{ color: "var(--text-muted)" }}>Нет задач</p>
-                            </div>
-                        ) : (
-                            shownTasks.map((task, i) => (
-                                <ModalTaskCard key={task.id} task={task} index={i} />
-                            ))
-                        )}
+                        <LayoutGroup id={`epic-tasks-${liveEpic.id}`}>
+                            {/* Active tasks */}
+                            <motion.div layout className="space-y-2">
+                                <AnimatePresence mode="popLayout">
+                                    {activeTasks.length === 0 && archivedTasks.length === 0 ? (
+                                        <motion.div
+                                            key="empty"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="flex flex-col items-center py-12 gap-3"
+                                        >
+                                            <span className="text-4xl opacity-20">📋</span>
+                                            <p className="text-sm" style={{ color: "var(--text-muted)" }}>Нет задач</p>
+                                        </motion.div>
+                                    ) : (
+                                        activeTasks.map((task, i) => (
+                                            <ModalTaskCard
+                                                key={task.id}
+                                                task={task}
+                                                index={i}
+                                                epicColor={liveEpic.color}
+                                            />
+                                        ))
+                                    )}
+                                </AnimatePresence>
+                            </motion.div>
+
+                            {/* Archive divider + completed tasks */}
+                            <AnimatePresence>
+                                {showArchive && (
+                                    <motion.div
+                                        key="archive-section"
+                                        layout
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: "auto" }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                                        className="overflow-hidden"
+                                    >
+                                        {/* Divider */}
+                                        <div className="flex items-center gap-3 mt-4 mb-3">
+                                            <div className="flex-1 h-px" style={{ background: "rgba(52,211,153,0.15)" }} />
+                                            <span
+                                                className="text-[10px] font-mono px-2.5 py-1 rounded-full"
+                                                style={{
+                                                    background: "rgba(52,211,153,0.08)",
+                                                    color: "#34d399",
+                                                    border: "1px solid rgba(52,211,153,0.2)",
+                                                }}
+                                            >
+                                                Выполнено · {archivedTasks.length}
+                                            </span>
+                                            <div className="flex-1 h-px" style={{ background: "rgba(52,211,153,0.15)" }} />
+                                        </div>
+
+                                        <motion.div layout className="space-y-2">
+                                            <AnimatePresence mode="popLayout">
+                                                {archivedTasks.map((task, i) => (
+                                                    <ModalTaskCard
+                                                        key={task.id}
+                                                        task={task}
+                                                        index={i}
+                                                        epicColor={liveEpic.color}
+                                                    />
+                                                ))}
+                                            </AnimatePresence>
+                                        </motion.div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </LayoutGroup>
                     </div>
 
                     {/* ── Footer ── */}
@@ -510,15 +780,15 @@ function EpicModal({ epic, onClose }: { epic: EpicWithTasks; onClose: () => void
                         }}
                     >
                         <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                            Нажмите на задачу чтобы раскрыть подзадачи
+                            Space — отметить · Клик на задачу — подзадачи
                         </span>
                         <button
                             onClick={onClose}
                             className="px-4 py-1.5 rounded-xl text-xs font-medium transition-all hover:opacity-75"
                             style={{
-                                background: `${epic.color}18`,
-                                color: epic.color,
-                                border: `1px solid ${epic.color}30`,
+                                background: `${liveEpic.color}18`,
+                                color: liveEpic.color,
+                                border: `1px solid ${liveEpic.color}30`,
                             }}
                         >
                             Закрыть
@@ -527,103 +797,7 @@ function EpicModal({ epic, onClose }: { epic: EpicWithTasks; onClose: () => void
                 </motion.div>
             </motion.div>
         </AnimatePresence>,
-        document.body
-    );
-}
-
-// ─── Epic bar ─────────────────────────────────────────────────────────────────
-
-function EpicBar({
-    bar,
-    hovered,
-    onHover,
-    onClick,
-}: {
-    bar: Bar;
-    hovered: boolean;
-    onHover: (v: boolean) => void;
-    onClick: () => void;
-}) {
-    const { epic, barX, barW, pct, hasDates, overdue } = bar;
-    const donePct = Math.round(pct * 100);
-    const accentColor = overdue ? "#f87171" : epic.color;
-
-    return (
-        <div
-            className="absolute top-1/2 -translate-y-1/2 rounded-lg overflow-hidden"
-            style={{
-                left: barX,
-                width: barW,
-                height: LANE_H - 20,
-                cursor: "pointer",
-                background: hovered ? `${accentColor}1c` : `${accentColor}0e`,
-                border: `1px solid ${accentColor}${hovered ? "55" : "28"}`,
-                boxShadow: hovered ? `0 0 16px ${accentColor}20` : "none",
-                transition: "background 0.15s, border-color 0.15s, box-shadow 0.15s",
-                pointerEvents: "auto",
-
-            }}
-            onMouseEnter={() => onHover(true)}
-            onMouseLeave={() => onHover(false)}
-            onClick={(e) => {
-                e.stopPropagation(); // ВАЖНО: останавливаем всплытие до скролл-контейнера
-                onClick();
-            }}
-            onPointerDown={(e) => {
-                e.stopPropagation(); // Останавливаем, чтобы родитель не начал Drag
-            }}
-
-        >
-            {/* Top accent stripe */}
-            <div
-                className="absolute top-0 left-0 right-0"
-                style={{ height: 2, background: accentColor, opacity: hovered ? 0.85 : 0.45 }}
-            />
-
-            {/* Progress fill */}
-            {pct > 0 && (
-                <div
-                    className="absolute inset-y-0 left-0 rounded-l-lg"
-                    style={{
-                        width: `${donePct}%`,
-                        background: `${accentColor}1a`,
-                        borderRight: `1px solid ${accentColor}30`,
-                        transition: "width 0.5s ease",
-                    }}
-                />
-            )}
-
-            {/* Bar info — only shown when not hovering, or when bar is wide enough */}
-            {!hovered && (
-                <div className="relative h-full flex flex-col justify-center px-2.5 overflow-hidden">
-                    <span
-                        className="text-[11px] font-semibold font-mono leading-tight"
-                        style={{ color: accentColor }}
-                    >
-                        {donePct}%{overdue ? " · просроч." : ""}
-                    </span>
-                    {hasDates && epic.endDate && barW >= 120 && (
-                        <span className="text-[9px] font-mono leading-tight mt-0.5"
-                            style={{ color: "rgba(255,255,255,0.25)" }}>
-                            {epic.startDate ? formatDate(epic.startDate) : "?"} → {formatDate(epic.endDate)}
-                        </span>
-                    )}
-                </div>
-            )}
-
-            {/* Hover state: centered "подробнее" CTA */}
-            {hovered && (
-                <div className="relative h-full flex items-center justify-center gap-1.5">
-                    <span className="text-[11px] font-medium font-mono" style={{ color: accentColor }}>
-                        подробнее
-                    </span>
-                    <svg className="w-3 h-3" style={{ color: accentColor }}
-                        viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                        <path d="M2 6h8M6 2l4 4-4 4" />
-                    </svg>
-                </div>
-            )}
-        </div>
+        document.body,
     );
 }
 
@@ -637,7 +811,6 @@ export function InfiniteTimeline() {
     const [hoveredId, setHoveredId] = useState<number | null>(null);
     const modalEpic = useMemo(() => epics.find((e) => e.id === modalId) ?? null, [epics, modalId]);
 
-    // Native scroll container
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Centre on today on mount
@@ -656,11 +829,8 @@ export function InfiniteTimeline() {
     const moved = useRef(false);
 
     const onPD = useCallback((e: React.PointerEvent) => {
-        // Больше не нужно проверять target.closest, 
-        // так как EpicBar сам гасит событие через e.stopPropagation()
-
         dragging.current = true;
-        moved.current = false; 
+        moved.current = false;
         dragStart.current = { x: e.clientX, scroll: scrollRef.current?.scrollLeft ?? 0 };
         setIsDrag(true);
         (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -669,18 +839,19 @@ export function InfiniteTimeline() {
     const onPM = useCallback((e: React.PointerEvent) => {
         if (!dragging.current) return;
         const dx = dragStart.current.x - e.clientX;
-        if (Math.abs(dx) > 3) moved.current = true;
+        // Увеличиваем порог до 10px для более стабильного клика
+        if (Math.abs(dx) > 10) moved.current = true;
+
         if (scrollRef.current) scrollRef.current.scrollLeft = dragStart.current.scroll + dx;
     }, []);
 
     const onPU = useCallback(() => { dragging.current = false; setIsDrag(false); }, []);
 
-    // Total stats
+    // Stats
     const totalTasks = epics.reduce((s, e) => s + e.progress.total, 0);
     const doneTasks = epics.reduce((s, e) => s + e.progress.done, 0);
     const overallPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
-    // Per-status totals for footer
     const statusCounts = useMemo(() => {
         const c: Record<TaskStatus, number> = { in_progress: 0, todo: 0, blocked: 0, done: 0 };
         for (const e of epics) for (const t of e.tasks) c[t.status]++;
@@ -714,12 +885,13 @@ export function InfiniteTimeline() {
                     </p>
                 </div>
 
-                {/* Overall progress pill */}
                 <div className="hidden sm:flex items-center gap-2 shrink-0">
                     <div className="w-28 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--glass-02)" }}>
-                        <div
+                        <motion.div
                             className="h-full rounded-full"
-                            style={{ width: `${overallPct}%`, background: "linear-gradient(90deg, #8b5cf6, #34d399)" }}
+                            animate={{ width: `${overallPct}%` }}
+                            transition={{ duration: 0.8, ease: "easeOut" }}
+                            style={{ background: "linear-gradient(90deg, #8b5cf6, #34d399)" }}
                         />
                     </div>
                     <span className="text-xs font-bold font-mono" style={{ color: "#34d399" }}>{overallPct}%</span>
@@ -727,7 +899,6 @@ export function InfiniteTimeline() {
 
                 <div className="w-px h-5 shrink-0" style={{ background: "var(--glass-border)" }} />
 
-                {/* Status legend */}
                 <div className="hidden md:flex items-center gap-3 shrink-0">
                     {STATUS_ORDER.map((s) => (
                         <div key={s} className="flex items-center gap-1.5">
@@ -756,7 +927,6 @@ export function InfiniteTimeline() {
                 onPointerUp={onPU}
                 onPointerLeave={onPU}
             >
-                {/* Inner canvas */}
                 <div style={{ minWidth: LEFT_W + layout.canvasW, position: "relative" }}>
 
                     {/* ══ STICKY RULER ══ */}
@@ -768,7 +938,6 @@ export function InfiniteTimeline() {
                             borderBottom: "1px solid rgba(255,255,255,0.07)",
                         }}
                     >
-                        {/* Corner */}
                         <div
                             className="shrink-0 flex items-end px-4 pb-2 sticky left-0 z-30"
                             style={{
@@ -783,7 +952,6 @@ export function InfiniteTimeline() {
                             </span>
                         </div>
 
-                        {/* Month labels */}
                         <div className="relative flex-1">
                             {layout.months.map(({ x, label, isJan }) => (
                                 <div
@@ -806,11 +974,7 @@ export function InfiniteTimeline() {
                             {/* TODAY pill */}
                             <div
                                 className="absolute top-0 bottom-0 flex items-center"
-                                style={{
-                                    left: layout.todayX,
-                                    transform: "translateX(-50%)",
-                                    zIndex: 10,
-                                }}
+                                style={{ left: layout.todayX, transform: "translateX(-50%)", zIndex: 10 }}
                             >
                                 <span
                                     className="text-[8px] font-mono font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
@@ -841,7 +1005,6 @@ export function InfiniteTimeline() {
                                 }}
                             />
                         ))}
-                        {/* Today line */}
                         <div
                             className="absolute top-0 bottom-0"
                             style={{ left: layout.todayX, width: 1.5, background: "rgba(124,58,237,0.45)" }}
@@ -878,12 +1041,10 @@ export function InfiniteTimeline() {
                                         transition: "background 0.18s",
                                     }}
                                 >
-                                    {/* Left accent bar */}
                                     <div
                                         className="w-0.5 self-stretch my-2.5 rounded-full shrink-0 transition-opacity"
                                         style={{ backgroundColor: accentColor, opacity: isHovered ? 1 : 0.4 }}
                                     />
-
                                     <div className="flex-1 min-w-0">
                                         <p
                                             className="text-[11px] font-medium leading-tight truncate"
@@ -898,8 +1059,6 @@ export function InfiniteTimeline() {
                                             {epic.progress.done}/{epic.progress.total}
                                         </p>
                                     </div>
-
-                                    {/* % badge */}
                                     <span
                                         className="text-[10px] font-bold font-mono shrink-0 transition-colors"
                                         style={{ color: `${accentColor}${isHovered ? "ff" : "70"}` }}
@@ -910,20 +1069,18 @@ export function InfiniteTimeline() {
 
                                 {/* ── Bar area ── */}
                                 <div className="relative flex-1">
-                                    {/* Row hover highlight */}
                                     {isHovered && (
                                         <div
                                             className="absolute inset-0 pointer-events-none"
                                             style={{ background: `${accentColor}07` }}
                                         />
                                     )}
-
                                     <EpicBar
                                         bar={bar}
                                         hovered={isHovered}
                                         onHover={(v) => setHoveredId(v ? epic.id : null)}
                                         onClick={() => {
-                                            if (!moved.current) setModalId(epic.id);
+                                            setModalId(epic.id);
                                         }}
                                     />
                                 </div>
@@ -938,12 +1095,11 @@ export function InfiniteTimeline() {
                 className="shrink-0 flex items-center gap-4 px-5 py-2"
                 style={{ borderTop: "1px solid var(--glass-border)", background: "rgba(255,255,255,0.01)" }}
             >
-                {/* Hints */}
                 <div className="flex items-center gap-4 flex-1">
                     {[
                         { key: "drag", icon: "⟺", text: "Перетащите" },
-                        { key: "shift", icon: "⇧+↕", text: "Горизонтально" },
                         { key: "click", icon: "↗", text: "Клик → задачи" },
+                        { key: "space", icon: "Space", text: "Отметить" },
                     ].map(({ key, icon, text }) => (
                         <div key={key} className="flex items-center gap-1 text-[10px] font-mono"
                             style={{ color: "var(--text-muted)" }}>
@@ -951,8 +1107,6 @@ export function InfiniteTimeline() {
                         </div>
                     ))}
                 </div>
-
-                {/* Status breakdown */}
                 <div className="hidden sm:flex items-center gap-3">
                     {STATUS_ORDER.map((s) => {
                         const n = statusCounts[s];
@@ -960,9 +1114,7 @@ export function InfiniteTimeline() {
                         return (
                             <div key={s} className="flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: S[s].color }} />
-                                <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-                                    {n}
-                                </span>
+                                <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>{n}</span>
                             </div>
                         );
                     })}

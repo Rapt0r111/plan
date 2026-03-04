@@ -73,10 +73,39 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     updateTaskStatus: async (taskId, status) => {
-      const prev = get().tasks[taskId]?.status;
-      if (!prev || prev === status) return;
+      const task = get().tasks[taskId];
+      if (!task || task.status === status) return;
+      
+      const prevStatus = task.status;
+      const prevSubtasks = task.subtasks;
+
+      // 1. Собираем подзадачи, которые нужно автоматически завершить
+      const shouldCompleteSubtasks = status === "done";
+      let updatedSubtasks = task.subtasks;
+      
+      // ИСПРАВЛЕНИЕ: используем const, так как мы только мутируем массив (push), а не переназначаем его
+      const subtasksToUpdate: number[] = [];
+
+      if (shouldCompleteSubtasks) {
+        updatedSubtasks = task.subtasks.map(st => {
+          if (!st.isCompleted) {
+            subtasksToUpdate.push(st.id);
+            return { ...st, isCompleted: true };
+          }
+          return st;
+        });
+      }
+
+      // 2. Оптимистичное обновление стора
       set((s) => {
-        const updated = { ...s.tasks[taskId], status };
+        const doneCt = updatedSubtasks.filter(st => st.isCompleted).length;
+        const updated = { 
+          ...s.tasks[taskId], 
+          status, 
+          subtasks: updatedSubtasks,
+          progress: { total: updatedSubtasks.length, done: doneCt }
+        };
+
         return {
           tasks: { ...s.tasks, [taskId]: updated },
           epics: s.epics.map((epic) => ({
@@ -84,19 +113,45 @@ export const useTaskStore = create<TaskStore>()(
             tasks: epic.tasks.map((t) => (t.id === taskId ? updated : t)),
             progress: {
               total: epic.tasks.length,
-              done: epic.tasks.filter((t) => t.id === taskId ? status === "done" : t.status === "done").length,
+              done: epic.tasks.map((t) => (t.id === taskId ? updated : t)).filter((t) => t.status === "done").length,
             },
           })),
         };
       });
+
+      // 3. Отправка запросов к API
       const done = get()._beginOp();
-      try { await apiPatch(`/api/tasks/${taskId}`, { status }); }
-      catch {
+      try { 
+        await apiPatch(`/api/tasks/${taskId}`, { status }); 
+        
+        // Отправляем патчи для каждой измененной подзадачи параллельно
+        if (subtasksToUpdate.length > 0) {
+          await Promise.all(
+            subtasksToUpdate.map(id => apiPatch(`/api/subtasks/${id}`, { isCompleted: true }))
+          );
+        }
+      } catch {
+        // 4. Откат изменений при ошибке
         set((s) => {
-          const rolled = { ...s.tasks[taskId], status: prev };
-          return { tasks: { ...s.tasks, [taskId]: rolled },
-            epics: s.epics.map((e) => ({ ...e, tasks: e.tasks.map((t) => (t.id === taskId ? rolled : t)) })),
-            syncStatus: "error" };
+          const rolledDoneCt = prevSubtasks.filter(st => st.isCompleted).length;
+          const rolled = { 
+            ...s.tasks[taskId], 
+            status: prevStatus, 
+            subtasks: prevSubtasks,
+            progress: { total: prevSubtasks.length, done: rolledDoneCt }
+          };
+          return { 
+            tasks: { ...s.tasks, [taskId]: rolled },
+            epics: s.epics.map((e) => ({ 
+              ...e, 
+              tasks: e.tasks.map((t) => (t.id === taskId ? rolled : t)),
+              progress: {
+                total: e.tasks.length,
+                done: e.tasks.map((t) => (t.id === taskId ? rolled : t)).filter((t) => t.status === "done").length,
+              }
+            })),
+            syncStatus: "error" 
+          };
         });
       } finally { done(); }
     },

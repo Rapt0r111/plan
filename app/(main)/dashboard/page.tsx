@@ -1,14 +1,26 @@
-import { getAllEpics } from "@/entities/epic/epicRepository";
+/**
+ * WHY getAllEpicsWithTasks() here (not getAllEpics()):
+ *  EnergyMap and InfiniteTimeline both read from Zustand store.
+ *  The store is hydrated by StoreHydrator — which needs full task data
+ *  (with assignees, subtasks, progress) to compute role loads and capsules.
+ *  getAllEpics() returns only task counts, not the full task graph.
+ */
+import { getAllEpicsWithTasks, getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
 import { Header } from "@/widgets/header/Header";
 import { EpicCard } from "@/widgets/epic-card/EpicCard";
 import { RoleBadge } from "@/features/role-badge/RoleBadge";
 import { WorkloadBalancer } from "@/features/workload/WorkloadBalancer";
-
+import { InfiniteTimeline } from "@/features/timeline/InfiniteTimeline";
+import { StoreHydrator } from "@/shared/store/StoreHydrator";
 import Link from "next/link";
 
 export default async function DashboardPage() {
-  const [epics, users] = await Promise.all([getAllEpics(), getAllUsers()]);
+  const [epics, epicsWithTasks, users] = await Promise.all([
+    getAllEpics(),          // lightweight: for stats cards + EpicCard grid
+    getAllEpicsWithTasks(), // full graph: for EnergyMap + InfiniteTimeline via store
+    getAllUsers(),
+  ]);
 
   const totalTasks = epics.reduce((s, e) => s + e.taskCount, 0);
   const doneTasks = epics.reduce((s, e) => s + e.doneCount, 0);
@@ -23,6 +35,8 @@ export default async function DashboardPage() {
 
   return (
     <div>
+      {/* Hydrate Zustand with full task graph — required by EnergyMap + InfiniteTimeline */}
+      <StoreHydrator epics={epicsWithTasks} />
       <Header
         title="Обзор"
         subtitle={`${epics.length} эпиков · ${totalTasks} задач · ${overallPct}% выполнено`}
@@ -99,11 +113,25 @@ export default async function DashboardPage() {
             ))}
           </div>
         </section>
+
         <section>
           <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">
             Нагрузка
           </h2>
           <WorkloadBalancer />
+        </section>
+
+
+        <section>
+          <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">
+            Хронолента
+          </h2>
+          {/*
+           * InfiniteTimeline manages its own selected-task detail strip internally.
+           * onOpenTask is optional — pass it only if you want to open a full
+           * TaskSlideover from a Client Component parent (e.g. a future DashboardClient).
+           */}
+          <InfiniteTimeline />
         </section>
       </div>
     </div>

@@ -24,14 +24,17 @@ import {
 
 /** 8 organisational roles — stored as slugs for DB readability & portability */
 export const ROLES = [
-  "company_commander",   // Командир роты
-  "deputy_commander",    // Заместитель КР
-  "platoon_1_commander", // Командир 1 взвода
-  "platoon_2_commander", // Командир 2 взвода
-  "sergeant_major",      // Старшина
-  "security_officer",    // Ответственный за ЗГТ
-  "research_officer",    // Ответственный за НИР
-  "duty_officer",        // Дежурный
+  "company_commander",
+  "deputy_commander",
+  "platoon_1_commander",
+  "platoon_2_commander",
+  "deputy_platoon_1",    // ЗКВ1 (Антипов)
+  "deputy_platoon_2",    // ЗКВ2 (Ермаков)
+  "squad_commander_2",   // КО2 (Арсенов)
+  "sergeant_major",
+  "security_officer",
+  "research_officer",
+  "duty_officer",
 ] as const;
 
 export type Role = (typeof ROLES)[number];

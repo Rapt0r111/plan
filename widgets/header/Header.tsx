@@ -1,9 +1,12 @@
 /**
  * @file Header.tsx — widgets/header
- * Sticky frosted-glass top bar. The blur + subtle border creates a
- * clear separation from content beneath without blocking peripheral vision.
+ *
+ * Sticky frosted-glass top bar.
+ * Now includes a CommandPaletteTrigger button — the visual affordance
+ * that teaches users Cmd+K exists. Once they learn it, they stop clicking it.
  */
 import type { ReactNode } from "react";
+import { CommandPaletteTrigger } from "@/features/command-palette/CommandPalette";
 
 interface Props {
   title: string;
@@ -33,6 +36,10 @@ export function Header({ title, subtitle, actions }: Props) {
           </p>
         )}
       </div>
+
+      {/* Command palette trigger — sits centre-right, always visible */}
+      <CommandPaletteTrigger />
+
       {actions && (
         <div className="flex items-center gap-2 shrink-0">{actions}</div>
       )}

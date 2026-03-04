@@ -1,54 +1,72 @@
 /**
  * @file zenCommands.ts — features/zen-mode
  *
- * Команды для Command Palette, активирующие Zen Mode.
+ * РЕФАКТОРИНГ v2:
+ *  ДО: CommandPalette.tsx полностью игнорировал этот модуль и реализовывал
+ *      ту же логику инлайн (~40 строк). Сигнатуры не совпадали:
+ *      buildZenCommands ожидал { activateWithTask, activateWithQueue },
+ *      а useZenStore экспортирует { activate, setQueue }.
  *
- * ИСПОЛЬЗОВАНИЕ в CommandPalette.tsx:
+ *  ПОСЛЕ: Интерфейс ZenHandlers выровнен под useZenStore API.
+ *      CommandPalette импортирует и использует эту функцию напрямую.
  *
- *   import { buildZenCommands } from "@/features/zen-mode/zenCommands";
- *
- *   // Внутри useMemo в CommandPalette:
- *   const zenCmds = buildZenCommands(epics, activateZen, setQueueZen);
- *   return [...nav, ...epicCmds, ...zenCmds, ...roleCmds, ...actions];
- *
- * FSD CONTRACT:
- *  Эта функция — pure factory, не содержит хуков.
- *  Зависимости передаются снаружи, что делает её тестируемой.
+ * КОНТРАКТ FSD:
+ *  Pure factory — без хуков, без React. Зависимости передаются снаружи.
+ *  Тестируется изолированно от UI.
  */
 
 import type { EpicWithTasks, TaskView } from "@/shared/types";
 
-interface ZenCommandItem {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface ZenCommandItem {
   id: string;
   category: "action";
   label: string;
   description?: string;
   icon: string;
   color?: string;
-  onSelect: () => void;
   keywords?: string[];
+  onSelect: () => void;
 }
 
-interface ZenHandlers {
-  /** Открыть Zen Mode с одной задачей */
-  activateWithTask: (task: TaskView) => void;
-  /** Открыть Zen Mode с очередью всех pending задач */
-  activateWithQueue: (tasks: TaskView[]) => void;
-  /** Деактивировать Zen Mode */
-  deactivate: () => void;
+/**
+ * ZenHandlers — интерфейс, выровненный под useZenStore.
+ * Принимает функции напрямую из store без обёрток.
+ */
+export interface ZenHandlers {
+  /** useZenStore: setQueue(tasks) + activate() */
+  setQueue: (tasks: TaskView[]) => void;
+  activate: () => void;
 }
 
+// ─── Factory ──────────────────────────────────────────────────────────────────
+
+/**
+ * buildZenCommands — строит команды для Command Palette.
+ *
+ * @param epics - список эпиков из Zustand store
+ * @param handlers - { setQueue, activate } из useZenStore
+ * @param close - функция закрытия палитры
+ * @returns массив ZenCommandItem для встройки в список команд
+ *
+ * @example
+ * // Внутри useMemo в CommandPalette.tsx:
+ * const { activate, setQueue } = useZenStore();
+ * const zenCmds = buildZenCommands(epics, { activate, setQueue }, close);
+ * return [...nav, ...epicCmds, ...zenCmds, ...actions];
+ */
 export function buildZenCommands(
   epics: EpicWithTasks[],
   handlers: ZenHandlers,
   close: () => void,
 ): ZenCommandItem[] {
-  // Все незавершённые задачи
+  const { setQueue, activate } = handlers;
+
   const pendingTasks = epics.flatMap((e) =>
     e.tasks.filter((t) => t.status !== "done")
   );
 
-  // Критические задачи (priority = critical | high)
   const urgentTasks = pendingTasks.filter(
     (t) => t.priority === "critical" || t.priority === "high"
   );
@@ -63,7 +81,8 @@ export function buildZenCommands(
       color: "#a78bfa",
       keywords: ["zen", "фокус", "поток", "focus", "mode", "концентрация"],
       onSelect: () => {
-        handlers.activateWithQueue(pendingTasks);
+        setQueue(pendingTasks);
+        activate();
         close();
       },
     },
@@ -79,7 +98,8 @@ export function buildZenCommands(
       color: "#f87171",
       keywords: ["zen", "критично", "срочно", "urgent", "critical"],
       onSelect: () => {
-        handlers.activateWithQueue(urgentTasks);
+        setQueue(urgentTasks);
+        activate();
         close();
       },
     });

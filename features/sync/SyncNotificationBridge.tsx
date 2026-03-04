@@ -1,21 +1,27 @@
 "use client";
 /**
- * @file SyncNotificationBridge.tsx — shared/lib
+ * @file SyncNotificationBridge.tsx — features/sync
  *
- * Observer: слушает syncStatus из useTaskStore,
- * пушит нотификации об ошибках в DynamicIsland.
+ * РЕФАКТОРИНГ: перемещён из shared/lib/ в features/sync/
  *
- * Размещён в shared/lib (не в app/providers) потому что:
- *  — Это утилита без UI, не провайдер
- *  — Зависит от shared/store и widgets/notifications — оба ниже по FSD
- *  — Монтируется в app/layout.tsx напрямую
+ * ПРИЧИНА:
+ *  shared/ по FSD не должен импортировать из widgets/.
+ *  SyncNotificationBridge использовал useNotify() из widgets/notifications/DynamicIsland —
+ *  это нарушение пирамиды зависимостей (shared → widgets недопустимо).
  *
- * Нулевая DOM-нагрузка — возвращает null.
+ * features/ может импортировать из widgets/ — правило соблюдено.
+ *
+ * ФАЙЛЫ К УДАЛЕНИЮ ПОСЛЕ МИГРАЦИИ:
+ *  - shared/lib/SyncNotificationBridge.tsx
+ *  - app/providers/SyncNotificationBridge.tsx (дубль)
+ *
+ * ИМПОРТ В app/layout.tsx:
+ *  import { SyncNotificationBridge } from "@/features/sync/SyncNotificationBridge";
  */
 
 import { useEffect, useRef } from "react";
 import { useTaskStore } from "@/shared/store/useTaskStore";
-import { useNotify } from "@/widgets/notifications/DynamicIsland";
+import { useNotify } from "./DynamicIsland";
 
 export function SyncNotificationBridge() {
   const notify = useNotify();

@@ -16,16 +16,15 @@ sqlite.exec("PRAGMA foreign_keys = ON;");
 const db = drizzle(sqlite, { schema: { users, epics, tasks, subtasks, taskAssignees } });
 
 // ─── ПОЛЬЗОВАТЕЛИ ─────────────────────────────────────────────────────────────
-const USER_SEEDS: { name: string; login: string; role: Role; initials: string }[] = [
-  { name: "Тарасенко Станислав Евгеньевич", login: "tarasenko", role: "company_commander", initials: "КНР" },
-  { name: "Халупа Алексей Иванович",       login: "khalupa",   role: "platoon_1_commander", initials: "КВ1" },
-  { name: "Трепалин Павел Викторович",     login: "trepalin",  role: "platoon_2_commander", initials: "КВ2" },
-  { name: "Антипов Егор Викторович",       login: "antipov",   role: "deputy_platoon_1",    initials: "ЗКВ1" },
-  { name: "Ермаков Владимир Александрович", login: "ermakov",  role: "deputy_platoon_2",    initials: "ЗКВ2" },
-  { name: "Долгополов Андрей Андреевич",   login: "dolgopolov", role: "sergeant_major",     initials: "СР" },
-  { name: "Арсенов Алексей Владимирович",  login: "arsenov",   role: "squad_commander_2",   initials: "КО2" },
-  { name: "Ответственный за ЗиТ",          login: "zit_admin", role: "security_officer",    initials: "ЗГТ" },
-  { name: "Весь постоянный состав",        login: "ps_all",    role: "duty_officer",        initials: "ПС" },
+const USER_SEEDS = [
+  { name: "Тарасенко С.Е.", login: "tarasenko", role: "company_commander", initials: "КНР" },
+  { name: "Халупа А.И.",    login: "khalupa",   role: "platoon_1_commander", initials: "КВ1" },
+  { name: "Трепалин П.В.",  login: "trepalin",  role: "platoon_2_commander", initials: "КВ2" },
+  { name: "Антипов Е.В.",   login: "antipov",   role: "deputy_platoon_1",    initials: "ЗКВ1" },
+  { name: "Ермаков В.А.",   login: "ermakov",   role: "deputy_platoon_2",    initials: "ЗКВ2" },
+  { name: "Арсенов А.В.",   login: "arsenov",   role: "squad_commander_2",   initials: "КО2" },
+  { name: "Долгополов А.А.", login: "dolgopolov", role: "sergeant_major",    initials: "СР" },
+  { name: "Личный состав",  login: "ps_all",    role: "duty_officer",        initials: "ПС" },
 ];
 
 type RoleSlug = Role;
@@ -196,7 +195,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 0, sortOrder: 14, status: "todo", priority: "low", dueDate: "2026-01-25",
     title: "Ежемесячные сверки и контроли (январь)",
-    roles: ["platoon_2_commander", "security_officer"],
+    roles: ["platoon_2_commander", "platoon_1_commander"],
     subs: [
       { title: "Сверка личных планов постоянного состава (КВ-2)" },
       { title: "Сверка служебных карточек (ЗКВ-2)" },
@@ -269,7 +268,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 0, sortOrder: 21, status: "todo", priority: "medium", dueDate: "2026-01-31",
     title: "Выдача МНИ по учёту (USB, электронные пропуска) — январь",
-    roles: ["security_officer", "platoon_2_commander"],
+    roles: ["platoon_1_commander", "platoon_2_commander"],
     subs: [
       { title: "Выдача USB" },
       { title: "Выдача электронных пропусков" },
@@ -293,7 +292,7 @@ const TASK_SEEDS: Task[] = [
     epicIdx: 1, sortOrder: 0, status: "todo", priority: "critical", dueDate: "2026-02-16",
     title: "Итоговая проверка деятельности МОРФ",
     description: "Срок: 03-16 февраля. Весь постоянный состав.",
-    roles: ["company_commander", "platoon_1_commander", "platoon_2_commander", "sergeant_major", "deputy_commander", "security_officer"],
+    roles: ["company_commander", "platoon_1_commander", "platoon_2_commander", "sergeant_major", "deputy_platoon_2", "platoon_1_commander"],
     subs: [
       { title: "Мероприятия в соответствии с планом подготовки" },
       { title: "Мероприятия по перечню вопросов проверки" },
@@ -452,7 +451,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 2, sortOrder: 5, status: "todo", priority: "medium",
     title: "Квартальная проверка в ЗГТ (март)",
-    roles: ["security_officer"]
+    roles: ["platoon_1_commander"]
   },
 
   {
@@ -482,7 +481,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 2, sortOrder: 9, status: "todo", priority: "low",
     title: "Ежемесячные сверки и контроли (март)",
-    roles: ["platoon_2_commander", "security_officer"],
+    roles: ["platoon_2_commander", "platoon_1_commander"],
     subs: [
       { title: "Сверка личных планов постоянного состава" },
       { title: "Сверка служебных карточек" },
@@ -543,7 +542,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 3, sortOrder: 4, status: "todo", priority: "low", dueDate: "2026-04-20",
     title: "Ежемесячные сверки и контроли (апрель)",
-    roles: ["platoon_1_commander", "security_officer"],
+    roles: ["platoon_1_commander", "platoon_1_commander"],
     subs: [
       { title: "Сверка личных планов постоянного состава (20.04)" },
       { title: "Сверка служебных карточек (20.04)" },
@@ -586,7 +585,7 @@ const TASK_SEEDS: Task[] = [
     epicIdx: 4, sortOrder: 1, status: "todo", priority: "high", dueDate: "2026-05-15",
     title: "Указания по МВТФ «Армия» и подготовка частного плана мероприятий",
     description: "Срок: 1-15 мая.",
-    roles: ["platoon_1_commander", "deputy_commander"],
+    roles: ["platoon_1_commander", "deputy_platoon_2"],
     subs: [
       { title: "Получить указания по МВТФ «Армия»" },
       { title: "Подготовка частного плана мероприятий" },
@@ -620,7 +619,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 5, sortOrder: 0, status: "todo", priority: "medium",
     title: "Квартальная проверка в ЗГТ (июнь)",
-    roles: ["security_officer"]
+    roles: ["platoon_1_commander"]
   },
 
   {
@@ -632,7 +631,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 5, sortOrder: 2, status: "todo", priority: "high",
     title: "Мероприятия по частному плану подготовки к МВТФ «Армия» (июнь)",
-    roles: ["platoon_1_commander", "deputy_commander"]
+    roles: ["platoon_1_commander", "deputy_platoon_2"]
   },
 
   {
@@ -672,7 +671,7 @@ const TASK_SEEDS: Task[] = [
     epicIdx: 5, sortOrder: 6, status: "todo", priority: "high", dueDate: "2026-06-30",
     title: "Сдача МНИ (16 комплектов) — июнь",
     description: "Срок: 25-30 июня. По учёту в журнале МНИ с составлением актов.",
-    roles: ["security_officer"],
+    roles: ["platoon_1_commander"],
     subs: [
       { title: "Сдача ПЭВМ (в комплекте: сумка, мышь, ЗУ)" },
       { title: "Сдача USB" },
@@ -695,7 +694,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 6, sortOrder: 1, status: "todo", priority: "high",
     title: "Мероприятия по частному плану подготовки к МВТФ «Армия» (июль)",
-    roles: ["platoon_1_commander", "deputy_commander"]
+    roles: ["platoon_1_commander", "deputy_platoon_2"]
   },
 
   {
@@ -712,7 +711,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 6, sortOrder: 3, status: "todo", priority: "medium",
     title: "Сдача МНИ при увольнении (июль — 16 комплектов)",
-    roles: ["security_officer"],
+    roles: ["platoon_1_commander"],
     subs: [
       { title: "Сдача ПЭВМ (в комплекте: сумка, мышь, ЗУ)" },
       { title: "Сдача USB" },
@@ -723,7 +722,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 6, sortOrder: 4, status: "todo", priority: "critical", dueDate: "2026-07-15",
     title: "Приём молодого пополнения (июль)",
-    roles: ["security_officer", "sergeant_major"],
+    roles: ["platoon_1_commander", "sergeant_major"],
     subs: [
       { title: "Рапорт на автомобильный транспорт" },
       { title: "Фотографирование воинской команды" },
@@ -831,7 +830,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 6, sortOrder: 12, status: "todo", priority: "medium", dueDate: "2026-07-20",
     title: "Подготовка к проведению ОВП на 6 в/г (20 июля)",
-    roles: ["platoon_1_commander", "deputy_commander"],
+    roles: ["platoon_1_commander", "deputy_platoon_2"],
     subs: [
       { title: "Подготовить приказ о проведении общевойсковой подготовки" },
       { title: "Расписание" },
@@ -842,7 +841,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 6, sortOrder: 13, status: "todo", priority: "medium",
     title: "Внесение данных по увольнению и призыву в документацию УЛС (июль)",
-    roles: ["platoon_1_commander", "deputy_commander"],
+    roles: ["platoon_1_commander", "deputy_platoon_2"],
     subs: [
       { title: "Книга алфавитного учёта" },
       { title: "Книга УЛС (Форма № 1)" },
@@ -856,7 +855,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 6, sortOrder: 14, status: "todo", priority: "low",
     title: "Ежемесячные сверки и контроли (июль)",
-    roles: ["company_commander", "security_officer"],
+    roles: ["company_commander", "platoon_1_commander"],
     subs: [
       { title: "Мобилизационная неделя: расписаться в ГрОМР" },
       { title: "Мобилизационная неделя: подготовить рапорт (сдать в четверг)" },
@@ -881,7 +880,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 7, sortOrder: 1, status: "todo", priority: "high",
     title: "Мероприятия по плану общевойсковой подготовки (август, 1-30)",
-    roles: ["security_officer"]
+    roles: ["platoon_1_commander"]
   },
 
   {
@@ -905,7 +904,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 7, sortOrder: 5, status: "todo", priority: "high", dueDate: "2026-08-20",
     title: "Подготовка к стрельбам (август, 1-20)",
-    roles: ["security_officer", "platoon_2_commander"],
+    roles: ["platoon_1_commander", "platoon_2_commander"],
     subs: [
       { title: "Приказ на проведение стрельб (1-10.08)" },
       { title: "Подготовить 7 выписок из приказа (123, 6, 5 каф., НР-2)" },
@@ -923,7 +922,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 7, sortOrder: 6, status: "todo", priority: "critical", dueDate: "2026-08-20",
     title: "Организация стрельб (20 августа, во взаимодействии с 10 кафедрой)",
-    roles: ["security_officer", "platoon_2_commander"],
+    roles: ["platoon_1_commander", "platoon_2_commander"],
     subs: [
       { title: "Оружие, магазины, подсумки" },
       { title: "Учебные ПМ и учебные б/п (ПМ, АК)" },
@@ -939,7 +938,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 7, sortOrder: 7, status: "todo", priority: "medium", dueDate: "2026-08-20",
     title: "Занятия по метанию гранаты (БХ танков, упр. 6, 7) — август",
-    roles: ["security_officer"]
+    roles: ["platoon_1_commander"]
   },
 
   {
@@ -983,7 +982,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 7, sortOrder: 13, status: "todo", priority: "critical", dueDate: "2026-08-20",
     title: "Подготовка к проведению Присяги (август, 1-20)",
-    roles: ["security_officer", "deputy_commander"],
+    roles: ["platoon_1_commander", "deputy_platoon_2"],
     subs: [
       { title: "Выписка из приказа о проведении Присяги" },
       { title: "Рапорт на получение оружия на тренировки и церемонию" },
@@ -1015,7 +1014,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 7, sortOrder: 16, status: "todo", priority: "medium",
     title: "Активация пропусков и выдача МНИ (24 комплекта) — август",
-    roles: ["security_officer", "platoon_2_commander"],
+    roles: ["platoon_1_commander", "platoon_2_commander"],
     subs: [
       { title: "Активация пропусков в ЦОИ (ЗКВ-2)" },
       { title: "Выдача ПЭВМ 24 комплекта (сумка, мышь, ЗУ)" },
@@ -1026,7 +1025,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 7, sortOrder: 17, status: "todo", priority: "low",
     title: "Ежемесячные сверки и контроли (август)",
-    roles: ["platoon_2_commander", "security_officer"],
+    roles: ["platoon_2_commander", "platoon_1_commander"],
     subs: [
       { title: "Мобилизационная неделя: расписаться в ГрОМР (КНР)" },
       { title: "Мобилизационная неделя: подготовить рапорт" },
@@ -1109,13 +1108,13 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 8, sortOrder: 7, status: "todo", priority: "high", dueDate: "2026-09-15",
     title: "Отправка плана увольнения в запас в ОМУ ЛВО (сентябрь, 1-15)",
-    roles: ["deputy_commander"]
+    roles: ["deputy_platoon_2"]
   },
 
   {
     epicIdx: 8, sortOrder: 8, status: "todo", priority: "high",
     title: "Подготовка документов на увольнение в запас (сентябрь)",
-    roles: ["deputy_commander"],
+    roles: ["deputy_platoon_2"],
     subs: [
       { title: "Таблица очерёдности увольнения" },
       { title: "Маршруты следования и предписания" },
@@ -1147,7 +1146,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 8, sortOrder: 11, status: "todo", priority: "low",
     title: "Мобилизационная неделя и ежемесячные сверки (сентябрь)",
-    roles: ["company_commander", "platoon_2_commander", "security_officer"],
+    roles: ["company_commander", "platoon_2_commander", "platoon_1_commander"],
     subs: [
       { title: "Расписаться в ГрОМР (КНР)" },
       { title: "Подготовить рапорт (сдать в ГрОМР в четверг)" },
@@ -1186,13 +1185,13 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 9, sortOrder: 1, status: "todo", priority: "high", dueDate: "2026-10-25",
     title: "Отправка писем в ВК на кандидатов 1 этапа (октябрь, 1-25)",
-    roles: ["deputy_commander"]
+    roles: ["deputy_platoon_2"]
   },
 
   {
     epicIdx: 9, sortOrder: 2, status: "todo", priority: "low",
     title: "Мобилизационная неделя и ежемесячные сверки (октябрь)",
-    roles: ["company_commander", "platoon_2_commander", "security_officer"],
+    roles: ["company_commander", "platoon_2_commander", "platoon_1_commander"],
     subs: [
       { title: "Расписаться в ГрОМР (КНР)" },
       { title: "Подготовить рапорт (сдать в ГрОМР в четверг)" },
@@ -1222,7 +1221,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 10, sortOrder: 0, status: "todo", priority: "critical", dueDate: "2026-11-01",
     title: "Оформление документов на торжественное увольнение в запас (01 ноября)",
-    roles: ["research_officer", "platoon_1_commander"],
+    roles: ["platoon_1_commander", "platoon_1_commander"],
     subs: [
       { title: "Приказ об увольнении (в последнюю субботу месяца) — КО-2" },
       { title: "Приказ на звания (по рапорту) — КО-2" },
@@ -1257,7 +1256,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 10, sortOrder: 2, status: "todo", priority: "medium", dueDate: "2026-11-01",
     title: "Сбор сведений старших воинских команд с кафедр (01 ноября)",
-    roles: ["deputy_commander"]
+    roles: ["deputy_platoon_2"]
   },
 
   {
@@ -1279,7 +1278,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 10, sortOrder: 4, status: "todo", priority: "high", dueDate: "2026-11-15",
     title: "Подготовка командировочных документов на призыв (15 ноября)",
-    roles: ["deputy_commander"],
+    roles: ["deputy_platoon_2"],
     subs: [
       { title: "Командировочные удостоверения" },
       { title: "Доверенности" },
@@ -1304,7 +1303,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 10, sortOrder: 6, status: "todo", priority: "medium", dueDate: "2026-11-20",
     title: "Уточнение информации с СП о ходе призыва кандидатов (20 ноября)",
-    roles: ["deputy_commander"],
+    roles: ["deputy_platoon_2"],
     subs: [
       { title: "Адреса и сроки отправки" },
       { title: "Сокращение команды (по письмам)" },
@@ -1314,7 +1313,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 10, sortOrder: 7, status: "todo", priority: "low",
     title: "Мобилизационная неделя и ежемесячные сверки (ноябрь)",
-    roles: ["company_commander", "platoon_2_commander", "security_officer"],
+    roles: ["company_commander", "platoon_2_commander", "platoon_1_commander"],
     subs: [
       { title: "Расписаться в ГрОМР (20.11)" },
       { title: "Подготовить рапорт (сдать в ГрОМР в четверг)" },
@@ -1347,7 +1346,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 10, sortOrder: 9, status: "todo", priority: "high", dueDate: "2026-11-29",
     title: "Тренировка торжественного увольнения (29 ноября)",
-    roles: ["platoon_1_commander", "research_officer"],
+    roles: ["platoon_1_commander", "platoon_1_commander"],
     subs: [
       { title: "Подготовка стола (со скатертью)" },
       { title: "Организация музыкального сопровождения" },
@@ -1410,7 +1409,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 11, sortOrder: 3, status: "todo", priority: "medium",
     title: "Сдача МНИ при увольнении (декабрь — 16 комплектов)",
-    roles: ["security_officer"],
+    roles: ["platoon_1_commander"],
     subs: [
       { title: "Сдача ПЭВМ (в комплекте: сумка, мышь, ЗУ)" },
       { title: "Сдача USB" },
@@ -1458,7 +1457,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 11, sortOrder: 8, status: "todo", priority: "medium", dueDate: "2026-12-10",
     title: "Квартальная проверка службы ЗГТ (декабрь, 1-10)",
-    roles: ["security_officer"]
+    roles: ["platoon_1_commander"]
   },
 
   {
@@ -1549,7 +1548,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 11, sortOrder: 14, status: "todo", priority: "medium", dueDate: "2026-12-30",
     title: "Выдача МНИ (24 комплекта) — 30 декабря",
-    roles: ["platoon_1_commander", "security_officer"],
+    roles: ["platoon_1_commander", "platoon_1_commander"],
     subs: [
       { title: "Выдача ПЭВМ (в комплекте: сумка, мышь, ЗУ)" },
       { title: "Выдача USB" },
@@ -1560,7 +1559,7 @@ const TASK_SEEDS: Task[] = [
   {
     epicIdx: 11, sortOrder: 15, status: "todo", priority: "low", dueDate: "2026-12-18",
     title: "Ежемесячные сверки и контроли (декабрь, 18)",
-    roles: ["platoon_1_commander", "security_officer"],
+    roles: ["platoon_1_commander", "platoon_1_commander"],
     subs: [
       { title: "Сверка личных планов постоянного состава (18.12)" },
       { title: "Сверка служебных карточек (18.12)" },

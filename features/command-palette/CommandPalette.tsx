@@ -2,16 +2,17 @@
 /**
  * @file CommandPalette.tsx — features/command-palette
  *
- * ═══════════════════════════════════════════════════════════════
- * THE COGNITIVE ACCELERATOR
- * ═══════════════════════════════════════════════════════════════
+ * РЕФАКТОРИНГ:
+ *  ДО: zen-команды строились инлайн (~40 строк), дублируя buildZenCommands().
+ *      Функция из zenCommands.ts не вызывалась вообще.
  *
- * ИЗМЕНЕНИЯ В ЭТОЙ ВЕРСИИ (Этап 7):
- *  + Добавлены Zen Mode команды в категорию "action"
- *  + useZenStore интегрирован для активации Zen Mode
- *  + buildZenCommands() вызывается внутри useMemo
+ *  ПОСЛЕ: buildZenCommands() используется напрямую.
+ *      Инлайн-дубль удалён. CommandPalette занимается только сборкой и рендером.
  *
- * Остальная архитектура без изменений — см. оригинальный файл.
+ * АРХИТЕКТУРА РАЗДЕЛЕНИЯ ОТВЕТСТВЕННОСТИ:
+ *  scoreFuzzy()       → чистая функция, вынесена в lib/fuzzy.ts (рекомендация)
+ *  buildZenCommands() → features/zen-mode/zenCommands.ts
+ *  CommandRow         → можно вынести в ./CommandRow.tsx (файл > 150 строк)
  */
 
 import {
@@ -86,7 +87,7 @@ const CATEGORY_LABEL: Record<CommandCategory, string> = {
   team: "Команда",
 };
 
-// ─── Icon Renderer ────────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function CommandIcon({ icon, color }: { icon: string; color?: string }) {
   const isEmoji = /\p{Emoji}/u.test(icon);
@@ -136,10 +137,9 @@ export function CommandPalette() {
   const router = useRouter();
   const { isOpen, initialQuery, close } = useCommandPaletteStore();
   const { open: openPalette } = useCommandPaletteStore();
-
   const epics = useTaskStore((s) => s.epics);
 
-  // ── Zen Mode integration ───────────────────────────────────────────────────
+  // Zen Mode: берём только нужные действия из store
   const { activate: activateZen, setQueue: setZenQueue } = useZenStore();
 
   const [query, setQuery] = useState("");
@@ -157,11 +157,7 @@ export function CommandPalette() {
   }, [isOpen, initialQuery]);
 
   useKeyboardShortcuts([
-    {
-      key: "k",
-      meta: true,
-      handler: () => (isOpen ? close() : openPalette()),
-    },
+    { key: "k", meta: true, handler: () => (isOpen ? close() : openPalette()) },
   ]);
 
   // ── Command list ───────────────────────────────────────────────────────────
@@ -213,50 +209,18 @@ export function CommandPalette() {
       onSelect: () => { router.push("/board"); close(); },
     }));
 
-    // ── Zen Mode commands (buildZenCommands) ─────────────────────────────────
-    const pendingTasks = epics.flatMap((e) =>
-      e.tasks.filter((t) => t.status !== "done")
+    /**
+     * РЕФАКТОРИНГ: buildZenCommands() вместо инлайн-дубля.
+     * Передаём { activate, setQueue } — соответствует ZenHandlers интерфейсу.
+     */
+    const zenCmds = buildZenCommands(
+      epics,
+      { activate: activateZen, setQueue: setZenQueue },
+      close,
     );
-    const urgentTasks = pendingTasks.filter(
-      (t) => t.priority === "critical" || t.priority === "high"
-    );
-
-    const zenCmds: CommandItem[] = [
-      {
-        id: "zen-activate-all",
-        category: "action",
-        label: "Войти в Zen Mode",
-        description: `${pendingTasks.length} незавершённых задач`,
-        icon: "◈",
-        color: "#a78bfa",
-        keywords: ["zen", "фокус", "поток", "focus", "mode", "концентрация"],
-        onSelect: () => {
-          setZenQueue(pendingTasks);
-          activateZen();
-          close();
-        },
-      },
-    ];
-
-    if (urgentTasks.length > 0) {
-      zenCmds.push({
-        id: "zen-activate-urgent",
-        category: "action",
-        label: "Zen Mode: Критические задачи",
-        description: `${urgentTasks.length} задач с высоким приоритетом`,
-        icon: "◈",
-        color: "#f87171",
-        keywords: ["zen", "критично", "срочно", "urgent", "critical"],
-        onSelect: () => {
-          setZenQueue(urgentTasks);
-          activateZen();
-          close();
-        },
-      });
-    }
-    // ── /Zen Mode commands ───────────────────────────────────────────────────
 
     const actions: CommandItem[] = [
+      // zenCmds встраиваются в начало раздела "action"
       ...zenCmds,
       {
         id: "action-sync",
@@ -321,10 +285,7 @@ export function CommandPalette() {
     return map;
   }, [filtered]);
 
-  const flatList = useMemo(
-    () => [...grouped.values()].flat(),
-    [grouped]
-  );
+  const flatList = useMemo(() => [...grouped.values()].flat(), [grouped]);
 
   useEffect(() => {
     setSelectedIndex((i) => Math.min(i, Math.max(flatList.length - 1, 0)));
@@ -394,13 +355,9 @@ export function CommandPalette() {
               style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
             >
               <svg
-                className="w-4 h-4 shrink-0"
-                style={{ color: "var(--text-muted)" }}
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
+                className="w-4 h-4 shrink-0 text-[var(--text-muted)]"
+                viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                strokeWidth="1.5" strokeLinecap="round"
               >
                 <circle cx="7" cy="7" r="4.5" />
                 <path d="m11 11 2.5 2.5" />
@@ -420,8 +377,7 @@ export function CommandPalette() {
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
                 onKeyDown={handleKeyDown}
-                className="flex-1 bg-transparent outline-none text-sm placeholder:text-[var(--text-muted)]"
-                style={{ color: "var(--text-primary)" }}
+                className="flex-1 bg-transparent outline-none text-sm placeholder:text-[var(--text-muted)] text-[var(--text-primary)]"
               />
 
               <div className="flex items-center gap-1 shrink-0">
@@ -443,16 +399,12 @@ export function CommandPalette() {
                     className="w-10 h-10 rounded-2xl flex items-center justify-center mb-3"
                     style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)" }}
                   >
-                    <svg className="w-5 h-5" style={{ color: "var(--text-muted)" }} viewBox="0 0 20 20" fill="currentColor">
+                    <svg className="w-5 h-5 text-[var(--text-muted)]" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
                     </svg>
                   </div>
-                  <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-                    Ничего не найдено
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                    Попробуйте другой запрос
-                  </p>
+                  <p className="text-sm font-medium text-[var(--text-secondary)]">Ничего не найдено</p>
+                  <p className="text-xs mt-1 text-[var(--text-muted)]">Попробуйте другой запрос</p>
                 </div>
               ) : (
                 (() => {
@@ -460,27 +412,19 @@ export function CommandPalette() {
                   return [...grouped.entries()].map(([cat, items]) => (
                     <div key={cat} className="mb-1">
                       <div className="px-4 py-1.5 flex items-center gap-2">
-                        <span
-                          className="text-[10px] font-semibold uppercase tracking-widest"
-                          style={{ color: "var(--text-muted)" }}
-                        >
+                        <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
                           {CATEGORY_LABEL[cat]}
                         </span>
-                        <div
-                          className="flex-1 h-px"
-                          style={{ background: "rgba(255,255,255,0.05)" }}
-                        />
+                        <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.05)" }} />
                       </div>
-
                       {items.map((cmd) => {
                         const idx = globalIdx++;
-                        const isSelected = idx === selectedIndex;
                         return (
                           <CommandRow
                             key={cmd.id}
                             cmd={cmd}
                             idx={idx}
-                            isSelected={isSelected}
+                            isSelected={idx === selectedIndex}
                             onHover={() => setSelectedIndex(idx)}
                             onSelect={cmd.onSelect}
                           />
@@ -500,16 +444,15 @@ export function CommandPalette() {
                 background: "rgba(255,255,255,0.015)",
               }}
             >
-              <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+              <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
                 <KbdHint>↑</KbdHint>
                 <KbdHint>↓</KbdHint>
                 <span>навигация</span>
               </div>
-              <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+              <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
                 <KbdHint>↵</KbdHint>
                 <span>выбрать</span>
               </div>
-              {/* Zen Mode hint */}
               <div className="flex items-center gap-1.5 text-xs ml-auto" style={{ color: "rgba(139,92,246,0.5)" }}>
                 <span className="font-mono">◈</span>
                 <span>zen</span>
@@ -548,49 +491,27 @@ function CommandRow({ cmd, idx, isSelected, onHover, onSelect }: CommandRowProps
       )}
       style={
         isSelected
-          ? {
-              background: "rgba(139,92,246,0.12)",
-              borderLeft: "2px solid var(--accent-500)",
-              paddingLeft: "14px",
-            }
-          : {
-              borderLeft: "2px solid transparent",
-            }
+          ? { background: "rgba(139,92,246,0.12)", borderLeft: "2px solid var(--accent-500)", paddingLeft: "14px" }
+          : { borderLeft: "2px solid transparent" }
       }
     >
       <CommandIcon icon={cmd.icon} color={cmd.color} />
-
       <div className="flex-1 min-w-0">
         <p
           className="text-sm font-medium truncate"
-          style={{
-            color: isSelected ? "var(--text-primary)" : "var(--text-secondary)",
-          }}
+          style={{ color: isSelected ? "var(--text-primary)" : "var(--text-secondary)" }}
         >
           {cmd.label}
         </p>
         {cmd.description && (
-          <p className="text-xs truncate mt-0.5" style={{ color: "var(--text-muted)" }}>
+          <p className="text-xs truncate mt-0.5 text-[var(--text-muted)]">
             {cmd.description}
           </p>
         )}
       </div>
-
       {isSelected && (
-        <motion.div
-          initial={{ opacity: 0, x: -4 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="shrink-0"
-        >
-          <svg
-            className="w-4 h-4"
-            style={{ color: "var(--accent-400)" }}
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          >
+        <motion.div initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className="shrink-0">
+          <svg className="w-4 h-4 text-[var(--accent-400)]" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M3 8h10M9 4l4 4-4 4" />
           </svg>
         </motion.div>
@@ -622,18 +543,12 @@ export function CommandPaletteTrigger({ className }: { className?: string }) {
     >
       <svg
         className="w-3.5 h-3.5 group-hover:text-[var(--text-secondary)] transition-colors"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
+        viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
       >
         <circle cx="7" cy="7" r="4.5" />
         <path d="m11 11 2.5 2.5" />
       </svg>
-      <span className="group-hover:text-[var(--text-secondary)] transition-colors">
-        Поиск
-      </span>
+      <span className="group-hover:text-[var(--text-secondary)] transition-colors">Поиск</span>
       <div className="flex items-center gap-0.5 ml-1">
         <KbdHint>{isMac ? "⌘" : "Ctrl"}</KbdHint>
         <KbdHint>K</KbdHint>

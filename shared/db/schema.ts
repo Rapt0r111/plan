@@ -24,24 +24,19 @@ import {
 
 /** 8 organisational roles — stored as slugs for DB readability & portability */
 export const ROLES = [
-  "company_commander",
-  "deputy_commander",
-  "platoon_1_commander",
-  "platoon_2_commander",
-  "deputy_platoon_1",    // ЗКВ1 (Антипов)
-  "deputy_platoon_2",    // ЗКВ2 (Ермаков)
-  "squad_commander_2",   // КО2 (Арсенов)
-  "sergeant_major",
-  "security_officer",
-  "research_officer",
-  "duty_officer",
+  "company_commander", // КНР
+  "platoon_1_commander", // КВ1
+  "platoon_2_commander", // КВ2
+  "deputy_platoon_1",    // ЗКВ1
+  "deputy_platoon_2",    // ЗКВ2
+  "squad_commander_2",   // КО2
+  "sergeant_major",      // СР
+  "duty_officer",        // ПС
 ] as const;
 
 export type Role = (typeof ROLES)[number];
-
 export const TASK_STATUSES = ["todo", "in_progress", "done", "blocked"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
-
 export const TASK_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 

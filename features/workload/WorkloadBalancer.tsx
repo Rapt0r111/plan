@@ -2,34 +2,29 @@
 /**
  * @file WorkloadBalancer.tsx — features/workload
  *
- * AI Workload Balancer widget.
+ * РЕФАКТОРИНГ: устранено дублирование логики подсчёта нагрузки.
  *
- * UX rationale:
- *  Visualises per-role task load as horizontal bar segments.
- *  The "suggest rebalance" button triggers an animated mock-AI flow:
- *  bars pulse → suggestion card slides in → user can "apply" (no-op mock)
- *  or dismiss.
+ * ДО: WorkloadBalancer содержал собственный useMemo с подсчётом задач по ролям
+ *     (строки 22–39 оригинала) — полная копия calculateLoad(), без нормализации
+ *     и EnergyLevel классификации.
  *
- *  This pattern (show → animate → suggest → confirm) follows the same
- *  interaction model as GitHub Copilot — low friction, always opt-in.
+ * ПОСЛЕ: импортируем calculateLoad() из features/energy/model/calculateLoad.
+ *   Это даёт нам бесплатно:
+ *   — EnergyLevel ("calm" | "moderate" | "high" | "critical")
+ *   — normalised energy scalar 0–1
+ *   — completionRate
+ *   — getEnergyColor() для визуального маппинга
  *
- *  On an intranet with a real LLM endpoint, the mock fetch can be
- *  replaced with a POST to /api/ai/balance.
+ * UX rationale: WorkloadBalancer теперь показывает те же данные, что и EnergyMap,
+ * только в другом представлении — консистентность без дополнительного кода.
  */
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
-import { ROLE_META } from "@/shared/config/roles";
+import { calculateLoad, getEnergyColor, type RoleLoad } from "@/features/energy/model/calculateLoad";
 import { cn } from "@/shared/lib/utils";
-import type { Role } from "@/shared/types";
 
-interface RoleLoad {
-  role: Role;
-  label: string;
-  hex: string;
-  count: number;
-  pct: number;
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Suggestion {
   from: string;
@@ -40,7 +35,112 @@ interface Suggestion {
 
 type Phase = "idle" | "analyzing" | "result" | "applied";
 
-const ANALYZE_DURATION = 1800; // ms
+const ANALYZE_DURATION = 1800;
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+interface LoadBarProps {
+  load: RoleLoad;
+  index: number;
+  isMax: boolean;
+}
+
+function LoadBar({ load, index, isMax }: LoadBarProps) {
+  const barColor = getEnergyColor(load.level, load.hex);
+  const pct = load.energy * 100;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.04, duration: 0.2 }}
+      className="flex items-center gap-2.5"
+    >
+      <div
+        className="w-2 h-2 rounded-full shrink-0"
+        style={{ backgroundColor: barColor }}
+      />
+      <span className="text-xs text-[var(--text-secondary)] w-32 shrink-0 truncate">
+        {load.label}
+      </span>
+      <div className="flex-1 h-1.5 bg-[var(--glass-02)] rounded-full overflow-hidden">
+        <motion.div
+          className="h-full rounded-full"
+          style={{ backgroundColor: barColor }}
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.6, delay: index * 0.05, ease: "easeOut" }}
+        />
+      </div>
+      <span
+        className={cn(
+          "text-xs font-mono w-5 text-right shrink-0",
+          isMax && load.pending > 0 ? "font-bold" : "text-(--text-muted)"
+        )}
+        style={isMax && load.pending > 0 ? { color: barColor } : undefined}
+      >
+        {load.pending}
+      </span>
+      {/* Energy level badge — новая информация, которой не было до рефакторинга */}
+      {load.level !== "calm" && (
+        <span
+          className="text-[9px] font-mono px-1.5 rounded-full shrink-0"
+          style={{
+            background: `${barColor}18`,
+            color: barColor,
+            border: `1px solid ${barColor}30`,
+          }}
+        >
+          {load.level}
+        </span>
+      )}
+    </motion.div>
+  );
+}
+
+interface SuggestionCardProps {
+  suggestion: Suggestion;
+  index: number;
+}
+
+function SuggestionCard({ suggestion, index }: SuggestionCardProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 8 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.1 }}
+      className="rounded-xl p-3 space-y-1.5"
+      style={{
+        background: "rgba(139,92,246,0.06)",
+        border: "1px solid rgba(139,92,246,0.18)",
+      }}
+    >
+      {suggestion.count > 0 ? (
+        <>
+          <div className="flex items-center gap-2 text-xs font-medium text-[var(--text-primary)]">
+            <span className="text-[var(--accent-400)]">{suggestion.from}</span>
+            <svg
+              className="w-3 h-3 text-[var(--text-muted)]"
+              viewBox="0 0 12 12" fill="none" stroke="currentColor"
+              strokeWidth="1.5" strokeLinecap="round"
+            >
+              <path d="M1 6h10M7 2l4 4-4 4" />
+            </svg>
+            <span className="text-emerald-400">{suggestion.to}</span>
+            <span className="ml-auto font-mono text-[var(--accent-300)]">
+              {suggestion.count} задач
+            </span>
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">{suggestion.reason}</p>
+        </>
+      ) : (
+        <p className="text-xs text-[var(--text-secondary)]">{suggestion.reason}</p>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function WorkloadBalancer() {
   const epics = useTaskStore((s) => s.epics);
@@ -48,41 +148,31 @@ export function WorkloadBalancer() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
 
-  // ── Compute role loads ───────────────────────────────────────────────────
-  const loads = useMemo<RoleLoad[]>(() => {
-    const counts: Partial<Record<Role, number>> = {};
-    for (const epic of epics) {
-      for (const task of epic.tasks) {
-        for (const a of task.assignees) {
-          counts[a.role as Role] = (counts[a.role as Role] ?? 0) + 1;
-        }
-      }
-    }
-    const max = Math.max(...Object.values(counts).map(Number), 1);
-    return Object.entries(ROLE_META).map(([role, meta]) => ({
-      role: role as Role,
-      label: meta.label,
-      hex: meta.hex,
-      count: counts[role as Role] ?? 0,
-      pct: ((counts[role as Role] ?? 0) / max) * 100,
-    })).sort((a, b) => b.count - a.count);
-  }, [epics]);
+  /**
+   * calculateLoad() заменяет ~20 строк дублированного кода.
+   * Дополнительно получаем: EnergyLevel, completionRate, normalised energy.
+   */
+  const loads = useMemo(() => calculateLoad(epics), [epics]);
 
-  // ── Mock AI analysis ──────────────────────────────────────────────────────
+  const maxCount = Math.max(...loads.map((l) => l.pending), 1);
+  const totalAssigned = loads.reduce((s, l) => s + l.total, 0);
+  const activeRoles = loads.filter((l) => l.total > 0).length;
+
   function runAnalysis() {
     setPhase("analyzing");
     setTimeout(() => {
-      // Generate mock suggestions based on actual data
-      const overloaded = loads.filter((l) => l.count >= 4);
-      const underloaded = loads.filter((l) => l.count <= 1 && l.count < (overloaded[0]?.count ?? 0));
+      const overloaded = loads.filter((l) => l.pending >= 4);
+      const underloaded = loads.filter(
+        (l) => l.pending <= 1 && l.pending < (overloaded[0]?.pending ?? 0)
+      );
 
       const result: Suggestion[] = [];
       if (overloaded.length > 0 && underloaded.length > 0) {
         result.push({
           from: overloaded[0].label,
           to: underloaded[0].label,
-          count: Math.floor((overloaded[0].count - underloaded[0].count) / 2),
-          reason: `Разница в нагрузке: ${overloaded[0].count} vs ${underloaded[0].count} задач`,
+          count: Math.floor((overloaded[0].pending - underloaded[0].pending) / 2),
+          reason: `Разница в нагрузке: ${overloaded[0].pending} vs ${underloaded[0].pending} задач`,
         });
       }
       if (overloaded.length > 1 && underloaded.length > 1) {
@@ -107,12 +197,12 @@ export function WorkloadBalancer() {
     }, ANALYZE_DURATION);
   }
 
-  const maxCount = Math.max(...loads.map((l) => l.count), 1);
-
   return (
-    <div className="rounded-2xl overflow-hidden"
-      style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}>
-      {/* Header */}
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}
+    >
+      {/* ── Header / Toggle ── */}
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full px-4 py-3 flex items-center gap-3 text-left"
@@ -123,7 +213,7 @@ export function WorkloadBalancer() {
           style={{ background: "var(--accent-glow)", border: "1px solid rgba(139,92,246,0.3)" }}
         >
           <svg className="w-3.5 h-3.5 text-[var(--accent-400)]" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 12h2v-2H2v2zm0-4h2V6H2v2zm0-4h2V2H2v2zm4 8h8v-2H6v2zm0-4h8V6H6v2zm0-4h8V2H6v2z"/>
+            <path d="M2 12h2v-2H2v2zm0-4h2V6H2v2zm0-4h2V2H2v2zm4 8h8v-2H6v2zm0-4h8V6H6v2zm0-4h8V2H6v2z" />
           </svg>
         </div>
         <div className="flex-1 min-w-0">
@@ -131,7 +221,7 @@ export function WorkloadBalancer() {
             Балансировка нагрузки
           </p>
           <p className="text-xs text-[var(--text-muted)]">
-            {loads.reduce((s, l) => s + l.count, 0)} задач · {loads.filter((l) => l.count > 0).length} ролей
+            {totalAssigned} задач · {activeRoles} ролей
           </p>
         </div>
         <motion.svg
@@ -141,7 +231,7 @@ export function WorkloadBalancer() {
           animate={{ rotate: open ? 180 : 0 }}
           transition={{ duration: 0.2 }}
         >
-          <path d="M4 6l4 4 4-4"/>
+          <path d="M4 6l4 4 4-4" />
         </motion.svg>
       </button>
 
@@ -155,52 +245,19 @@ export function WorkloadBalancer() {
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 pt-3 space-y-4">
-              {/* Load bars */}
+              {/* ── Load bars ── */}
               <div className="space-y-2">
-                {loads.map((l, idx) => (
-                  <motion.div
-                    key={l.role}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.04, duration: 0.2 }}
-                    className="flex items-center gap-2.5"
-                  >
-                    {/* Role dot */}
-                    <div
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ backgroundColor: l.hex }}
-                    />
-                    {/* Label */}
-                    <span className="text-xs text-[var(--text-secondary)] w-32 shrink-0 truncate">
-                      {l.label}
-                    </span>
-                    {/* Bar */}
-                    <div className="flex-1 h-1.5 bg-[var(--glass-02)] rounded-full overflow-hidden">
-                      <motion.div
-                        className="h-full rounded-full"
-                        style={{ backgroundColor: l.hex }}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${l.pct}%` }}
-                        transition={{ duration: 0.6, delay: idx * 0.05, ease: "easeOut" }}
-                      />
-                    </div>
-                    {/* Count */}
-                    <span
-                      className={cn(
-                        "text-xs font-mono w-5 text-right shrink-0",
-                        l.count === maxCount && l.count > 0
-                          ? "font-bold"
-                          : "text-[var(--text-muted)]"
-                      )}
-                      style={l.count === maxCount && l.count > 0 ? { color: l.hex } : undefined}
-                    >
-                      {l.count}
-                    </span>
-                  </motion.div>
+                {loads.map((load, idx) => (
+                  <LoadBar
+                    key={load.role}
+                    load={load}
+                    index={idx}
+                    isMax={load.pending === maxCount}
+                  />
                 ))}
               </div>
 
-              {/* Analyze button */}
+              {/* ── Analyze button ── */}
               {phase === "idle" && (
                 <button
                   onClick={runAnalysis}
@@ -211,27 +268,27 @@ export function WorkloadBalancer() {
                     border: "1px solid rgba(139,92,246,0.3)",
                   }}
                 >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M8 1v14M1 8h14"/>
-                    <circle cx="8" cy="8" r="6"/>
+                  <svg
+                    className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none"
+                    stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+                  >
+                    <path d="M8 1v14M1 8h14" />
+                    <circle cx="8" cy="8" r="6" />
                   </svg>
                   Предложить балансировку
                 </button>
               )}
 
-              {/* Analyzing state */}
+              {/* ── Analyzing state ── */}
               {phase === "analyzing" && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="flex items-center justify-center gap-3 py-3"
                 >
-                  <svg
-                    className="w-4 h-4 text-[var(--accent-400)] animate-spin"
-                    viewBox="0 0 16 16" fill="none"
-                  >
-                    <circle cx="8" cy="8" r="6" stroke="rgba(139,92,246,0.25)" strokeWidth="2"/>
-                    <path d="M8 2a6 6 0 0 1 6 6" stroke="var(--accent-400)" strokeWidth="2" strokeLinecap="round"/>
+                  <svg className="w-4 h-4 text-[var(--accent-400)] animate-spin" viewBox="0 0 16 16" fill="none">
+                    <circle cx="8" cy="8" r="6" stroke="rgba(139,92,246,0.25)" strokeWidth="2" />
+                    <path d="M8 2a6 6 0 0 1 6 6" stroke="var(--accent-400)" strokeWidth="2" strokeLinecap="round" />
                   </svg>
                   <span className="text-sm text-[var(--text-secondary)]">
                     Анализирую нагрузку...
@@ -239,7 +296,7 @@ export function WorkloadBalancer() {
                 </motion.div>
               )}
 
-              {/* Results */}
+              {/* ── Results ── */}
               <AnimatePresence>
                 {phase === "result" && (
                   <motion.div
@@ -253,38 +310,8 @@ export function WorkloadBalancer() {
                       Рекомендации
                     </p>
                     {suggestions.map((s, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, x: 8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.1 }}
-                        className="rounded-xl p-3 space-y-1.5"
-                        style={{
-                          background: "rgba(139,92,246,0.06)",
-                          border: "1px solid rgba(139,92,246,0.18)",
-                        }}
-                      >
-                        {s.count > 0 ? (
-                          <>
-                            <div className="flex items-center gap-2 text-xs font-medium text-[var(--text-primary)]">
-                              <span className="text-[var(--accent-400)]">{s.from}</span>
-                              <svg className="w-3 h-3 text-[var(--text-muted)]" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                                <path d="M1 6h10M7 2l4 4-4 4"/>
-                              </svg>
-                              <span className="text-emerald-400">{s.to}</span>
-                              <span className="ml-auto font-mono text-[var(--accent-300)]">
-                                {s.count} задач
-                              </span>
-                            </div>
-                            <p className="text-xs text-[var(--text-muted)]">{s.reason}</p>
-                          </>
-                        ) : (
-                          <p className="text-xs text-[var(--text-secondary)]">{s.reason}</p>
-                        )}
-                      </motion.div>
+                      <SuggestionCard key={i} suggestion={s} index={i} />
                     ))}
-
-                    {/* Action buttons */}
                     <div className="flex gap-2 pt-1">
                       <button
                         onClick={() => setPhase("applied")}
@@ -313,10 +340,16 @@ export function WorkloadBalancer() {
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     className="flex items-center gap-2 py-2.5 px-3 rounded-xl"
-                    style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)" }}
+                    style={{
+                      background: "rgba(52,211,153,0.08)",
+                      border: "1px solid rgba(52,211,153,0.2)",
+                    }}
                   >
-                    <svg className="w-4 h-4 text-emerald-400 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                      <path d="M2 8l4 4 8-8"/>
+                    <svg
+                      className="w-4 h-4 text-emerald-400 shrink-0" viewBox="0 0 16 16"
+                      fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+                    >
+                      <path d="M2 8l4 4 8-8" />
                     </svg>
                     <span className="text-sm text-emerald-400 font-medium">
                       Рекомендации применены

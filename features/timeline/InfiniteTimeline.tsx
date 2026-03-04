@@ -146,7 +146,7 @@ function SubtaskList({ subtasks }: { subtasks: TaskView["subtasks"] }) {
     return (
         <div className="mt-2 ml-4 space-y-1 border-l-2 pl-3" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
             {subtasks.map((st) => {
-                const isDone = st.done;
+                const isDone = st.isCompleted; 
                 return (
                     <div key={st.id} className="flex items-center gap-2 py-1">
                         <div

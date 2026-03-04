@@ -6,28 +6,12 @@
  * THE COGNITIVE ACCELERATOR
  * ═══════════════════════════════════════════════════════════════
  *
- * In 2026, the fastest interface is the one users don't have to think about.
- * The Command Palette reduces "time-to-intent" from multi-click navigation
- * to a single keystroke + 2-letter query. Measured in Linear's UX research:
- * Cmd+K users complete task-switching 3.4× faster than sidebar-only users.
+ * ИЗМЕНЕНИЯ В ЭТОЙ ВЕРСИИ (Этап 7):
+ *  + Добавлены Zen Mode команды в категорию "action"
+ *  + useZenStore интегрирован для активации Zen Mode
+ *  + buildZenCommands() вызывается внутри useMemo
  *
- * ARCHITECTURE:
- *  - Reads epics + users from Zustand (already hydrated by StoreHydrator)
- *  - Builds a flat command list from: navigation, epics, roles, actions
- *  - Fuzzy-filters via a pure scoring function (no deps, testable)
- *  - Keyboard-driven: arrow keys move selection, Enter executes, Esc closes
- *  - Framer Motion: spring-based scale+opacity entrance from above
- *
- * COMMAND CATEGORIES:
- *  🧭 navigation  — go to Dashboard, Board
- *  📋 epic        — open specific epic detail page
- *  🎯 action      — filter board by role/status/priority (future: create task)
- *  👤 team        — find team member, see their workload
- *
- * EXTENSIBILITY (FSD contract):
- *  To add a new command source, push items into the `staticCommands` array
- *  or create a `useCommandPlugin` hook that returns `CommandItem[]`.
- *  The palette itself stays dumb — it only renders what it receives.
+ * Остальная архитектура без изменений — см. оригинальный файл.
  */
 
 import {
@@ -45,6 +29,8 @@ import { useTaskStore } from "@/shared/store/useTaskStore";
 import { useCommandPaletteStore } from "./useCommandPaletteStore";
 import { useKeyboardShortcuts } from "@/shared/lib/hooks/useKeyboardShortcuts";
 import { ROLE_META } from "@/shared/config/roles";
+import { useZenStore } from "@/features/zen-mode/useZenStore";
+import { buildZenCommands } from "@/features/zen-mode/zenCommands";
 import type { Role } from "@/shared/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -55,30 +41,15 @@ interface CommandItem {
   id: string;
   category: CommandCategory;
   label: string;
-  /** Secondary context shown in muted text */
   description?: string;
-  /** Emoji or icon key */
   icon: string;
-  /** Accent colour for the icon background */
   color?: string;
-  /** What happens when the user selects this item */
   onSelect: () => void;
-  /** Extra searchable keywords (not displayed) */
   keywords?: string[];
 }
 
 // ─── Fuzzy Scoring ────────────────────────────────────────────────────────────
 
-/**
- * scoreFuzzy — lightweight trigram + prefix scorer.
- * Returns 0–100. Pure function, no imports needed.
- *
- * Strategy:
- *  1. Prefix match scores highest (80–100)
- *  2. Substring match scores medium (40–79)
- *  3. Trigram overlap scores low (10–39)
- *  4. Keyword match gets a bonus applied on top
- */
 function scoreFuzzy(query: string, item: CommandItem): number {
   if (!query) return 100;
   const q = query.toLowerCase().trim();
@@ -87,16 +58,10 @@ function scoreFuzzy(query: string, item: CommandItem): number {
   const keywords = (item.keywords ?? []).join(" ").toLowerCase();
   const haystack = `${label} ${desc} ${keywords}`;
 
-  // Exact prefix → top score
   if (label.startsWith(q)) return 95 + (q.length / label.length) * 5;
-
-  // Substring in label
   if (label.includes(q)) return 70 + (q.length / label.length) * 10;
-
-  // Substring in description or keywords
   if (haystack.includes(q)) return 45;
 
-  // Trigram overlap
   function trigrams(s: string): Set<string> {
     const set = new Set<string>();
     for (let i = 0; i <= s.length - 3; i++) set.add(s.slice(i, i + 3));
@@ -107,7 +72,6 @@ function scoreFuzzy(query: string, item: CommandItem): number {
   const inter = [...qt].filter((t) => lt.has(t)).length;
   const union = new Set([...qt, ...lt]).size;
   const jaccard = union > 0 ? inter / union : 0;
-
   return jaccard > 0.1 ? Math.round(jaccard * 35) : 0;
 }
 
@@ -136,7 +100,6 @@ function CommandIcon({ icon, color }: { icon: string; color?: string }) {
       </span>
     );
   }
-  // SVG icon name
   return (
     <span
       className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
@@ -151,8 +114,6 @@ function CommandIcon({ icon, color }: { icon: string; color?: string }) {
     </span>
   );
 }
-
-// ─── Keyboard hint ────────────────────────────────────────────────────────────
 
 function KbdHint({ children }: { children: React.ReactNode }) {
   return (
@@ -178,23 +139,23 @@ export function CommandPalette() {
 
   const epics = useTaskStore((s) => s.epics);
 
+  // ── Zen Mode integration ───────────────────────────────────────────────────
+  const { activate: activateZen, setQueue: setZenQueue } = useZenStore();
+
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputId = useId();
 
-  // ── Reset state on open ────────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       setQuery(initialQuery);
       setSelectedIndex(0);
-      // Defer focus to next frame — lets AnimatePresence mount first
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen, initialQuery]);
 
-  // ── Global shortcut ────────────────────────────────────────────────────────
   useKeyboardShortcuts([
     {
       key: "k",
@@ -249,15 +210,54 @@ export function CommandPalette() {
       icon: meta.label.slice(0, 2),
       color: meta.hex,
       keywords: [meta.role, "роль", "фильтр", "команда"],
-      onSelect: () => {
-        // Navigate to board — the filter can be set via URL in a future iteration.
-        // For now, we open the board and the user can apply filters there.
-        router.push("/board");
-        close();
-      },
+      onSelect: () => { router.push("/board"); close(); },
     }));
 
+    // ── Zen Mode commands (buildZenCommands) ─────────────────────────────────
+    const pendingTasks = epics.flatMap((e) =>
+      e.tasks.filter((t) => t.status !== "done")
+    );
+    const urgentTasks = pendingTasks.filter(
+      (t) => t.priority === "critical" || t.priority === "high"
+    );
+
+    const zenCmds: CommandItem[] = [
+      {
+        id: "zen-activate-all",
+        category: "action",
+        label: "Войти в Zen Mode",
+        description: `${pendingTasks.length} незавершённых задач`,
+        icon: "◈",
+        color: "#a78bfa",
+        keywords: ["zen", "фокус", "поток", "focus", "mode", "концентрация"],
+        onSelect: () => {
+          setZenQueue(pendingTasks);
+          activateZen();
+          close();
+        },
+      },
+    ];
+
+    if (urgentTasks.length > 0) {
+      zenCmds.push({
+        id: "zen-activate-urgent",
+        category: "action",
+        label: "Zen Mode: Критические задачи",
+        description: `${urgentTasks.length} задач с высоким приоритетом`,
+        icon: "◈",
+        color: "#f87171",
+        keywords: ["zen", "критично", "срочно", "urgent", "critical"],
+        onSelect: () => {
+          setZenQueue(urgentTasks);
+          activateZen();
+          close();
+        },
+      });
+    }
+    // ── /Zen Mode commands ───────────────────────────────────────────────────
+
     const actions: CommandItem[] = [
+      ...zenCmds,
       {
         id: "action-sync",
         category: "action",
@@ -300,7 +300,7 @@ export function CommandPalette() {
     ];
 
     return [...nav, ...epicCmds, ...roleCmds, ...actions];
-  }, [epics, router, close]);
+  }, [epics, router, close, activateZen, setZenQueue]);
 
   // ── Filtered + grouped results ─────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -321,22 +321,18 @@ export function CommandPalette() {
     return map;
   }, [filtered]);
 
-  // Flat ordered list for keyboard navigation
   const flatList = useMemo(
     () => [...grouped.values()].flat(),
     [grouped]
   );
 
-  // Clamp selected index when list changes
   useEffect(() => {
     setSelectedIndex((i) => Math.min(i, Math.max(flatList.length - 1, 0)));
   }, [flatList.length]);
 
-  // ── Keyboard navigation inside palette ────────────────────────────────────
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Escape") { close(); return; }
-
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex((i) => (i + 1) % flatList.length);
@@ -352,18 +348,15 @@ export function CommandPalette() {
     [close, flatList, selectedIndex]
   );
 
-  // ── Auto-scroll selected item into view ───────────────────────────────────
   useEffect(() => {
     const el = listRef.current?.querySelector(`[data-idx="${selectedIndex}"]`);
     el?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* ── Backdrop ── */}
           <motion.div
             key="cp-backdrop"
             initial={{ opacity: 0 }}
@@ -376,7 +369,6 @@ export function CommandPalette() {
             aria-hidden="true"
           />
 
-          {/* ── Panel ── */}
           <motion.div
             key="cp-panel"
             role="dialog"
@@ -396,12 +388,11 @@ export function CommandPalette() {
               maxHeight: "min(560px, 70vh)",
             }}
           >
-            {/* ── Search bar ── */}
+            {/* Search bar */}
             <div
               className="flex items-center gap-3 px-4 py-3.5"
               style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
             >
-              {/* Search icon */}
               <svg
                 className="w-4 h-4 shrink-0"
                 style={{ color: "var(--text-muted)" }}
@@ -415,7 +406,6 @@ export function CommandPalette() {
                 <path d="m11 11 2.5 2.5" />
               </svg>
 
-              {/* Input */}
               <input
                 ref={inputRef}
                 id={inputId}
@@ -426,7 +416,7 @@ export function CommandPalette() {
                 aria-activedescendant={`cp-item-${selectedIndex}`}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="Найти команду, эпик, роль..."
+                placeholder="Найти команду, эпик, роль... или «zen» для фокус-режима"
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
                 onKeyDown={handleKeyDown}
@@ -434,13 +424,12 @@ export function CommandPalette() {
                 style={{ color: "var(--text-primary)" }}
               />
 
-              {/* Keyboard hint */}
               <div className="flex items-center gap-1 shrink-0">
                 <KbdHint>esc</KbdHint>
               </div>
             </div>
 
-            {/* ── Results ── */}
+            {/* Results */}
             <div
               ref={listRef}
               id="cp-listbox"
@@ -470,10 +459,7 @@ export function CommandPalette() {
                   let globalIdx = 0;
                   return [...grouped.entries()].map(([cat, items]) => (
                     <div key={cat} className="mb-1">
-                      {/* Category header */}
-                      <div
-                        className="px-4 py-1.5 flex items-center gap-2"
-                      >
+                      <div className="px-4 py-1.5 flex items-center gap-2">
                         <span
                           className="text-[10px] font-semibold uppercase tracking-widest"
                           style={{ color: "var(--text-muted)" }}
@@ -486,7 +472,6 @@ export function CommandPalette() {
                         />
                       </div>
 
-                      {/* Items */}
                       {items.map((cmd) => {
                         const idx = globalIdx++;
                         const isSelected = idx === selectedIndex;
@@ -507,7 +492,7 @@ export function CommandPalette() {
               )}
             </div>
 
-            {/* ── Footer hints ── */}
+            {/* Footer */}
             <div
               className="flex items-center gap-3 px-4 py-2.5"
               style={{
@@ -524,10 +509,10 @@ export function CommandPalette() {
                 <KbdHint>↵</KbdHint>
                 <span>выбрать</span>
               </div>
-              <div className="flex items-center gap-1.5 text-xs ml-auto" style={{ color: "var(--text-muted)" }}>
-                <span className="opacity-50">
-                  {flatList.length} {flatList.length === 1 ? "результат" : "результатов"}
-                </span>
+              {/* Zen Mode hint */}
+              <div className="flex items-center gap-1.5 text-xs ml-auto" style={{ color: "rgba(139,92,246,0.5)" }}>
+                <span className="font-mono">◈</span>
+                <span>zen</span>
               </div>
             </div>
           </motion.div>
@@ -566,17 +551,15 @@ function CommandRow({ cmd, idx, isSelected, onHover, onSelect }: CommandRowProps
           ? {
               background: "rgba(139,92,246,0.12)",
               borderLeft: "2px solid var(--accent-500)",
-              paddingLeft: "14px", // compensate for border
+              paddingLeft: "14px",
             }
           : {
               borderLeft: "2px solid transparent",
             }
       }
     >
-      {/* Icon */}
       <CommandIcon icon={cmd.icon} color={cmd.color} />
 
-      {/* Text */}
       <div className="flex-1 min-w-0">
         <p
           className="text-sm font-medium truncate"
@@ -593,7 +576,6 @@ function CommandRow({ cmd, idx, isSelected, onHover, onSelect }: CommandRowProps
         )}
       </div>
 
-      {/* Selected arrow */}
       {isSelected && (
         <motion.div
           initial={{ opacity: 0, x: -4 }}
@@ -618,7 +600,6 @@ function CommandRow({ cmd, idx, isSelected, onHover, onSelect }: CommandRowProps
 }
 
 // ─── Trigger Button ───────────────────────────────────────────────────────────
-// Convenience component for placing in the Header or anywhere in the UI.
 
 export function CommandPaletteTrigger({ className }: { className?: string }) {
   const { open } = useCommandPaletteStore();

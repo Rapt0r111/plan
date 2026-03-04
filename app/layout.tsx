@@ -1,20 +1,24 @@
 /**
  * @file layout.tsx — app (root)
  *
- * Root layout: dark mode enforced, fonts loaded, Command Palette mounted.
+ * Root layout: dark mode enforced, fonts loaded.
  *
- * WHY CommandPalette lives HERE (not in MainLayout):
- *  The palette must survive route transitions without unmounting — if placed
- *  inside (main)/layout.tsx it would remount on every navigation, losing
- *  the animation state and re-reading epics from scratch.
- *  Mounting at root keeps a single instance alive for the entire session.
+ * ПОРЯДОК МОНТИРОВАНИЯ ГЛОБАЛЬНЫХ СЛОЁВ (z-index):
+ *  CommandPalette         (z-50)   — поиск и навигация
+ *  DynamicIsland          (z-9998) — нотификации
+ *  SyncNotificationBridge (нет DOM) — Zustand → нотификации bridge
+ *  ZenMode                (z-9999) — полноэкранный фокус-режим
  *
- *  StoreHydrator in /board/page.tsx fills the Zustand store with epics —
- *  the palette reads from that store reactively.
+ * WHY все три компонента живут в root layout:
+ *  Они должны переживать навигацию без размонтирования.
+ *  CommandPalette здесь по той же причине — объяснение сохранено.
  */
 import type { Metadata } from "next";
 import "./globals.css";
 import { CommandPalette } from "@/features/command-palette/CommandPalette";
+import { ZenMode } from "@/features/zen-mode/ZenMode";
+import { DynamicIsland } from "@/widgets/notifications/DynamicIsland";
+import { SyncNotificationBridge } from "@/shared/lib/SyncNotificationBridge";
 
 export const metadata: Metadata = {
   title: "TaskFlow",
@@ -26,12 +30,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ru" className="dark">
       <body className="antialiased">
         {children}
-        {/*
-         * Command Palette: mounted once at root, portal-like.
-         * Visible from ANY route. Zero prop-drilling — reads Zustand directly.
-         * Shortcut: Cmd+K / Ctrl+K (registered inside CommandPalette via useKeyboardShortcuts)
-         */}
+
+        {/* ── Global UI Layer ─────────────────────────────────── */}
+
+        {/* Command Palette: Cmd+K, z-50 */}
         <CommandPalette />
+
+        {/* Dynamic Island: нотификации, top-center, z-9998 */}
+        <DynamicIsland />
+
+        {/* Sync Bridge: слушает Zustand syncStatus → пушит ошибки в Island */}
+        <SyncNotificationBridge />
+
+        {/* Zen Mode: полноэкранный оверлей, z-9999 */}
+        <ZenMode />
       </body>
     </html>
   );

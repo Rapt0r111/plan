@@ -5,24 +5,34 @@ import {
   useMemo, useCallback, useId,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useCommandPaletteStore } from "./useCommandPaletteStore";
-import { useKeyboardShortcuts } from "@/shared/lib/hooks/useKeyboardShortcuts";
-import { usePaletteCommands } from "./model/usePaletteCommands";
+import { useCommandPaletteStore }     from "./useCommandPaletteStore";
+import { useKeyboardShortcuts }        from "@/shared/lib/hooks/useKeyboardShortcuts";
+import { useDebounce }                 from "@/shared/lib/hooks/useDebounce";
+import { usePaletteCommands }          from "./model/usePaletteCommands";
+import { usePaletteTaskSearch }        from "./model/usePaletteTaskSearch";
 import { scoreFuzzy, CATEGORY_ORDER, CATEGORY_LABEL } from "./model/fuzzy";
-import { CommandRow } from "./ui/CommandRow";
-import { PaletteFooter } from "./ui/PaletteFooter";
-import type { CommandCategory } from "./model/fuzzy";
+import { CommandRow }                  from "./ui/CommandRow";
+import { PaletteFooter }               from "./ui/PaletteFooter";
+import type { CommandCategory }        from "./model/fuzzy";
+
+// ── Debounce delay ────────────────────────────────────────────────────────────
+// 350 ms: fast enough to feel instant, slow enough to skip keystroke noise.
+const SEARCH_DEBOUNCE_MS = 350;
 
 export function CommandPalette() {
   const { isOpen, initialQuery, close, open } = useCommandPaletteStore();
   const commands = usePaletteCommands();
 
-  const [query, setQuery]               = useState("");
+  const [query, setQuery]                 = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef  = useRef<HTMLDivElement>(null);
   const inputId  = useId();
 
+  // ── Debounced query — drives task search to avoid searching on every keystroke
+  const debouncedQuery = useDebounce(query, SEARCH_DEBOUNCE_MS);
+
+  // ── Open / reset ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       setQuery(initialQuery);
@@ -35,6 +45,7 @@ export function CommandPalette() {
     { key: "k", meta: true, handler: () => (isOpen ? close() : open()) },
   ]);
 
+  // ── Regular command filtering (uses live query for instant feel) ──────────
   const filtered = useMemo(() => {
     if (!query.trim()) return commands;
     return commands
@@ -44,111 +55,273 @@ export function CommandPalette() {
       .map(({ cmd }) => cmd);
   }, [commands, query]);
 
+  // ── Task search (debounced — avoids searching on each keystroke) ──────────
+  const taskResults = usePaletteTaskSearch(debouncedQuery);
+
+  // ── Group results ─────────────────────────────────────────────────────────
   const grouped = useMemo(() => {
     const map = new Map<CommandCategory, typeof filtered>();
+
+    // Standard categories from commands
     for (const cat of CATEGORY_ORDER) {
+      if (cat === "task") continue; // handled separately below
       const items = filtered.filter((c) => c.category === cat);
       if (items.length) map.set(cat, items);
     }
+
+    // Task search results — shown only when there's a query
+    if (taskResults.length > 0) {
+      map.set("task", taskResults);
+    }
+
     return map;
-  }, [filtered]);
+  }, [filtered, taskResults]);
 
   const flatList = useMemo(() => [...grouped.values()].flat(), [grouped]);
 
+  // ── Keep selectedIndex in bounds when list changes ────────────────────────
   useEffect(() => {
     setSelectedIndex((i) => Math.min(i, Math.max(flatList.length - 1, 0)));
   }, [flatList.length]);
 
+  // ── Auto-scroll focused item into view ────────────────────────────────────
   useEffect(() => {
-    listRef.current?.querySelector(`[data-idx="${selectedIndex}"]`)
+    listRef.current
+      ?.querySelector(`[data-idx="${selectedIndex}"]`)
       ?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Escape")     { close(); return; }
-    if (e.key === "ArrowDown")  { e.preventDefault(); setSelectedIndex((i) => (i + 1) % flatList.length); }
-    if (e.key === "ArrowUp")    { e.preventDefault(); setSelectedIndex((i) => (i - 1 + flatList.length) % flatList.length); }
-    if (e.key === "Enter" && flatList[selectedIndex]) flatList[selectedIndex].onSelect();
-  }, [close, flatList, selectedIndex]);
+  // ── Keyboard navigation inside the palette ────────────────────────────────
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      switch (e.key) {
+        case "Escape":
+          close();
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          setSelectedIndex((i) => (i + 1) % flatList.length);
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setSelectedIndex((i) => (i - 1 + flatList.length) % flatList.length);
+          break;
+        case "Enter":
+          if (flatList[selectedIndex]) flatList[selectedIndex].onSelect();
+          break;
+      }
+    },
+    [close, flatList, selectedIndex],
+  );
+
+  // ── Empty state message ───────────────────────────────────────────────────
+  // Show a different hint while the debounce is still pending (query typed
+  // but debouncedQuery hasn't caught up yet).
+  const isSearchPending =
+    query.trim().length >= 2 && query !== debouncedQuery;
+
+  const isEmpty = flatList.length === 0;
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          <motion.div key="cp-backdrop"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          {/* Backdrop */}
+          <motion.div
+            key="cp-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
             className="fixed inset-0 z-50"
-            style={{ backdropFilter: "blur(12px)", background: "rgba(8,9,15,0.65)" }}
-            onClick={close} aria-hidden="true" />
+            style={{
+              backdropFilter: "blur(12px)",
+              background:     "rgba(8,9,15,0.65)",
+            }}
+            onClick={close}
+            aria-hidden="true"
+          />
 
-          <motion.div key="cp-panel"
-            role="dialog" aria-label="Command palette" aria-modal="true"
+          {/* Panel */}
+          <motion.div
+            key="cp-panel"
+            role="dialog"
+            aria-label="Command palette"
+            aria-modal="true"
             initial={{ opacity: 0, scale: 0.96, y: -12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: -8 }}
+            animate={{ opacity: 1, scale: 1,    y: 0   }}
+            exit={{    opacity: 0, scale: 0.96, y: -8  }}
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
             className="fixed left-1/2 top-[18%] z-50 w-full max-w-160 -translate-x-1/2 flex flex-col overflow-hidden"
-            style={{ borderRadius: "20px", background: "rgba(13,15,26,0.95)",
-              border: "1px solid rgba(255,255,255,0.10)",
-              boxShadow: "0 0 0 1px rgba(139,92,246,0.15), 0 32px 80px rgba(0,0,0,0.7), 0 0 60px rgba(139,92,246,0.08)",
-              maxHeight: "min(560px, 70vh)" }}>
-
-            {/* Search bar */}
-            <div className="flex items-center gap-3 px-4 py-3.5"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-              <svg className="w-4 h-4 shrink-0 text-(--text-muted)" viewBox="0 0 16 16"
-                fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <circle cx="7" cy="7" r="4.5" /><path d="m11 11 2.5 2.5" />
+            style={{
+              borderRadius:  "20px",
+              background:    "rgba(13,15,26,0.95)",
+              border:        "1px solid rgba(255,255,255,0.10)",
+              boxShadow: [
+                "0 0 0 1px rgba(139,92,246,0.15)",
+                "0 32px 80px rgba(0,0,0,0.7)",
+                "0 0 60px rgba(139,92,246,0.08)",
+              ].join(", "),
+              maxHeight: "min(560px, 70vh)",
+            }}
+          >
+            {/* ── Search bar ─────────────────────────────────────────────── */}
+            <div
+              className="flex items-center gap-3 px-4 py-3.5"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              <svg
+                className="w-4 h-4 shrink-0 text-(--text-muted)"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <circle cx="7" cy="7" r="4.5" />
+                <path d="m11 11 2.5 2.5" />
               </svg>
-              <input ref={inputRef} id={inputId} type="text"
-                role="combobox" aria-expanded="true"
-                aria-controls="cp-listbox" aria-activedescendant={`cp-item-${selectedIndex}`}
-                autoComplete="off" spellCheck={false}
-                placeholder="Найти команду, эпик, роль... или «zen» для фокус-режима"
+
+              <input
+                ref={inputRef}
+                id={inputId}
+                type="text"
+                role="combobox"
+                aria-expanded="true"
+                aria-controls="cp-listbox"
+                aria-activedescendant={`cp-item-${selectedIndex}`}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Поиск команд и задач... или «zen» для фокус-режима"
                 value={query}
-                onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setSelectedIndex(0);
+                }}
                 onKeyDown={handleKeyDown}
-                className="flex-1 bg-transparent outline-none text-sm placeholder:text-(--text-muted) text-(--text-primary)" />
-              <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0"
-                style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)",
-                  color: "var(--text-muted)" }}>
+                className="flex-1 bg-transparent outline-none text-sm placeholder:text-(--text-muted) text-(--text-primary)"
+              />
+
+              {/* Debounce spinner — subtle indicator that search is catching up */}
+              {isSearchPending && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="shrink-0 w-3.5 h-3.5"
+                >
+                  <svg
+                    className="w-3.5 h-3.5 animate-spin"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                    style={{ color: "var(--accent-400)" }}
+                  >
+                    <circle
+                      cx="7" cy="7" r="5"
+                      stroke="rgba(139,92,246,0.2)"
+                      strokeWidth="2"
+                    />
+                    <path
+                      d="M7 2a5 5 0 0 1 5 5"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </motion.div>
+              )}
+
+              <kbd
+                className="px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0"
+                style={{
+                  background: "var(--glass-02)",
+                  border:     "1px solid var(--glass-border)",
+                  color:      "var(--text-muted)",
+                }}
+              >
                 esc
               </kbd>
             </div>
 
-            {/* Results */}
-            <div ref={listRef} id="cp-listbox" role="listbox"
-              className="flex-1 overflow-y-auto py-2" style={{ scrollbarWidth: "none" }}>
-              {flatList.length === 0 ? (
+            {/* ── Results ────────────────────────────────────────────────── */}
+            <div
+              ref={listRef}
+              id="cp-listbox"
+              role="listbox"
+              className="flex-1 overflow-y-auto py-2"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {isEmpty ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center mb-3"
-                    style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)" }}>
-                    <svg className="w-5 h-5 text-(--text-muted)" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+                  <div
+                    className="w-10 h-10 rounded-2xl flex items-center justify-center mb-3"
+                    style={{
+                      background: "var(--glass-02)",
+                      border:     "1px solid var(--glass-border)",
+                    }}
+                  >
+                    <svg
+                      className="w-5 h-5 text-(--text-muted)"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+                        clipRule="evenodd"
+                      />
                     </svg>
                   </div>
-                  <p className="text-sm font-medium text-(--text-secondary)">Ничего не найдено</p>
-                  <p className="text-xs mt-1 text-(--text-muted)">Попробуйте другой запрос</p>
+                  <p className="text-sm font-medium text-(--text-secondary)">
+                    Ничего не найдено
+                  </p>
+                  <p className="text-xs mt-1 text-(--text-muted)">
+                    Попробуйте другой запрос
+                  </p>
                 </div>
               ) : (
                 (() => {
                   let globalIdx = 0;
                   return [...grouped.entries()].map(([cat, items]) => (
                     <div key={cat} className="mb-1">
+                      {/* Category label */}
                       <div className="px-4 py-1.5 flex items-center gap-2">
                         <span className="text-[10px] font-semibold uppercase tracking-widest text-(--text-muted)">
                           {CATEGORY_LABEL[cat]}
                         </span>
-                        <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.05)" }} />
+                        {cat === "task" && (
+                          <span
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
+                            style={{
+                              background: "rgba(139,92,246,0.12)",
+                              color:      "var(--accent-400)",
+                              border:     "1px solid rgba(139,92,246,0.2)",
+                            }}
+                          >
+                            {items.length}
+                          </span>
+                        )}
+                        <div
+                          className="flex-1 h-px"
+                          style={{ background: "rgba(255,255,255,0.05)" }}
+                        />
                       </div>
+
+                      {/* Rows */}
                       {items.map((cmd) => {
                         const idx = globalIdx++;
                         return (
-                          <CommandRow key={cmd.id} cmd={cmd} idx={idx}
+                          <CommandRow
+                            key={cmd.id}
+                            cmd={cmd}
+                            idx={idx}
                             isSelected={idx === selectedIndex}
+                            // Pass raw query for highlight (not debounced —
+                            // we want highlight to reflect what the user typed)
+                            searchQuery={query}
                             onHover={() => setSelectedIndex(idx)}
-                            onSelect={cmd.onSelect} />
+                            onSelect={cmd.onSelect}
+                          />
                         );
                       })}
                     </div>

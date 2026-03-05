@@ -1,6 +1,6 @@
 // features/command-palette/model/fuzzy.ts
 
-export type CommandCategory = "navigation" | "epic" | "action" | "team";
+export type CommandCategory = "navigation" | "epic" | "action" | "team" | "task";
 
 export interface CommandItem {
   id: string;
@@ -39,11 +39,47 @@ export function scoreFuzzy(query: string, item: CommandItem): number {
   return jaccard > 0.1 ? Math.round(jaccard * 35) : 0;
 }
 
-export const CATEGORY_ORDER: CommandCategory[] = ["navigation", "epic", "action", "team"];
+// ── Task-specific scorer ──────────────────────────────────────────────────────
+// Separate from scoreFuzzy — works on raw strings, not CommandItem shape.
+// Higher weight for title prefix/exact matches, lower for description matches.
+
+export function scoreTaskQuery(
+  query: string,
+  title: string,
+  description: string | null | undefined,
+): number {
+  const q = query.toLowerCase().trim();
+  if (q.length < 2) return 0;
+
+  const t = title.toLowerCase();
+  const d = (description ?? "").toLowerCase();
+
+  if (t.startsWith(q))  return 95;
+  if (t.includes(q))    return 75;
+  if (d.includes(q))    return 45;
+
+  // Trigram fallback for fuzzy matching (e.g. typos)
+  const qt = trigrams(q);
+  const tt = trigrams(t);
+  if (qt.size === 0) return 0;
+  const inter = [...qt].filter((x) => tt.has(x)).length;
+  const union = new Set([...qt, ...tt]).size;
+  const j = union > 0 ? inter / union : 0;
+  return j > 0.15 ? Math.round(j * 55) : 0;
+}
+
+export const CATEGORY_ORDER: CommandCategory[] = [
+  "navigation",
+  "epic",
+  "task",   // ← new — appears above generic actions
+  "action",
+  "team",
+];
 
 export const CATEGORY_LABEL: Record<CommandCategory, string> = {
   navigation: "Навигация",
   epic:       "Эпики",
+  task:       "Задачи",   // ← new
   action:     "Действия",
   team:       "Команда",
 };

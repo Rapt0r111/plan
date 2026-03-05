@@ -6,7 +6,7 @@
  * that teaches users Cmd+K exists. Once they learn it, they stop clicking it.
  */
 import type { ReactNode } from "react";
-import { CommandPaletteTrigger } from "@/features/command-palette/CommandPalette";
+import { CommandPaletteTrigger } from "@/features/command-palette/CommandPaletteTrigger";
 
 interface Props {
   title: string;

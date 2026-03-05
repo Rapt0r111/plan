@@ -1,11 +1,22 @@
 /**
- * WHY getAllEpicsWithTasks() here (not getAllEpics()):
- *  EnergyMap and InfiniteTimeline both read from Zustand store.
- *  The store is hydrated by StoreHydrator — which needs full task data
- *  (with assignees, subtasks, progress) to compute role loads and capsules.
- *  getAllEpics() returns only task counts, not the full task graph.
+ * @file page.tsx — app/(main)/dashboard
+ *
+ * БЫЛО:
+ *   Promise.all([getAllEpics(), getAllEpicsWithTasks(), getAllUsers()])
+ *   → getAllEpics() вызывался отдельно для статистики, хотя те же данные
+ *     уже есть в getAllEpicsWithTasks(). Двойной SQL-проход.
+ *
+ * СТАЛО:
+ *   Promise.all([getAllEpicsWithTasks(), getAllUsers()])
+ *   → статистика (taskCount, doneCount) вычисляется из полного графа
+ *     на клиенте (O(N) JS, ~0ms). Один SQL-проход.
+ *
+ * WHY getAllEpicsWithTasks() здесь:
+ *  EnergyMap и InfiniteTimeline читают из Zustand store.
+ *  Стор гидрируется StoreHydrator — ему нужен полный граф задач.
+ *  getAllEpics() возвращает только счётчики, а не сам граф.
  */
-import { getAllEpicsWithTasks, getAllEpics } from "@/entities/epic/epicRepository";
+import { getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
 import { Header } from "@/widgets/header/Header";
 import { EpicCard } from "@/widgets/epic-card/EpicCard";
@@ -16,21 +27,30 @@ import { StoreHydrator } from "@/shared/store/StoreHydrator";
 import Link from "next/link";
 
 export default async function DashboardPage() {
-  const [epics, epicsWithTasks, users] = await Promise.all([
-    getAllEpics(),          // lightweight: for stats cards + EpicCard grid
-    getAllEpicsWithTasks(), // full graph: for EnergyMap + InfiniteTimeline via store
+  // Один вызов вместо двух — getAllEpics() больше не нужен.
+  // React.cache() в репозитории гарантирует: даже если layout.tsx тоже
+  // вызвал getAllEpicsWithTasks(), SQL уйдёт ровно один раз.
+  const [epicsWithTasks, users] = await Promise.all([
+    getAllEpicsWithTasks(),
     getAllUsers(),
   ]);
 
+  // Вычисляем то, что раньше давал getAllEpics() — из уже загруженных данных
+  const epics = epicsWithTasks.map((e) => ({
+    ...e,
+    taskCount: e.tasks.length,
+    doneCount: e.tasks.filter((t) => t.status === "done").length,
+  }));
+
   const totalTasks = epics.reduce((s, e) => s + e.taskCount, 0);
-  const doneTasks = epics.reduce((s, e) => s + e.doneCount, 0);
+  const doneTasks  = epics.reduce((s, e) => s + e.doneCount, 0);
   const overallPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   const stats = [
-    { label: "Всего задач", value: totalTasks, color: "#a78bfa" },
-    { label: "Выполнено", value: doneTasks, color: "#34d399" },
-    { label: "В работе", value: totalTasks - doneTasks, color: "#38bdf8" },
-    { label: "Прогресс", value: `${overallPct}%`, color: "#f59e0b" },
+    { label: "Всего задач", value: totalTasks,              color: "#a78bfa" },
+    { label: "Выполнено",   value: doneTasks,               color: "#34d399" },
+    { label: "В работе",    value: totalTasks - doneTasks,  color: "#38bdf8" },
+    { label: "Прогресс",    value: `${overallPct}%`,        color: "#f59e0b" },
   ];
 
   return (
@@ -80,7 +100,9 @@ export default async function DashboardPage() {
 
         {/* Epics grid */}
         <section>
-          <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">Эпики</h2>
+          <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">
+            Эпики
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {epics.map((epic, index) => (
               <EpicCard key={epic.id} epic={epic} index={index} />
@@ -90,7 +112,9 @@ export default async function DashboardPage() {
 
         {/* Team */}
         <section>
-          <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">Команда</h2>
+          <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">
+            Команда
+          </h2>
           <div
             className="rounded-2xl overflow-hidden"
             style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}
@@ -99,7 +123,10 @@ export default async function DashboardPage() {
               <div
                 key={user.id}
                 className="px-4 py-3 flex items-center gap-3"
-                style={{ borderBottom: idx < users.length - 1 ? "1px solid var(--glass-border)" : "none" }}
+                style={{
+                  borderBottom:
+                    idx < users.length - 1 ? "1px solid var(--glass-border)" : "none",
+                }}
               >
                 <div
                   className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
@@ -107,7 +134,9 @@ export default async function DashboardPage() {
                 >
                   {user.initials}
                 </div>
-                <span className="text-sm font-medium text-[var(--text-primary)] flex-1">{user.name}</span>
+                <span className="text-sm font-medium text-[var(--text-primary)] flex-1">
+                  {user.name}
+                </span>
                 <RoleBadge roleMeta={user.roleMeta} size="sm" />
               </div>
             ))}
@@ -121,16 +150,10 @@ export default async function DashboardPage() {
           <WorkloadBalancer />
         </section>
 
-
         <section>
           <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">
             Хронолента
           </h2>
-          {/*
-           * InfiniteTimeline manages its own selected-task detail strip internally.
-           * onOpenTask is optional — pass it only if you want to open a full
-           * TaskSlideover from a Client Component parent (e.g. a future DashboardClient).
-           */}
           <InfiniteTimeline />
         </section>
       </div>

@@ -14,7 +14,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/shared/lib/utils";
 import { BoardTaskCard } from "./BoardTaskCard";
-import { useBoardDnD } from "@/features/board/useBoardDnD";
+import { useBoardDnD } from "@/features/board/hooks/useBoardDnD";
 import { applyFilters } from "@/features/filters/SmartFilters";
 import type { FilterState } from "@/features/filters/SmartFilters";
 import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";

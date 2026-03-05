@@ -1,14 +1,14 @@
 /**
  * @file schema.ts — shared/db
  *
- * Single source of truth for the entire database schema.
- * Drizzle ORM + better-sqlite3 — zero-overhead local SQLite, no server process.
+ * ИСПРАВЛЕНИЕ: добавлена роль "security_officer" в ROLES array.
  *
- * Design decisions:
- *  - Integer PKs → fastest SQLite joins, skip UUID overhead on intranet scale
- *  - text.$type<Union>() → no separate enum tables needed in SQLite
- *  - Explicit ISO timestamps → lightweight audit trail
- *  - task_assignees junction table → clean M:N without JSON columns
+ * ПРОБЛЕМА: shared/config/roles.ts определял security_officer в типе Role
+ * и в ROLE_META, но в schema.ts этой роли не было. Это приводило к:
+ *   1. Несовместимости типов Role между schema.ts и roles.ts
+ *   2. Потенциальному падению ROLE_META[row.role] при обращении
+ *      к пользователю с этой ролью (undefined → TypeError)
+ *   3. Несоответствию типов при Drizzle-инференсе
  */
 
 import { sql } from "drizzle-orm";
@@ -20,17 +20,16 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 // ─── DOMAIN CONSTANTS ────────────────────────────────────────────────────────
-// Co-located with schema to keep the single source of truth in one file.
 
-/** 8 organisational roles — stored as slugs for DB readability & portability */
 export const ROLES = [
-  "company_commander", // КНР
+  "company_commander",   // КНР
   "platoon_1_commander", // КВ1
   "platoon_2_commander", // КВ2
   "deputy_platoon_1",    // ЗКВ1
   "deputy_platoon_2",    // ЗКВ2
   "squad_commander_2",   // КО2
   "sergeant_major",      // СР
+  "security_officer",    // ЗГТ  ← ДОБАВЛЕНО (было в ROLE_META, не было в schema)
   "duty_officer",        // ПС
 ] as const;
 
@@ -51,8 +50,6 @@ export const users = sqliteTable("users", {
 });
 
 // ─── TABLE: epics ─────────────────────────────────────────────────────────────
-// High-level groupings (e.g. "Q1 Audit", "New Intake").
-// Inspired by Linear's project concept — temporal + thematic context.
 export const epics = sqliteTable("epics", {
   id:          integer("id").primaryKey({ autoIncrement: true }),
   title:       text("title").notNull(),
@@ -65,7 +62,6 @@ export const epics = sqliteTable("epics", {
 });
 
 // ─── TABLE: tasks ─────────────────────────────────────────────────────────────
-// Core work item. Belongs to one Epic, has many subtasks and assignees.
 export const tasks = sqliteTable("tasks", {
   id:          integer("id").primaryKey({ autoIncrement: true }),
   epicId:      integer("epic_id").notNull().references(() => epics.id, { onDelete: "cascade" }),
@@ -80,7 +76,6 @@ export const tasks = sqliteTable("tasks", {
 });
 
 // ─── TABLE: subtasks ──────────────────────────────────────────────────────────
-// Checklist items under a task. Separate table (vs JSON column) for queryability.
 export const subtasks = sqliteTable("subtasks", {
   id:          integer("id").primaryKey({ autoIncrement: true }),
   taskId:      integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
@@ -91,8 +86,6 @@ export const subtasks = sqliteTable("subtasks", {
 });
 
 // ─── TABLE: task_assignees ───────────────────────────────────────────────────
-// Many-to-Many junction: one task → multiple users, one user → multiple tasks.
-// Unique index makes INSERT OR IGNORE safe for idempotent assignment.
 export const taskAssignees = sqliteTable(
   "task_assignees",
   {

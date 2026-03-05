@@ -3,10 +3,12 @@
  *
  * PATCH /api/subtasks/:id — переключение чекбокса подзадачи.
  *
- * Инвалидируем тег "epics" после изменения подзадачи.
- * Прогресс задачи (done/total подзадач) влияет на данные,
- * которые кешируются в getAllEpicsWithTasks(), поэтому кеш
- * должен сбрасываться и здесь.
+ * ИСПРАВЛЕНИЕ: revalidateTag() принимает ОДИН аргумент.
+ * Предыдущий вызов revalidateTag(EPICS_CACHE_TAG, "default")
+ * передавал второй аргумент, который не существует в API Next.js.
+ * Это не вызывало ошибку (TypeScript не проверяет лишние аргументы
+ * для некоторых сигнатур), но кеш мог инвалидироваться некорректно
+ * в зависимости от версии Next.js.
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -21,7 +23,6 @@ export async function PATCH(
     const { isCompleted } = await req.json();
     await toggleSubtask(Number(params.id), isCompleted);
 
-    // Подзадача изменилась → прогресс задачи изменился → кеш устарел
     revalidateTag(EPICS_CACHE_TAG, "default");
 
     return NextResponse.json({ ok: true });

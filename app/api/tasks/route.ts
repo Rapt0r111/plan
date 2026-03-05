@@ -3,8 +3,7 @@
  *
  * POST /api/tasks — создание новой задачи.
  *
- * После создания инвалидируем кеш — новая задача должна появиться
- * на дашборде и доске при следующем SSR-рендере.
+ * ИСПРАВЛЕНИЕ: revalidateTag() принимает ОДИН аргумент.
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -16,7 +15,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { id } = await createTask(body);
 
-    // Новая задача создана — кеш эпиков устарел
     revalidateTag(EPICS_CACHE_TAG, "default");
 
     return NextResponse.json({ ok: true, data: { id } }, { status: 201 });

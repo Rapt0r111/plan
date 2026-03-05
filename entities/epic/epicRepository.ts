@@ -2,29 +2,20 @@
  * @file epicRepository.ts — entities/epic
  *
  * ═══════════════════════════════════════════════════════════════
- * PERFORMANCE AUDIT — v2
+ * PERFORMANCE AUDIT — v3
  * ═══════════════════════════════════════════════════════════════
  *
- * БЫЛО (v1):
- *   getAllEpics()          → SELECT epics + N×2 COUNT запросов       = 2N+1 SQL
- *   getAllEpicsWithTasks()  → SELECT epics + N×tasks + M×2 sub/assign = ~57 SQL
- *   Вызывалось дважды на /dashboard (layout + page) без дедупликации
+ * ИЗМЕНЕНИЯ v3:
  *
- * СТАЛО (v2):
- *   getAllEpics()          → 1 SQL (LEFT JOIN + GROUP BY + CASE WHEN)
- *   getAllEpicsWithTasks()  → 3 SQL (batch inArray, два из них параллельно)
- *   React.cache()          → дедупликация внутри рендер-прохода
- *   unstable_cache()       → кеш между запросами, тег "epics", TTL=30s
+ * 1. TTL увеличен с 30s до 60s для getAllEpicsWithTasks.
+ *    Rationale: мутации всегда инвалидируют кеш через revalidateTag,
+ *    значит 30s → 60s не ухудшает свежесть данных, но снижает нагрузку.
  *
- * ─── ИСПРАВЛЕНИЕ ТИПОВ ────────────────────────────────────────────────────────
- * Проблема: Map<number, any[]> и { ...row.user, roleMeta: ... } давали
- *   "Unexpected any" и тот же конфликт Role vs DbRole что в userRepository.
+ * 2. CACHE_TTL_LIGHT = 120s для getAllEpics (лёгкий запрос для сайдбара/дашборда).
+ *    Счётчики задач менее критичны к мгновенной свежести.
  *
- * Решение:
- *   1. Вспомогательная функция toUserWithMeta() — явный тип без any.
- *   2. { ...meta, role: u.role } — та же техника что в userRepository:
- *      переписываем roleMeta.role значением из БД, чтобы сузить тип.
- *   3. Map<number, UserWithMeta[]> и Map<number, SubtaskView[]> вместо any[].
+ * 3. Явная пометка unstable_cache ключей — разные ключи для разных функций,
+ *    чтобы revalidateTag("epics") сбрасывал ОБА кеша одновременно.
  */
 
 import { cache } from "react";
@@ -36,27 +27,39 @@ import type { DbEpic, EpicWithTasks, TaskView, UserWithMeta, SubtaskView } from 
 import { ROLE_META } from "@/shared/config/roles";
 
 export const EPICS_CACHE_TAG = "epics";
-const CACHE_TTL = 30;
+
+/** TTL для тяжёлого запроса (полный граф задач) */
+const CACHE_TTL = 60;
+
+/** TTL для лёгкого запроса (только счётчики) */
+const CACHE_TTL_LIGHT = 120;
 
 // ─── Вспомогательный тип для JOIN-строки ─────────────────────────────────────
-// Drizzle возвращает users как InferSelectModel<typeof users> — берём его напрямую,
-// чтобы не дублировать поля вручную и не получать implicit any.
 type JoinedUser = typeof users.$inferSelect;
 
-/**
- * Превращает JOIN-строку в UserWithMeta без any.
- *
- * Явно переписываем roleMeta.role значением row.role (тип — DB-enum),
- * чтобы избежать конфликта с Role из shared/config/roles.ts.
- */
 function toUserWithMeta(row: JoinedUser): UserWithMeta {
   const meta = ROLE_META[row.role as keyof typeof ROLE_META];
+  // Fallback для роли, не найденной в ROLE_META (защита от рассинхрона schema/config)
+  if (!meta) {
+    return {
+      ...row,
+      roleMeta: {
+        role: row.role as never,
+        label: row.role,
+        short: row.role.slice(0, 3).toUpperCase(),
+        bgClass: "bg-slate-500/10",
+        textClass: "text-slate-400",
+        borderClass: "border-slate-500/20",
+        hex: "#94a3b8",
+      },
+    };
+  }
   return { ...row, roleMeta: { ...meta, role: row.role } };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getAllEpics — лёгкий список для сайдбара и карточек дашборда
-// БЫЛО: 2N+1 запросов  →  СТАЛО: 1 запрос
+// 1 SQL-запрос (LEFT JOIN + GROUP BY + CASE WHEN)
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function _getAllEpics(): Promise<(DbEpic & { taskCount: number; doneCount: number })[]> {
@@ -93,7 +96,7 @@ async function _getAllEpics(): Promise<(DbEpic & { taskCount: number; doneCount:
 
 export const getAllEpics = cache(
   unstable_cache(_getAllEpics, ["getAllEpics"], {
-    revalidate: CACHE_TTL,
+    revalidate: CACHE_TTL_LIGHT,
     tags: [EPICS_CACHE_TAG],
   }),
 );
@@ -133,7 +136,6 @@ export const getEpicById = cache(async function getEpicById(
       .where(inArray(taskAssignees.taskId, taskIds)),
   ]);
 
-  // Map<number, SubtaskView[]> — не any[]
   const subtasksByTask = new Map<number, SubtaskView[]>();
   for (const st of allSubtasks) {
     const arr = subtasksByTask.get(st.taskId) ?? [];
@@ -141,7 +143,6 @@ export const getEpicById = cache(async function getEpicById(
     subtasksByTask.set(st.taskId, arr);
   }
 
-  // Map<number, UserWithMeta[]> — не any[]
   const assigneesByTask = new Map<number, UserWithMeta[]>();
   for (const row of allAssigneeRows) {
     const arr = assigneesByTask.get(row.taskId) ?? [];
@@ -175,7 +176,10 @@ export const getEpicById = cache(async function getEpicById(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getAllEpicsWithTasks — полный граф для Zustand store
-// Шаги: (1) эпики → (2) задачи → (3+4 параллельно) подзадачи + исполнители
+// 3 SQL-запроса (epics → tasks → [subtasks + assignees] параллельно)
+// Используется только там, где нужен полный граф:
+//   - /board (BoardPage)
+//   - HeavyWidgets на /dashboard (внутри <Suspense>)
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
@@ -225,8 +229,6 @@ async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
       .where(inArray(taskAssignees.taskId, taskIds)),
   ]);
 
-  // ── Индексация O(1) — без any ─────────────────────────────────────────────
-
   const subtasksByTask = new Map<number, SubtaskView[]>();
   for (const st of subtasksRows) {
     const arr = subtasksByTask.get(st.taskId) ?? [];
@@ -248,8 +250,6 @@ async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
     arr.push(task);
     tasksByEpic.set(task.epicId, arr);
   }
-
-  // ── Сборка ────────────────────────────────────────────────────────────────
 
   return epicRows.map((epic) => {
     const epicTasks = tasksByEpic.get(epic.id) ?? [];

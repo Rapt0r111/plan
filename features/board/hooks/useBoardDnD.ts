@@ -2,6 +2,7 @@
 // useBoardDnD.ts - features/board/hooks
 import { useState, useCallback, useRef } from "react";
 import { useTaskStore } from "@/shared/store/useTaskStore";
+import { useThemeStore } from "@/shared/store/useThemeStore";
 import type { TaskStatus, TaskView } from "@/shared/types";
 
 export interface DragState {
@@ -26,12 +27,18 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 /**
- * Builds an off-screen ghost element that mimics a task card.
- * NOTE: setDragImage is not supported on touch devices —
- * native drag behaviour is preserved there automatically.
+ * Builds a theme-aware off-screen ghost element that mimics a task card.
+ * isDark controls background/text/border colours so the ghost matches
+ * whichever theme is currently active.
  */
-function createGhostElement(task: TaskView): HTMLElement {
+function createGhostElement(task: TaskView, isDark: boolean): HTMLElement {
   const ghost = document.createElement("div");
+
+  const bg          = isDark ? "rgba(26,29,53,0.92)"      : "rgba(237,233,227,0.95)";
+  const textColor   = isDark ? "rgba(255,255,255,0.88)"   : "rgba(20,15,8,0.88)";
+  const mutedColor  = isDark ? "rgba(255,255,255,0.30)"   : "rgba(20,15,8,0.38)";
+  const borderColor = isDark ? "rgba(255,255,255,0.10)"   : "rgba(0,0,0,0.10)";
+  const trackBg     = isDark ? "rgba(255,255,255,0.06)"   : "rgba(0,0,0,0.06)";
 
   const priorityColor = PRIORITY_COLOR[task.priority] ?? "#475569";
   const statusLabel   = STATUS_LABEL[task.status] ?? task.status;
@@ -45,7 +52,7 @@ function createGhostElement(task: TaskView): HTMLElement {
           display:inline-flex;align-items:center;justify-content:center;
           font-size:8px;font-weight:700;color:#fff;
           margin-right:-5px;
-          border:1.5px solid rgba(0,0,0,0.4);
+          border:1.5px solid rgba(0,0,0,0.25);
         ">${a.initials}</div>`,
     )
     .join("");
@@ -54,11 +61,11 @@ function createGhostElement(task: TaskView): HTMLElement {
     <div style="
       display:flex;flex-direction:column;gap:8px;
       padding:10px 12px;
-      background:rgba(26,29,53,0.92);
-      border:1px solid rgba(255,255,255,0.10);
+      background:${bg};
+      border:1px solid ${borderColor};
       border-left:3px solid ${priorityColor};
       border-radius:12px;
-      box-shadow:0 16px 48px rgba(0,0,0,0.7),0 0 0 1px rgba(139,92,246,0.15);
+      box-shadow:0 16px 48px rgba(0,0,0,0.45),0 0 0 1px rgba(139,92,246,0.12);
       backdrop-filter:blur(16px);
       -webkit-backdrop-filter:blur(16px);
       pointer-events:none;
@@ -70,20 +77,20 @@ function createGhostElement(task: TaskView): HTMLElement {
         <div style="
           display:inline-flex;align-items:center;gap:5px;
           padding:2px 8px;border-radius:99px;
-          background:rgba(255,255,255,0.06);
-          font-size:10px;font-weight:500;color:rgba(255,255,255,0.45);
+          background:${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"};
+          font-size:10px;font-weight:500;color:${mutedColor};
         ">
           <span style="width:6px;height:6px;border-radius:50%;background:${priorityColor};display:inline-block;"></span>
           ${statusLabel}
         </div>
-        <span style="font-size:10px;font-family:'DM Mono',monospace;color:rgba(255,255,255,0.25);">
+        <span style="font-size:10px;font-family:'DM Mono',monospace;color:${mutedColor};">
           #${task.id}
         </span>
       </div>
 
       <p style="
         font-size:12px;font-weight:500;line-height:1.45;
-        color:rgba(255,255,255,0.88);
+        color:${textColor};
         margin:0;
         overflow:hidden;display:-webkit-box;
         -webkit-line-clamp:2;-webkit-box-orient:vertical;
@@ -97,7 +104,7 @@ function createGhostElement(task: TaskView): HTMLElement {
 
       <div style="
         height:2px;border-radius:99px;
-        background:rgba(255,255,255,0.06);
+        background:${trackBg};
         overflow:hidden;
       ">
         ${
@@ -113,7 +120,6 @@ function createGhostElement(task: TaskView): HTMLElement {
     </div>
   `;
 
-  // Placed off-screen — browser won't repaint it in the viewport
   ghost.style.cssText =
     "position:fixed;top:-9999px;left:-9999px;z-index:-1;pointer-events:none;";
 
@@ -138,14 +144,13 @@ export function useBoardDnD() {
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", String(taskId));
 
-        // ── Custom ghost (desktop only; setDragImage unavailable on touch) ──
         const task = getTask(taskId);
         if (task && typeof e.dataTransfer.setDragImage === "function") {
-          const ghost = createGhostElement(task);
+          // Read theme at drag time — no need to subscribe reactively
+          const isDark = useThemeStore.getState().theme === "dark";
+          const ghost = createGhostElement(task, isDark);
           document.body.appendChild(ghost);
           ghostRef.current = ghost;
-
-          // Offset: 15px right, 10px below cursor
           e.dataTransfer.setDragImage(ghost, -15, -10);
         }
 
@@ -156,7 +161,6 @@ export function useBoardDnD() {
       },
 
       onDragEnd: () => {
-        // Remove ghost from DOM
         if (ghostRef.current) {
           ghostRef.current.remove();
           ghostRef.current = null;

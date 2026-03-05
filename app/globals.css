@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════
-   globals.css — Premium Deep Dark Design System 2026
-   Palette: Deep Cosmos (#08090f base) + Amethyst accents
+   globals.css — Premium Design System 2026
+   Palette: Deep Cosmos (dark) + Milky Paper (light)
+   Accent: Amethyst — brand identity preserved across themes
    ═══════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
@@ -19,18 +20,22 @@
   --radius: 14px;
   --radius-sm: 8px;
   --radius-lg: 20px;
+}
 
+/* ── Base tokens (dark = default) ────────────────────────────────────────── */
+:root,
+.dark {
   /* Core palette — Deep Cosmos */
-  --bg-base:       #08090f;
-  --bg-surface:    #0e0f1a;
-  --bg-elevated:   #13152a;
-  --bg-overlay:    #1a1d35;
+  --bg-base:     #08090f;
+  --bg-surface:  #0e0f1a;
+  --bg-elevated: #13152a;
+  --bg-overlay:  #1a1d35;
 
   /* Glass layers */
   --glass-01: rgba(255,255,255,0.03);
   --glass-02: rgba(255,255,255,0.06);
   --glass-03: rgba(255,255,255,0.10);
-  --glass-border: rgba(255,255,255,0.08);
+  --glass-border:        rgba(255,255,255,0.08);
   --glass-border-active: rgba(255,255,255,0.18);
 
   /* Text scale */
@@ -42,30 +47,109 @@
   --accent-500: #8b5cf6;
   --accent-400: #a78bfa;
   --accent-300: #c4b5fd;
-  --accent-glow: rgba(139,92,246,0.25);
+  --accent-glow:        rgba(139,92,246,0.25);
   --accent-glow-strong: rgba(139,92,246,0.45);
 
   /* Status colors */
-  --status-todo:        rgba(100,116,139,0.20);
-  --status-todo-text:   #94a3b8;
-  --status-progress:    rgba(14,165,233,0.18);
-  --status-progress-text: #38bdf8;
-  --status-done:        rgba(16,185,129,0.18);
-  --status-done-text:   #34d399;
-  --status-blocked:     rgba(239,68,68,0.18);
-  --status-blocked-text: #f87171;
+  --status-todo:             rgba(100,116,139,0.20);
+  --status-todo-text:        #94a3b8;
+  --status-progress:         rgba(14,165,233,0.18);
+  --status-progress-text:    #38bdf8;
+  --status-done:             rgba(16,185,129,0.18);
+  --status-done-text:        #34d399;
+  --status-blocked:          rgba(239,68,68,0.18);
+  --status-blocked-text:     #f87171;
+
+  /* Status chart colors */
+  --color-in-progress: #38bdf8;
+  --color-done:        #34d399;
+  --color-blocked:     #f87171;
+  --color-todo:        #64748b;
 
   /* Priority colors */
   --priority-critical: #ef4444;
   --priority-high:     #f97316;
   --priority-medium:   #eab308;
   --priority-low:      #475569;
+
+  /* Semantic surface tokens */
+  --header-bg:      rgba(8,9,15,0.80);
+  --filter-bar-bg:  rgba(8,9,15,0.70);
+  --modal-backdrop: rgba(8,9,15,0.65);
+  --modal-bg:       rgba(13,15,26,0.95);
+  --island-bg:      rgba(0,0,0,0.85);
+  --sidebar-top:    #0c0d1e;
+
+  /* Shadows — none in dark (glows used instead) */
+  --shadow-card:     none;
+  --shadow-elevated: none;
+  --shadow-overlay:  none;
+}
+
+/* ── LIGHT THEME OVERRIDES ───────────────────────────────────────────────── */
+.light {
+  /* Core palette — Milky Paper */
+  --bg-base:     #f5f3ef;
+  --bg-surface:  #ede9e3;
+  --bg-elevated: #e5e0d8;
+  --bg-overlay:  #ddd8d0;
+
+  /* Glass layers — inverted */
+  --glass-01: rgba(0,0,0,0.025);
+  --glass-02: rgba(0,0,0,0.045);
+  --glass-03: rgba(0,0,0,0.075);
+  --glass-border:        rgba(0,0,0,0.09);
+  --glass-border-active: rgba(0,0,0,0.20);
+
+  /* Text — warm near-black */
+  --text-primary:   rgba(20,15,8,0.92);
+  --text-secondary: rgba(20,15,8,0.58);
+  --text-muted:     rgba(20,15,8,0.38);
+
+  /* Accent — deeper amethyst for contrast on light bg */
+  --accent-500: #7c3aed;
+  --accent-400: #6d28d9;
+  --accent-300: #5b21b6;
+  --accent-glow:        rgba(109,40,217,0.12);
+  --accent-glow-strong: rgba(109,40,217,0.22);
+
+  /* Status colors — saturated for readability on light */
+  --status-todo-text:     #64748b;
+  --status-progress-text: #0369a1;
+  --status-done-text:     #059669;
+  --status-blocked-text:  #dc2626;
+
+  /* Status chart colors */
+  --color-in-progress: #0369a1;
+  --color-done:        #059669;
+  --color-blocked:     #dc2626;
+  --color-todo:        #64748b;
+
+  /* Priority */
+  --priority-critical: #dc2626;
+  --priority-high:     #ea580c;
+  --priority-medium:   #ca8a04;
+  --priority-low:      #64748b;
+
+  /* Semantic surface tokens */
+  --header-bg:      rgba(245,243,239,0.85);
+  --filter-bar-bg:  rgba(245,243,239,0.80);
+  --modal-backdrop: rgba(200,195,185,0.65);
+  --modal-bg:       rgba(245,243,239,0.97);
+  --island-bg:      rgba(245,243,239,0.92);
+  --sidebar-top:    #d8d3cb;
+
+  /* Shadows — paper depth */
+  --shadow-card:     0 1px 4px rgba(0,0,0,0.08), 0 2px 10px rgba(0,0,0,0.05);
+  --shadow-elevated: 0 4px 20px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.07);
+  --shadow-overlay:  0 8px 32px rgba(0,0,0,0.14), 0 3px 10px rgba(0,0,0,0.09);
 }
 
 /* ── Reset & Base ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
 html { color-scheme: dark; }
+.light html, html.light { color-scheme: light; }
 
 body {
   font-family: var(--font-sans);
@@ -77,6 +161,11 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
 }
 
+/* Light theme — paper texture (subtle, clean) */
+.light body {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.018'/%3E%3C/svg%3E");
+}
+
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -86,6 +175,10 @@ body {
   transition: background 0.2s;
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+
+/* Light theme scrollbar */
+.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); }
+.light ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.28); }
 
 /* ── Priority left-border system ─────────────────────────────────────────── */
 [data-priority="critical"] { border-left: 2px solid var(--priority-critical); }
@@ -116,9 +209,25 @@ body {
     box-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05) inset;
   }
 
+  /* Light theme — shadow replaces glow */
+  .light .glass {
+    background: var(--glass-01);
+    backdrop-filter: blur(16px) saturate(120%);
+    border-color: var(--glass-border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .light .glass-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+
   /* Accent glow — draws eye without hard contrast */
   .glow-accent {
     box-shadow: 0 0 20px var(--accent-glow), 0 0 60px var(--accent-glow);
+  }
+
+  .light .glow-accent {
+    box-shadow: 0 0 16px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.08);
   }
 
   /* Status pills */
@@ -138,6 +247,9 @@ body {
     background: var(--accent-glow);
     color: var(--accent-400);
     border: 1px solid rgba(139,92,246,0.3);
+  }
+  .light .nav-item.active {
+    border-color: rgba(109,40,217,0.3);
   }
 }
 
@@ -174,6 +286,12 @@ body {
   transform: scale(0.97) rotate(1deg);
   box-shadow: 0 24px 60px rgba(0,0,0,0.6);
   z-index: 50;
+}
+
+.light [data-dragging="true"] {
+  opacity: 0.40;
+  transform: scale(0.97) rotate(1deg);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.25);
 }
 
 /* ── Card 3D tilt perspective ─────────────────────────────────────────────── */

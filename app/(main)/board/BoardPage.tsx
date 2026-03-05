@@ -9,6 +9,10 @@
  *  • useBoardKeyNav — vim-style J/K/Enter/Escape/E keyboard navigation.
  *  • KeyboardHint strip — non-intrusive shortcut reminder in the footer area.
  *    Fades out after 8 seconds on first load (localStorage flag persists dismissal).
+ *
+ * THEME v4:
+ *  • Hardcoded rgba(8,9,15,…) → var(--filter-bar-bg)
+ *  • Modal glass bg → var(--modal-bg)
  */
 "use client";
 import { useState, useMemo, useEffect } from "react";
@@ -88,7 +92,6 @@ function KeyboardHint() {
         }
     }
 
-
     return (
         <AnimatePresence>
             {visible && (
@@ -99,10 +102,10 @@ function KeyboardHint() {
                     transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
                     className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2.5 rounded-2xl"
                     style={{
-                        background: "rgba(13,15,26,0.92)",
-                        border: "1px solid rgba(255,255,255,0.09)",
+                        background: "var(--modal-bg)",
+                        border: "1px solid var(--glass-border)",
                         backdropFilter: "blur(16px)",
-                        boxShadow: "0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.12)",
+                        boxShadow: "0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(139,92,246,0.12)",
                         pointerEvents: "auto",
                     }}
                 >
@@ -176,7 +179,7 @@ export function BoardPage() {
             <div
                 className="shrink-0 px-6 py-3 border-b"
                 style={{
-                    background: "rgba(8,9,15,0.7)",
+                    background: "var(--filter-bar-bg)",
                     backdropFilter: "blur(16px)",
                     borderColor: "var(--glass-border)",
                 }}

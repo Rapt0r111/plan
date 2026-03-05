@@ -2,7 +2,7 @@
  * @file loading.tsx — app/(main)/board
  *
  * Skeleton-лоадер для /board.
- * Показывается пока BoardRoute загружает getAllEpicsWithTasks().
+ * THEME v4: hardcoded rgba(8,9,15,…) → var(--header-bg) / var(--filter-bar-bg)
  */
 export default function BoardLoading() {
   return (
@@ -12,7 +12,7 @@ export default function BoardLoading() {
         className="sticky top-0 z-10 flex items-center px-6 gap-4"
         style={{
           height: "var(--header-h)",
-          background: "rgba(8,9,15,0.80)",
+          background: "var(--header-bg)",
           backdropFilter: "blur(20px)",
           borderBottom: "1px solid var(--glass-border)",
         }}
@@ -28,7 +28,7 @@ export default function BoardLoading() {
       {/* Filters bar */}
       <div
         className="shrink-0 px-6 py-3 border-b flex gap-3"
-        style={{ background: "rgba(8,9,15,0.7)", borderColor: "var(--glass-border)" }}
+        style={{ background: "var(--filter-bar-bg)", borderColor: "var(--glass-border)" }}
       >
         {[...Array(8)].map((_, i) => (
           <div key={i} className="h-6 w-20 rounded-full" style={{ background: "var(--glass-02)" }} />

@@ -2,17 +2,7 @@
  * @file loading.tsx — app/(main)/dashboard
  *
  * Skeleton-лоадер для /dashboard.
- *
- * Next.js App Router автоматически показывает этот файл пока
- * page.tsx выполняет серверные запросы (getAllEpics + getAllUsers).
- *
- * Без этого файла: пользователь видит пустой экран пока грузятся данные.
- * С этим файлом: мгновенно появляется skeleton нужной формы.
- *
- * Skeleton повторяет визуальную структуру страницы:
- * - 4 stat-карточки
- * - 3 epic-карточки
- * - строки команды
+ * THEME v4: hardcoded rgba(8,9,15,…) → var(--header-bg)
  */
 export default function DashboardLoading() {
   return (
@@ -22,7 +12,7 @@ export default function DashboardLoading() {
         className="sticky top-0 z-10 flex items-center px-6 gap-4"
         style={{
           height: "var(--header-h)",
-          background: "rgba(8,9,15,0.80)",
+          background: "var(--header-bg)",
           backdropFilter: "blur(20px)",
           borderBottom: "1px solid var(--glass-border)",
         }}

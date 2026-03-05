@@ -1,53 +1,31 @@
 /**
  * @file layout.tsx — app/(main)
  *
- * БЫЛО:
- *   await Promise.all([getAllEpics(), getAllUsers()]) — блокировал рендер
- *   всего layout (и значит весь контент страницы) до завершения SQL-запросов.
- *   Пользователь видел белый экран всё время, пока грузился сайдбар.
- *
- * СТАЛО:
- *   Сайдбар вынесен в отдельный async Server Component (SidebarLoader),
- *   обёрнутый в <Suspense>. Это даёт React/Next.js два преимущества:
- *
- *   1. STREAMING: браузер получает HTML контентной части (<main>)
- *      немедленно, не дожидаясь SQL для сайдбара. FCP и LCP падают.
- *
- *   2. ПАРАЛЛЕЛЬНОСТЬ: Next.js рендерит сайдбар и дочерние страницы
- *      параллельно (не последовательно). Если страница тоже делает
- *      fetch, они идут одновременно — суммарное время = max(t1, t2),
- *      а не t1 + t2.
- *
- *   3. React.cache() в репозитории дедуплицирует: если SidebarLoader
- *      и дочерняя страница оба вызывают getAllEpics() / getAllUsers(),
- *      SQL уходит ровно один раз.
- *
- * SidebarSkeleton: минималистичный placeholder нужной ширины,
- * устраняет layout shift при гидрации.
+ * THEME v4:
+ *  SidebarSkeleton gradient now uses var(--sidebar-top) instead of
+ *  hardcoded `from-[#0c0d1e]`. Both dark and light values defined in globals.css.
  */
 import { Suspense } from "react";
 import { Sidebar } from "@/widgets/sidebar/Sidebar";
 import { getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
 
-// ── Async Server Component для сайдбара ──────────────────────────────────────
-// Вынесен отдельно, чтобы <Suspense> мог стримить его независимо от <main>.
 async function SidebarLoader() {
   const [epics, users] = await Promise.all([getAllEpics(), getAllUsers()]);
   return <Sidebar epics={epics} users={users} />;
 }
 
-// ── Скелетон сайдбара ─────────────────────────────────────────────────────────
-// Отображается пока SidebarLoader грузится.
-// Имеет точно такую же ширину, чтобы <main> не прыгал при появлении сайдбара.
 function SidebarSkeleton() {
   return (
     <aside
       className="fixed left-0 top-0 h-screen z-20 flex flex-col overflow-hidden"
       style={{ width: "var(--sidebar-w)" }}
     >
-      {/* Deep background — совпадает с реальным сайдбаром */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#0c0d1e] to-[var(--bg-base)]" />
+      {/* Deep background — uses CSS var for theme support */}
+      <div
+        className="absolute inset-0"
+        style={{ background: "linear-gradient(to bottom, var(--sidebar-top), var(--bg-base))" }}
+      />
       <div className="absolute inset-y-0 right-0 w-px bg-[var(--glass-border)]" />
 
       <div className="relative flex flex-col h-full px-3 pt-4 gap-3 animate-pulse">
@@ -95,12 +73,6 @@ function SidebarSkeleton() {
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden">
-      {/*
-       * Suspense + SidebarLoader:
-       *  - SidebarSkeleton рендерится мгновенно (0ms)
-       *  - SidebarLoader стримится как только SQL завершится
-       *  - <main> с children не ждёт сайдбар
-       */}
       <Suspense fallback={<SidebarSkeleton />}>
         <SidebarLoader />
       </Suspense>

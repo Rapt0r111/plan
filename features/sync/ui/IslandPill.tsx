@@ -34,8 +34,9 @@ export function IslandPill({ notification, onClick }: Props) {
       className="relative flex items-center gap-2 px-3 py-1.5 overflow-hidden"
       style={{
         borderRadius: "20px",
-        background:   "rgba(0,0,0,0.85)",
-        border:       "1px solid rgba(255,255,255,0.1)",
+        /* was: "rgba(0,0,0,0.85)" — now: var(--island-bg) */
+        background:   "var(--island-bg)",
+        border:       "1px solid var(--glass-border)",
         cursor:       notification ? "pointer" : "default",
         backdropFilter: "blur(12px)",
       }}
@@ -57,7 +58,7 @@ export function IslandPill({ notification, onClick }: Props) {
       {/* Label */}
       <motion.span
         className="text-xs font-medium font-mono"
-        style={{ color: "rgba(255,255,255,0.65)" }}
+        style={{ color: "var(--text-secondary)" }}
         animate={{ opacity: notification ? 1 : 0.35 }}
       >
         {notification ? notification.title : "в сети"}

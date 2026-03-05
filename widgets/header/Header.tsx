@@ -2,11 +2,12 @@
  * @file Header.tsx — widgets/header
  *
  * Sticky frosted-glass top bar.
- * Now includes a CommandPaletteTrigger button — the visual affordance
- * that teaches users Cmd+K exists. Once they learn it, they stop clicking it.
+ * Includes CommandPaletteTrigger and ThemeToggle.
+ * Background uses var(--header-bg) — theme-aware token.
  */
 import type { ReactNode } from "react";
 import { CommandPaletteTrigger } from "@/features/command-palette/CommandPaletteTrigger";
+import { ThemeToggle } from "@/shared/ui/ThemeToggle";
 
 interface Props {
   title: string;
@@ -20,7 +21,7 @@ export function Header({ title, subtitle, actions }: Props) {
       className="sticky top-0 z-10 flex items-center px-6 gap-4"
       style={{
         height: "var(--header-h)",
-        background: "rgba(8,9,15,0.80)",
+        background: "var(--header-bg)",
         backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
         borderBottom: "1px solid var(--glass-border)",
@@ -39,6 +40,9 @@ export function Header({ title, subtitle, actions }: Props) {
 
       {/* Command palette trigger — sits centre-right, always visible */}
       <CommandPaletteTrigger />
+
+      {/* Theme toggle */}
+      <ThemeToggle />
 
       {actions && (
         <div className="flex items-center gap-2 shrink-0">{actions}</div>

@@ -2,14 +2,10 @@
 /**
  * @file TaskSlideover.tsx — features/task-details
  *
- * v4 FULL EDIT — все поля задачи редактируемы прямо в слайдере:
- *   • Заголовок — inline click-to-edit, Enter/blur = сохранить
- *   • Описание  — textarea, появляется по клику, blur = сохранить
- *   • Статус    — pill-кнопки (оптимистично)
- *   • Приоритет — pill-кнопки (оптимистично)
- *   • Дедлайн   — нативный date-input + кнопка сброса
- *   • Исполнители — список с удалением + кнопка «Добавить» → dropdown из /api/users
- *   • Подзадачи — SubtaskList (чекбоксы + добавление)
+ * THEME CHANGES:
+ *  • DueDatePicker: [color-scheme:dark] → dynamic from useThemeStore
+ *    so the native date picker chrome matches the active theme.
+ *  • Backdrop: rgba(8,9,15,0.55) → var(--modal-backdrop)
  */
 import {
   useState, useRef, useEffect, useCallback,
@@ -19,6 +15,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/shared/lib/utils";
 import { SubtaskList } from "./SubtaskList";
 import { useTaskStore } from "@/shared/store/useTaskStore";
+import { useThemeStore } from "@/shared/store/useThemeStore";
 import { STATUS_META, PRIORITY_META, STATUS_ORDER, PRIORITY_ORDER } from "@/shared/config/task-meta";
 import type { TaskView, TaskStatus, TaskPriority } from "@/shared/types";
 
@@ -83,7 +80,6 @@ function EditableDescription({ taskId, value }: { taskId: number; value: string 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription);
 
-
   useEffect(() => {
     if (editing && textareaRef.current) {
       textareaRef.current.focus();
@@ -145,6 +141,8 @@ function EditableDescription({ taskId, value }: { taskId: number; value: string 
 // ─── DueDatePicker ────────────────────────────────────────────────────────────
 function DueDatePicker({ taskId, value }: { taskId: number; value: string | null }) {
   const updateTaskDueDate = useTaskStore((s) => s.updateTaskDueDate);
+  // THEME FIX: dynamic color-scheme so native date picker chrome matches theme
+  const theme = useThemeStore((s) => s.theme);
   const inputVal = value ? value.slice(0, 10) : "";
 
   const now = new Date();
@@ -163,8 +161,10 @@ function DueDatePicker({ taskId, value }: { taskId: number; value: string | null
           type="date"
           value={inputVal}
           onChange={(e) => updateTaskDueDate(taskId, e.target.value ? new Date(e.target.value).toISOString() : null)}
+          // Was: [color-scheme:dark] hardcoded — now dynamic
+          style={{ colorScheme: theme } as React.CSSProperties}
           className={cn(
-            "w-full bg-[var(--glass-01)] border rounded-lg px-3 py-2 text-sm outline-none transition-colors [color-scheme:dark]",
+            "w-full bg-[var(--glass-01)] border rounded-lg px-3 py-2 text-sm outline-none transition-colors",
             "focus:border-[var(--accent-500)]",
             isOverdue ? "border-red-500/50" : isToday ? "border-amber-500/50" : "border-[var(--glass-border)]",
             !formatted ? "text-[var(--text-secondary)]" : "text-transparent",
@@ -374,6 +374,7 @@ export function TaskSlideover({ task, onClose }: Props) {
     <AnimatePresence>
       {liveTask && (
         <>
+          {/* Backdrop — was rgba(8,9,15,0.55), now var(--modal-backdrop) */}
           <motion.div
             key="backdrop"
             initial={{ opacity: 0 }}
@@ -381,7 +382,7 @@ export function TaskSlideover({ task, onClose }: Props) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-30"
-            style={{ backdropFilter: "blur(4px)", background: "rgba(8,9,15,0.55)" }}
+            style={{ backdropFilter: "blur(4px)", background: "var(--modal-backdrop)" }}
             onClick={onClose}
           />
 

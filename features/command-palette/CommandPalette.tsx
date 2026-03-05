@@ -15,8 +15,6 @@ import { CommandRow }                  from "./ui/CommandRow";
 import { PaletteFooter }               from "./ui/PaletteFooter";
 import type { CommandCategory }        from "./model/fuzzy";
 
-// ── Debounce delay ────────────────────────────────────────────────────────────
-// 350 ms: fast enough to feel instant, slow enough to skip keystroke noise.
 const SEARCH_DEBOUNCE_MS = 350;
 
 export function CommandPalette() {
@@ -29,10 +27,8 @@ export function CommandPalette() {
   const listRef  = useRef<HTMLDivElement>(null);
   const inputId  = useId();
 
-  // ── Debounced query — drives task search to avoid searching on every keystroke
   const debouncedQuery = useDebounce(query, SEARCH_DEBOUNCE_MS);
 
-  // ── Open / reset ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       setQuery(initialQuery);
@@ -45,7 +41,6 @@ export function CommandPalette() {
     { key: "k", meta: true, handler: () => (isOpen ? close() : open()) },
   ]);
 
-  // ── Regular command filtering (uses live query for instant feel) ──────────
   const filtered = useMemo(() => {
     if (!query.trim()) return commands;
     return commands
@@ -55,43 +50,33 @@ export function CommandPalette() {
       .map(({ cmd }) => cmd);
   }, [commands, query]);
 
-  // ── Task search (debounced — avoids searching on each keystroke) ──────────
   const taskResults = usePaletteTaskSearch(debouncedQuery);
 
-  // ── Group results ─────────────────────────────────────────────────────────
   const grouped = useMemo(() => {
     const map = new Map<CommandCategory, typeof filtered>();
-
-    // Standard categories from commands
     for (const cat of CATEGORY_ORDER) {
-      if (cat === "task") continue; // handled separately below
+      if (cat === "task") continue;
       const items = filtered.filter((c) => c.category === cat);
       if (items.length) map.set(cat, items);
     }
-
-    // Task search results — shown only when there's a query
     if (taskResults.length > 0) {
       map.set("task", taskResults);
     }
-
     return map;
   }, [filtered, taskResults]);
 
   const flatList = useMemo(() => [...grouped.values()].flat(), [grouped]);
 
-  // ── Keep selectedIndex in bounds when list changes ────────────────────────
   useEffect(() => {
     setSelectedIndex((i) => Math.min(i, Math.max(flatList.length - 1, 0)));
   }, [flatList.length]);
 
-  // ── Auto-scroll focused item into view ────────────────────────────────────
   useEffect(() => {
     listRef.current
       ?.querySelector(`[data-idx="${selectedIndex}"]`)
       ?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
-  // ── Keyboard navigation inside the palette ────────────────────────────────
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       switch (e.key) {
@@ -114,9 +99,6 @@ export function CommandPalette() {
     [close, flatList, selectedIndex],
   );
 
-  // ── Empty state message ───────────────────────────────────────────────────
-  // Show a different hint while the debounce is still pending (query typed
-  // but debouncedQuery hasn't caught up yet).
   const isSearchPending =
     query.trim().length >= 2 && query !== debouncedQuery;
 
@@ -126,7 +108,7 @@ export function CommandPalette() {
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop — was rgba(8,9,15,0.65), now var(--modal-backdrop) */}
           <motion.div
             key="cp-backdrop"
             initial={{ opacity: 0 }}
@@ -136,13 +118,13 @@ export function CommandPalette() {
             className="fixed inset-0 z-50"
             style={{
               backdropFilter: "blur(12px)",
-              background:     "rgba(8,9,15,0.65)",
+              background:     "var(--modal-backdrop)",
             }}
             onClick={close}
             aria-hidden="true"
           />
 
-          {/* Panel */}
+          {/* Panel — was rgba(13,15,26,0.95), now var(--modal-bg) */}
           <motion.div
             key="cp-panel"
             role="dialog"
@@ -155,8 +137,8 @@ export function CommandPalette() {
             className="fixed left-1/2 top-[18%] z-50 w-full max-w-160 -translate-x-1/2 flex flex-col overflow-hidden"
             style={{
               borderRadius:  "20px",
-              background:    "rgba(13,15,26,0.95)",
-              border:        "1px solid rgba(255,255,255,0.10)",
+              background:    "var(--modal-bg)",
+              border:        "1px solid var(--glass-border)",
               boxShadow: [
                 "0 0 0 1px rgba(139,92,246,0.15)",
                 "0 32px 80px rgba(0,0,0,0.7)",
@@ -168,7 +150,7 @@ export function CommandPalette() {
             {/* ── Search bar ─────────────────────────────────────────────── */}
             <div
               className="flex items-center gap-3 px-4 py-3.5"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
+              style={{ borderBottom: "1px solid var(--glass-border)" }}
             >
               <svg
                 className="w-4 h-4 shrink-0 text-(--text-muted)"
@@ -202,7 +184,6 @@ export function CommandPalette() {
                 className="flex-1 bg-transparent outline-none text-sm placeholder:text-(--text-muted) text-(--text-primary)"
               />
 
-              {/* Debounce spinner — subtle indicator that search is catching up */}
               {isSearchPending && (
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -284,7 +265,6 @@ export function CommandPalette() {
                   let globalIdx = 0;
                   return [...grouped.entries()].map(([cat, items]) => (
                     <div key={cat} className="mb-1">
-                      {/* Category label */}
                       <div className="px-4 py-1.5 flex items-center gap-2">
                         <span className="text-[10px] font-semibold uppercase tracking-widest text-(--text-muted)">
                           {CATEGORY_LABEL[cat]}
@@ -303,11 +283,10 @@ export function CommandPalette() {
                         )}
                         <div
                           className="flex-1 h-px"
-                          style={{ background: "rgba(255,255,255,0.05)" }}
+                          style={{ background: "var(--glass-border)" }}
                         />
                       </div>
 
-                      {/* Rows */}
                       {items.map((cmd) => {
                         const idx = globalIdx++;
                         return (
@@ -316,8 +295,6 @@ export function CommandPalette() {
                             cmd={cmd}
                             idx={idx}
                             isSelected={idx === selectedIndex}
-                            // Pass raw query for highlight (not debounced —
-                            // we want highlight to reflect what the user typed)
                             searchQuery={query}
                             onHover={() => setSelectedIndex(idx)}
                             onSelect={cmd.onSelect}

@@ -4,7 +4,8 @@ import { motion } from "framer-motion";
 
 export function AuroraBackground() {
   return (
-    <div className="absolute inset-0 overflow-hidden" style={{ background: "#000000" }}>
+    // was: background: "#000000" — now adapts: deep cosmos in dark, milky in light
+    <div className="absolute inset-0 overflow-hidden" style={{ background: "var(--bg-base)" }}>
       <motion.div
         className="absolute"
         style={{

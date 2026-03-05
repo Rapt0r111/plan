@@ -1,15 +1,8 @@
 /**
  * @file Sidebar.tsx — widgets/sidebar
  *
- * Premium dark sidebar with:
- * - Amethyst brand accent
- * - Epic navigation with live progress bars
- * - SyncStatusBadge ("LOCAL: SYNCED") — gives users confidence in data integrity
- * - TeamAvatars for team awareness without leaving current view
- *
- * UX rationale: The sidebar acts as a persistent "mission control" — users
- * always know where they are (active state), the team composition, and the
- * sync state. Keeping these anchors visible reduces cognitive load.
+ * Premium sidebar — background gradient now uses var(--sidebar-top)
+ * so it adapts to both dark (#0c0d1e) and light (#d8d3cb) themes.
  */
 "use client";
 import Link from "next/link";
@@ -25,15 +18,14 @@ interface Props {
   users: UserWithMeta[];
 }
 
-// Sync status indicator
 function SyncBadge() {
   const { status, lastSyncedAt } = useSyncStatus();
 
   const config = {
-    idle: { dot: "bg-slate-500", label: "LOCAL", text: "IDLE" },
-    syncing: { dot: "bg-amber-400 animate-pulse", label: "LOCAL", text: "SYNCING" },
-    synced: { dot: "bg-emerald-400", label: "LOCAL", text: "SYNCED" },
-    error: { dot: "bg-red-400", label: "LOCAL", text: "ERROR" },
+    idle:    { dot: "bg-slate-500",                  label: "LOCAL", text: "IDLE"    },
+    syncing: { dot: "bg-amber-400 animate-pulse",    label: "LOCAL", text: "SYNCING" },
+    synced:  { dot: "bg-emerald-400",                label: "LOCAL", text: "SYNCED"  },
+    error:   { dot: "bg-red-400",                    label: "LOCAL", text: "ERROR"   },
   } as const;
 
   const { dot, label, text } = config[status];
@@ -46,10 +38,10 @@ function SyncBadge() {
         <span
           className={cn(
             "font-semibold",
-            status === "synced" && "text-emerald-400",
+            status === "synced"  && "text-emerald-400",
             status === "syncing" && "text-amber-400",
-            status === "error" && "text-red-400",
-            status === "idle" && "text-slate-500"
+            status === "error"   && "text-red-400",
+            status === "idle"    && "text-slate-500"
           )}
         >
           {text}
@@ -68,16 +60,19 @@ export function Sidebar({ epics, users }: Props) {
   const pathname = usePathname();
 
   const overallTotal = epics.reduce((s, e) => s + e.taskCount, 0);
-  const overallDone = epics.reduce((s, e) => s + e.doneCount, 0);
-  const overallPct = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
+  const overallDone  = epics.reduce((s, e) => s + e.doneCount, 0);
+  const overallPct   = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
 
   return (
     <aside
       className="fixed left-0 top-0 h-screen flex flex-col z-20 overflow-hidden"
       style={{ width: "var(--sidebar-w)" }}
     >
-      {/* Deep background with subtle gradient */}
-      <div className="absolute inset-0 bg-linear-to-b from-[#0c0d1e] to-(--bg-base)" />
+      {/* Deep background — was from-[#0c0d1e] (Tailwind arbitrary), now CSS var */}
+      <div
+        className="absolute inset-0"
+        style={{ background: "linear-gradient(to bottom, var(--sidebar-top), var(--bg-base))" }}
+      />
       <div className="absolute inset-y-0 right-0 w-px bg-(--glass-border)" />
 
       {/* Ambient glow top-left */}
@@ -87,7 +82,6 @@ export function Sidebar({ epics, users }: Props) {
         {/* ── Logo ─────────────────────────────────────────────────────── */}
         <div className="px-5 flex items-center border-b border-[var(--glass-border)]" style={{ height: "var(--header-h)" }}>
           <div className="flex items-center gap-2.5">
-            {/* Logo mark */}
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--accent-400)] to-[var(--accent-500)] flex items-center justify-center shadow-[0_0_12px_var(--accent-glow)]">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <rect x="1" y="1" width="5" height="5" rx="1.5" fill="white" fillOpacity="0.9" />
@@ -110,8 +104,8 @@ export function Sidebar({ epics, users }: Props) {
         {/* ── Primary Nav ───────────────────────────────────────────────── */}
         <nav className="px-3 pt-4 space-y-0.5">
           {([
-            { href: "/dashboard", label: "Обзор", icon: DashboardIcon },
-            { href: "/board", label: "Доска", icon: BoardIcon },
+            { href: "/dashboard", label: "Обзор",  icon: DashboardIcon },
+            { href: "/board",     label: "Доска",  icon: BoardIcon     },
           ] as const).map(({ href, label, icon: Icon }) => {
             const active = pathname === href;
             return (
@@ -175,7 +169,6 @@ export function Sidebar({ epics, users }: Props) {
                       : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-01)]"
                   )}
                 >
-                  {/* Epic color swatch */}
                   <span
                     className="w-2 h-2 rounded-full shrink-0 transition-all duration-150"
                     style={{
@@ -185,7 +178,6 @@ export function Sidebar({ epics, users }: Props) {
                   />
                   <span className="flex-1 truncate text-xs leading-snug">{epic.title}</span>
 
-                  {/* Inline mini-progress arc */}
                   <div className="shrink-0 relative w-5 h-5">
                     <svg viewBox="0 0 20 20" className="w-5 h-5 -rotate-90">
                       <circle cx="10" cy="10" r="7" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2.5" />
@@ -251,9 +243,9 @@ function BoardIcon({ active }: { active: boolean }) {
       className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")}
       viewBox="0 0 16 16" fill="currentColor"
     >
-      <rect x="1" y="1" width="4" height="14" rx="1.5" fillOpacity={active ? 1 : 0.6}/>
-      <rect x="6" y="1" width="4" height="9"  rx="1.5" fillOpacity={active ? 0.8 : 0.4}/>
-      <rect x="11" y="1" width="4" height="11" rx="1.5" fillOpacity={active ? 0.6 : 0.3}/>
+      <rect x="1"  y="1" width="4" height="14" rx="1.5" fillOpacity={active ? 1   : 0.6} />
+      <rect x="6"  y="1" width="4" height="9"  rx="1.5" fillOpacity={active ? 0.8 : 0.4} />
+      <rect x="11" y="1" width="4" height="11" rx="1.5" fillOpacity={active ? 0.6 : 0.3} />
     </svg>
   );
 }

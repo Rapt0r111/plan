@@ -5,6 +5,10 @@
  * Glass panel for one Epic in the board. Groups tasks by status.
  * Drop zones highlight with the epic's own color — spatial cohesion.
  * Stagger animation via Framer Motion for cascade reveal.
+ *
+ * NEW IN v2:
+ *  • Accepts focusedTaskId + onFocusTask from BoardPage for keyboard nav.
+ *  • Passes isFocused / onFocus through to each BoardTaskCard.
  */
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -17,26 +21,37 @@ import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
 
 const STATUS_SECTIONS: { key: TaskStatus; label: string }[] = [
   { key: "in_progress", label: "В работе" },
-  { key: "todo", label: "К работе" },
-  { key: "blocked", label: "Заблокировано" },
-  { key: "done", label: "Готово" },
+  { key: "todo",        label: "К работе" },
+  { key: "blocked",     label: "Заблокировано" },
+  { key: "done",        label: "Готово" },
 ];
 
 const STATUS_COLOR: Record<TaskStatus, string> = {
   in_progress: "#38bdf8",
-  todo: "#64748b",
-  blocked: "#f87171",
-  done: "#34d399",
+  todo:        "#64748b",
+  blocked:     "#f87171",
+  done:        "#34d399",
 };
 
 interface Props {
-  epic: EpicWithTasks;
-  filters: FilterState;
+  epic:             EpicWithTasks;
+  filters:          FilterState;
   defaultCollapsed?: boolean;
-  onOpenTask?: (task: TaskView) => void; // ← ДОБАВИТЬ
+  onOpenTask?:      (task: TaskView) => void;
+  /** Id of the keyboard-focused task (from useBoardKeyNav) */
+  focusedTaskId?:   number | null;
+  /** Called when the user clicks a card (updates keyboard focus) */
+  onFocusTask?:     (taskId: number) => void;
 }
 
-export function EpicColumn({ epic, filters, defaultCollapsed = false, onOpenTask }: Props) {
+export function EpicColumn({
+  epic,
+  filters,
+  defaultCollapsed = false,
+  onOpenTask,
+  focusedTaskId,
+  onFocusTask,
+}: Props) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const { getDragProps, getDropProps } = useBoardDnD();
 
@@ -44,11 +59,18 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false, onOpenTask
     ? Math.round((epic.progress.done / epic.progress.total) * 100)
     : 0;
 
-  const filteredTasks = useMemo(() => applyFilters(epic.tasks, filters), [epic.tasks, filters]);
+  const filteredTasks = useMemo(
+    () => applyFilters(epic.tasks, filters),
+    [epic.tasks, filters],
+  );
 
   const grouped = useMemo(() => {
-    const map: Record<TaskStatus, TaskView[]> = { in_progress: [], todo: [], blocked: [], done: [] };
-    for (const t of filteredTasks) { if (map[t.status]) map[t.status].push(t); }
+    const map: Record<TaskStatus, TaskView[]> = {
+      in_progress: [], todo: [], blocked: [], done: [],
+    };
+    for (const t of filteredTasks) {
+      if (map[t.status]) map[t.status].push(t);
+    }
     return map;
   }, [filteredTasks]);
 
@@ -62,16 +84,16 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false, onOpenTask
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
       className="flex flex-col rounded-2xl overflow-hidden"
       style={{
-        background: "var(--bg-elevated)",
-        border: "1px solid var(--glass-border)",
-        borderLeft: `3px solid ${epic.color}`,
+        background:   "var(--bg-elevated)",
+        border:       "1px solid var(--glass-border)",
+        borderLeft:   `3px solid ${epic.color}`,
       }}
     >
-      {/* Header */}
+      {/* ── Header ───────────────────────────────────────────────────────── */}
       <div
         className="px-4 py-3.5 flex items-center gap-3 cursor-pointer select-none"
         style={{
-          background: `linear-gradient(135deg, ${epic.color}14 0%, transparent 60%)`,
+          background:   `linear-gradient(135deg, ${epic.color}14 0%, transparent 60%)`,
           borderBottom: "1px solid var(--glass-border)",
         }}
         onClick={() => setCollapsed((v) => !v)}
@@ -82,9 +104,13 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false, onOpenTask
         />
 
         <div className="flex-1 min-w-0">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">{epic.title}</h2>
+          <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+            {epic.title}
+          </h2>
           {epic.description && (
-            <p className="text-xs text-(--text-muted) truncate mt-0.5">{epic.description}</p>
+            <p className="text-xs text-(--text-muted) truncate mt-0.5">
+              {epic.description}
+            </p>
           )}
         </div>
 
@@ -94,7 +120,9 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false, onOpenTask
               {filteredTasks.length}/{epic.tasks.length}
             </span>
           ) : (
-            <span className="text-xs font-mono text-(--text-muted)">{epic.tasks.length}</span>
+            <span className="text-xs font-mono text-(--text-muted)">
+              {epic.tasks.length}
+            </span>
           )}
 
           <span
@@ -116,7 +144,7 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false, onOpenTask
         </div>
       </div>
 
-      {/* Progress bar */}
+      {/* ── Progress bar ─────────────────────────────────────────────────── */}
       <div className="h-0.5 bg-[var(--glass-02)]">
         <motion.div
           className="h-full"
@@ -127,7 +155,7 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false, onOpenTask
         />
       </div>
 
-      {/* Body */}
+      {/* ── Body ─────────────────────────────────────────────────────────── */}
       <AnimatePresence>
         {!collapsed && (
           <motion.div
@@ -139,35 +167,51 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false, onOpenTask
           >
             <div className="p-3 space-y-4">
               {STATUS_SECTIONS.map(({ key, label }) => {
-                const tasks = grouped[key];
+                const tasks    = grouped[key];
                 const isActive = key === "in_progress" || key === "todo";
                 if (!isActive && !tasks.length) return null;
 
-                const dropProps = getDropProps(key);
+                const dropProps    = getDropProps(key);
                 const isDropActive = dropProps["data-drop-active"];
 
                 return (
                   <div key={key}>
                     <div className="flex items-center gap-2 mb-2 px-1">
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLOR[key] }} />
-                      <span className="text-xs font-semibold text-[var(--text-secondary)]">{label}</span>
-                      <span className="text-xs font-mono text-(--text-muted)">{tasks.length}</span>
+                      <span
+                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: STATUS_COLOR[key] }}
+                      />
+                      <span className="text-xs font-semibold text-[var(--text-secondary)]">
+                        {label}
+                      </span>
+                      <span className="text-xs font-mono text-(--text-muted)">
+                        {tasks.length}
+                      </span>
                     </div>
 
                     <div
                       {...dropProps}
                       className={cn(
                         "min-h-10 rounded-xl p-1 space-y-2 transition-all duration-200",
-                        isDropActive && "ring-1 ring-[var(--accent-500)]"
+                        isDropActive && "ring-1 ring-[var(--accent-500)]",
                       )}
-                      style={isDropActive ? { backgroundColor: `${epic.color}10`, boxShadow: `0 0 0 1px ${epic.color}40 inset` } : undefined}
+                      style={
+                        isDropActive
+                          ? {
+                              backgroundColor: `${epic.color}10`,
+                              boxShadow: `0 0 0 1px ${epic.color}40 inset`,
+                            }
+                          : undefined
+                      }
                     >
                       {tasks.length === 0 ? (
-                        <div className={cn(
-                          "flex items-center justify-center h-10 rounded-lg text-xs text-(--text-muted)",
-                          "border border-dashed border-[var(--glass-border)] transition-colors",
-                          isDropActive && "border-[var(--accent-500)] text-[var(--accent-400)]"
-                        )}>
+                        <div
+                          className={cn(
+                            "flex items-center justify-center h-10 rounded-lg text-xs text-(--text-muted)",
+                            "border border-dashed border-[var(--glass-border)] transition-colors",
+                            isDropActive && "border-[var(--accent-500)] text-[var(--accent-400)]",
+                          )}
+                        >
                           {isDropActive ? "Отпустите здесь" : "Нет задач"}
                         </div>
                       ) : (
@@ -183,7 +227,9 @@ export function EpicColumn({ epic, filters, defaultCollapsed = false, onOpenTask
                               <BoardTaskCard
                                 task={task}
                                 dragProps={getDragProps(task.id)}
-                                onOpen={onOpenTask} // ← ДОБАВИТЬ
+                                onOpen={onOpenTask}
+                                isFocused={focusedTaskId === task.id}
+                                onFocus={onFocusTask}
                               />
                             </motion.div>
                           ))}

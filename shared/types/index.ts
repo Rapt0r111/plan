@@ -70,6 +70,10 @@ export const ROLE_META: Record<Role, RoleMeta> = {
     role: "sergeant_major", label: "Старшина", short: "СР",
     bgClass: "bg-amber-100", textClass: "text-amber-800", borderClass: "border-amber-300", hex: "#d97706"
   },
+  security_officer: {
+    role: "security_officer", label: "Ответственный за ЗГТ", short: "ЗГТ",
+    bgClass: "bg-red-100", textClass: "text-red-800", borderClass: "border-red-300", hex: "#f87171"
+  },
   duty_officer: {
     role: "duty_officer", label: "Постоянный состав", short: "ПС",
     bgClass: "bg-slate-100", textClass: "text-slate-700", borderClass: "border-slate-300", hex: "#475569"

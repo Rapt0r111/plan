@@ -8,7 +8,7 @@ import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { users, epics, tasks, subtasks, taskAssignees } from "./schema";
 import path from "path";
-import { ROLES, Role } from "./schema";
+import {Role } from "./schema";
 
 const sqlite = new Database(path.resolve(process.cwd(), "local.db"), { create: true });
 sqlite.exec("PRAGMA journal_mode = WAL;");
@@ -16,7 +16,7 @@ sqlite.exec("PRAGMA foreign_keys = ON;");
 const db = drizzle(sqlite, { schema: { users, epics, tasks, subtasks, taskAssignees } });
 
 // ─── ПОЛЬЗОВАТЕЛИ ─────────────────────────────────────────────────────────────
-const USER_SEEDS = [
+const USER_SEEDS: { name: string; login: string; role: Role; initials: string }[] = [
   { name: "Тарасенко С.Е.", login: "tarasenko", role: "company_commander", initials: "КНР" },
   { name: "Халупа А.И.",    login: "khalupa",   role: "platoon_1_commander", initials: "КВ1" },
   { name: "Трепалин П.В.",  login: "trepalin",  role: "platoon_2_commander", initials: "КВ2" },

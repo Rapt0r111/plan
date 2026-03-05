@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
    globals.css — Premium Design System 2026
-   Palette: Deep Cosmos (dark) + Milky Paper (light)
+   Palette: Deep Cosmos (dark) + Warm Canvas (light)
    Accent: Amethyst — brand identity preserved across themes
    ═══════════════════════════════════════════════════════ */
 
@@ -10,11 +10,9 @@
 
 /* ── Design Tokens ───────────────────────────────────────────────────────── */
 @theme {
-  /* Typography — DM Sans chosen for optical warmth at small sizes */
   --font-sans: 'DM Sans', sans-serif;
   --font-mono: 'DM Mono', monospace;
 
-  /* Layout */
   --sidebar-w: 256px;
   --header-h: 56px;
   --radius: 14px;
@@ -25,32 +23,27 @@
 /* ── Base tokens (dark = default) ────────────────────────────────────────── */
 :root,
 .dark {
-  /* Core palette — Deep Cosmos */
   --bg-base:     #08090f;
   --bg-surface:  #0e0f1a;
   --bg-elevated: #13152a;
   --bg-overlay:  #1a1d35;
 
-  /* Glass layers */
   --glass-01: rgba(255,255,255,0.03);
   --glass-02: rgba(255,255,255,0.06);
   --glass-03: rgba(255,255,255,0.10);
   --glass-border:        rgba(255,255,255,0.08);
   --glass-border-active: rgba(255,255,255,0.18);
 
-  /* Text scale */
   --text-primary:   rgba(255,255,255,0.93);
   --text-secondary: rgba(255,255,255,0.55);
   --text-muted:     rgba(255,255,255,0.30);
 
-  /* Accent — Amethyst system */
   --accent-500: #8b5cf6;
   --accent-400: #a78bfa;
   --accent-300: #c4b5fd;
   --accent-glow:        rgba(139,92,246,0.25);
   --accent-glow-strong: rgba(139,92,246,0.45);
 
-  /* Status colors */
   --status-todo:             rgba(100,116,139,0.20);
   --status-todo-text:        #94a3b8;
   --status-progress:         rgba(14,165,233,0.18);
@@ -60,19 +53,16 @@
   --status-blocked:          rgba(239,68,68,0.18);
   --status-blocked-text:     #f87171;
 
-  /* Status chart colors */
   --color-in-progress: #38bdf8;
   --color-done:        #34d399;
   --color-blocked:     #f87171;
   --color-todo:        #64748b;
 
-  /* Priority colors */
   --priority-critical: #ef4444;
   --priority-high:     #f97316;
   --priority-medium:   #eab308;
   --priority-low:      #475569;
 
-  /* Semantic surface tokens */
   --header-bg:      rgba(8,9,15,0.80);
   --filter-bar-bg:  rgba(8,9,15,0.70);
   --modal-backdrop: rgba(8,9,15,0.65);
@@ -80,76 +70,114 @@
   --island-bg:      rgba(0,0,0,0.85);
   --sidebar-top:    #0c0d1e;
 
-  /* Shadows — none in dark (glows used instead) */
   --shadow-card:     none;
   --shadow-elevated: none;
   --shadow-overlay:  none;
 }
 
-/* ── LIGHT THEME OVERRIDES ───────────────────────────────────────────────── */
-.light {
-  /* Core palette — Milky Paper */
-  --bg-base:     #f5f3ef;
-  --bg-surface:  #ede9e3;
-  --bg-elevated: #e5e0d8;
-  --bg-overlay:  #ddd8d0;
+/* ── LIGHT THEME — Warm Canvas 2026 ─────────────────────────────────────── */
+/*
+ * ДИЗАЙН-КОНЦЕПЦИЯ:
+ *  Фон — тёплый льняной (#f0ede6), карточки — чистый белый (#ffffff).
+ *  Контраст поверхностей создаёт мгновенную иерархию без лишнего шума.
+ *  Тени — мягкие, тёплые. Акцент — глубокий аметист с хорошим контрастом.
+ *  Статусы — насыщенные, быстро считываемые.
+ */
+html.light {
+  /* ── Surface hierarchy ──────────────────────────────────────────────────
+   *  base     = тёплый льняной холст (фон страницы)
+   *  surface  = чистый белый (карточки, панели — главная поверхность)
+   *  elevated = слегка тёплый белый (модалки, дропдауны)
+   *  overlay  = overlay-фон (backdrop)
+   */
+  --bg-base:     #ece8e0;   /* тёплый льняной — фон, между элементами */
+  --bg-surface:  #ffffff;   /* чистый белый — карточки, сайдбар, хедер */
+  --bg-elevated: #f9f7f4;   /* чуть теплее белого — попапы, селекты */
+  --bg-overlay:  #f3f0ea;   /* для вложенных поверхностей */
 
-  /* Glass layers — inverted */
-  --glass-01: rgba(0,0,0,0.025);
-  --glass-02: rgba(0,0,0,0.045);
-  --glass-03: rgba(0,0,0,0.075);
-  --glass-border:        rgba(0,0,0,0.09);
-  --glass-border-active: rgba(0,0,0,0.20);
+  /* ── Glass — тонкие белые оверлеи (для glassmorphism компонентов) ──────── */
+  --glass-01: rgba(255,255,255,0.55);
+  --glass-02: rgba(255,255,255,0.75);
+  --glass-03: rgba(255,255,255,0.90);
+  --glass-border:        rgba(0,0,0,0.08);
+  --glass-border-active: rgba(109,40,217,0.30);
 
-  /* Text — warm near-black */
-  --text-primary:   rgba(20,15,8,0.92);
-  --text-secondary: rgba(20,15,8,0.58);
-  --text-muted:     rgba(20,15,8,0.38);
+  /* ── Text — тёплый почти-чёрный, высокий контраст ──────────────────────
+   *  primary:   ~90% opacity → WCAG AAA для основного текста
+   *  secondary: ~60% → читабельно, не кричит
+   *  muted:     ~38% → метаданные, плейсхолдеры
+   */
+  --text-primary:   rgba(18,12,6,0.90);
+  --text-secondary: rgba(18,12,6,0.58);
+  --text-muted:     rgba(18,12,6,0.36);
 
-  /* Accent — deeper amethyst for contrast on light bg */
-  --accent-500: #7c3aed;
-  --accent-400: #6d28d9;
-  --accent-300: #5b21b6;
-  --accent-glow:        rgba(109,40,217,0.12);
-  --accent-glow-strong: rgba(109,40,217,0.22);
+  /* ── Accent — глубокий аметист, оптимизирован под светлый фон ──────────── */
+  --accent-500: #6d28d9;   /* основной — кнопки, активные состояния */
+  --accent-400: #7c3aed;   /* hover */
+  --accent-300: #8b5cf6;   /* иконки, лёгкие акценты */
+  --accent-glow:        rgba(109,40,217,0.10);
+  --accent-glow-strong: rgba(109,40,217,0.20);
 
-  /* Status colors — saturated for readability on light */
-  --status-todo-text:     #64748b;
+  /* ── Status colors — насыщенные для быстрого считывания ──────────────────
+   *  Принцип: цветной фон 10-14% opacity + текст с высоким контрастом.
+   *  Пилюли должны читаться за 200мс — поэтому цвета ярче, чем кажется нужным.
+   */
+  --status-todo:          rgba(71,85,105,0.10);
+  --status-todo-text:     #475569;
+  --status-progress:      rgba(3,105,161,0.10);
   --status-progress-text: #0369a1;
+  --status-done:          rgba(5,150,105,0.10);
   --status-done-text:     #059669;
+  --status-blocked:       rgba(220,38,38,0.10);
   --status-blocked-text:  #dc2626;
 
-  /* Status chart colors */
-  --color-in-progress: #0369a1;
+  /* ── Chart colors — насыщенные, различимые ─────────────────────────────── */
+  --color-in-progress: #0284c7;
   --color-done:        #059669;
   --color-blocked:     #dc2626;
   --color-todo:        #64748b;
 
-  /* Priority */
+  /* ── Priority ──────────────────────────────────────────────────────────── */
   --priority-critical: #dc2626;
   --priority-high:     #ea580c;
-  --priority-medium:   #ca8a04;
+  --priority-medium:   #d97706;
   --priority-low:      #64748b;
 
-  /* Semantic surface tokens */
-  --header-bg:      rgba(245,243,239,0.85);
-  --filter-bar-bg:  rgba(245,243,239,0.80);
-  --modal-backdrop: rgba(200,195,185,0.65);
-  --modal-bg:       rgba(245,243,239,0.97);
-  --island-bg:      rgba(245,243,239,0.92);
-  --sidebar-top:    #d8d3cb;
+  /* ── Semantic surfaces ──────────────────────────────────────────────────
+   *  Хедер и сайдбар — белые (совпадают с --bg-surface).
+   *  Это создаёт ощущение "одной панели" — современный паттерн 2025-2026.
+   */
+  --header-bg:      rgba(255,255,255,0.92);
+  --filter-bar-bg:  rgba(255,255,255,0.85);
+  --modal-backdrop: rgba(100,90,80,0.40);
+  --modal-bg:       rgba(255,255,255,0.98);
+  --island-bg:      rgba(255,255,255,0.95);
+  --sidebar-top:    #ffffff;
 
-  /* Shadows — paper depth */
-  --shadow-card:     0 1px 4px rgba(0,0,0,0.08), 0 2px 10px rgba(0,0,0,0.05);
-  --shadow-elevated: 0 4px 20px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.07);
-  --shadow-overlay:  0 8px 32px rgba(0,0,0,0.14), 0 3px 10px rgba(0,0,0,0.09);
+  /* ── Shadows — тёплые, многослойные, создают глубину ───────────────────
+   *  card:     карточки на льняном фоне — нужна чёткая граница
+   *  elevated: модалки, дропдауны — заметнее
+   *  overlay:  командная палитра, полноэкранные оверлеи
+   */
+  --shadow-card:
+    0 1px 2px rgba(60,40,10,0.06),
+    0 3px 8px rgba(60,40,10,0.06),
+    0 0 0 1px rgba(60,40,10,0.05);
+  --shadow-elevated:
+    0 4px 16px rgba(60,40,10,0.10),
+    0 1px 4px rgba(60,40,10,0.08),
+    0 0 0 1px rgba(60,40,10,0.06);
+  --shadow-overlay:
+    0 12px 40px rgba(60,40,10,0.16),
+    0 4px 12px rgba(60,40,10,0.10),
+    0 0 0 1px rgba(60,40,10,0.06);
 }
 
 /* ── Reset & Base ─────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
 html { color-scheme: dark; }
-.light html, html.light { color-scheme: light; }
+html.light { color-scheme: light; }
 
 body {
   font-family: var(--font-sans);
@@ -157,13 +185,12 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Subtle noise grain — adds tactility without noise */
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
 }
 
-/* Light theme — paper texture (subtle, clean) */
-.light body {
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.018'/%3E%3C/svg%3E");
+/* Light — зернистость убрана, чистая бумага */
+html.light body {
+  background-image: none;
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */
@@ -176,9 +203,8 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 
-/* Light theme scrollbar */
-.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); }
-.light ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.28); }
+html.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+html.light ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
 
 /* ── Priority left-border system ─────────────────────────────────────────── */
 [data-priority="critical"] { border-left: 2px solid var(--priority-critical); }
@@ -188,7 +214,7 @@ body {
 
 /* ── Component utilities ──────────────────────────────────────────────────── */
 @layer components {
-  /* Glass morphism panel — the foundational UI surface */
+  /* Glass morphism panel */
   .glass {
     background: var(--glass-01);
     backdrop-filter: blur(16px) saturate(180%);
@@ -209,25 +235,36 @@ body {
     box-shadow: 0 4px 24px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05) inset;
   }
 
-  /* Light theme — shadow replaces glow */
-  .light .glass {
-    background: var(--glass-01);
-    backdrop-filter: blur(16px) saturate(120%);
+  /* Light — карточки белые с тёплой тенью вместо glow */
+  html.light .glass {
+    background: var(--bg-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     border-color: var(--glass-border);
     box-shadow: var(--shadow-card);
   }
 
-  .light .glass-elevated {
-    box-shadow: var(--shadow-elevated);
+  html.light .glass-md {
+    background: var(--bg-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--glass-border);
+    box-shadow: var(--shadow-card);
   }
 
-  /* Accent glow — draws eye without hard contrast */
+  html.light .glass-elevated {
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-elevated);
+    border-color: var(--glass-border);
+  }
+
+  /* Accent glow */
   .glow-accent {
     box-shadow: 0 0 20px var(--accent-glow), 0 0 60px var(--accent-glow);
   }
 
-  .light .glow-accent {
-    box-shadow: 0 0 16px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.08);
+  html.light .glow-accent {
+    box-shadow: var(--shadow-elevated);
   }
 
   /* Status pills */
@@ -248,8 +285,14 @@ body {
     color: var(--accent-400);
     border: 1px solid rgba(139,92,246,0.3);
   }
-  .light .nav-item.active {
-    border-color: rgba(109,40,217,0.3);
+  html.light .nav-item:hover {
+    background: rgba(109,40,217,0.06);
+    color: var(--text-primary);
+  }
+  html.light .nav-item.active {
+    background: rgba(109,40,217,0.08);
+    color: var(--accent-500);
+    border-color: rgba(109,40,217,0.20);
   }
 }
 
@@ -267,11 +310,10 @@ body {
   to   { transform: rotate(360deg); }
 }
 
-.animate-fade-up  { animation: fadeUp 0.3s ease forwards; }
+.animate-fade-up    { animation: fadeUp 0.3s ease forwards; }
 .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
-.animate-spin-slow { animation: spin-slow 3s linear infinite; }
+.animate-spin-slow  { animation: spin-slow 3s linear infinite; }
 
-/* Staggered children for list reveals */
 .stagger > * { animation: fadeUp 0.25s ease both; }
 .stagger > *:nth-child(1) { animation-delay: 0ms; }
 .stagger > *:nth-child(2) { animation-delay: 40ms; }
@@ -288,10 +330,10 @@ body {
   z-index: 50;
 }
 
-.light [data-dragging="true"] {
+html.light [data-dragging="true"] {
   opacity: 0.40;
   transform: scale(0.97) rotate(1deg);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.25);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.18);
 }
 
 /* ── Card 3D tilt perspective ─────────────────────────────────────────────── */

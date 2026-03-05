@@ -15,7 +15,7 @@ export function TimelineRuler({ layout }: Props) {
       style={{
         height: 44,
         background: "var(--bg-elevated)",
-        borderBottom: "1px solid rgba(255,255,255,0.07)",
+        borderBottom: "1px solid var(--glass-border)",
       }}
     >
       {/* Left label cell */}
@@ -24,11 +24,13 @@ export function TimelineRuler({ layout }: Props) {
         style={{
           width: LEFT_W,
           background: "var(--bg-elevated)",
-          borderRight: "1px solid rgba(255,255,255,0.07)",
+          borderRight: "1px solid var(--glass-border)",
         }}
       >
-        <span className="text-[9px] font-mono uppercase tracking-widest"
-          style={{ color: "var(--text-muted)" }}>
+        <span
+          className="text-[9px] font-mono uppercase tracking-widest"
+          style={{ color: "var(--text-muted)" }}
+        >
           Эпик
         </span>
       </div>
@@ -44,7 +46,7 @@ export function TimelineRuler({ layout }: Props) {
             <span
               className="text-[11px] font-mono whitespace-nowrap capitalize"
               style={{
-                color: isJan ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.22)",
+                color: isJan ? "var(--text-secondary)" : "var(--text-muted)",
                 fontWeight: isJan ? 600 : 400,
               }}
             >
@@ -59,7 +61,11 @@ export function TimelineRuler({ layout }: Props) {
         >
           <span
             className="text-[8px] font-mono font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
-            style={{ background: "#7c3aed", color: "white", boxShadow: "0 0 10px rgba(124,58,237,0.5)" }}
+            style={{
+              background: "var(--accent-500)",
+              color: "white",
+              boxShadow: "0 0 10px var(--accent-glow-strong)",
+            }}
           >
             СЕГОДНЯ
           </span>

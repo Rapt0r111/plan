@@ -6,6 +6,14 @@
  *  - Инлайн-скрипт в <head> устраняет FOUC (flash of unstyled content)
  *  - ThemeProvider читает localStorage/prefers-color-scheme при гидрации
  *
+ * HYDRATION FIX:
+ *  suppressHydrationWarning добавлен к <html>.
+ *  Причина: инлайн-скрипт устанавливает className="light"|"dark" ДО React,
+ *  поэтому сервер рендерит <html lang="ru"> (без класса), а клиент видит
+ *  класс выставленный скриптом. React пытается "починить" расхождение и
+ *  удаляет класс — тема перестаёт работать.
+ *  suppressHydrationWarning говорит React: «не трогай атрибуты этого элемента».
+ *
  * ПОРЯДОК МОНТИРОВАНИЯ ГЛОБАЛЬНЫХ СЛОЁВ (z-index):
  *  CommandPalette         (z-50)   — поиск и навигация
  *  DynamicIsland          (z-9998) — нотификации
@@ -24,7 +32,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru">
+    <html lang="ru" suppressHydrationWarning>
       <head>
         {/* Anti-FOUC: тема применяется до первого paint */}
         <script

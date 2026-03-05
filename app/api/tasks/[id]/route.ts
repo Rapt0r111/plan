@@ -20,7 +20,7 @@ export async function PATCH(
     const body = await req.json();
     await updateTask(Number(id), body);
 
-    revalidateTag(EPICS_CACHE_TAG, "default");
+    revalidateTag(EPICS_CACHE_TAG, "max");
 
     return NextResponse.json({ ok: true });
   } catch (e) {

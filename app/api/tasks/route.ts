@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { id } = await createTask(body);
 
-    revalidateTag(EPICS_CACHE_TAG, "default");
+    revalidateTag(EPICS_CACHE_TAG, "max");
 
     return NextResponse.json({ ok: true, data: { id } }, { status: 201 });
   } catch (e) {

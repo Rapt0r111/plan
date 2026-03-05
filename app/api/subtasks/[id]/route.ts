@@ -23,7 +23,7 @@ export async function PATCH(
     const { isCompleted } = await req.json();
     await toggleSubtask(Number(params.id), isCompleted);
 
-    revalidateTag(EPICS_CACHE_TAG, "default");
+    revalidateTag(EPICS_CACHE_TAG, "max");
 
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -17,11 +17,12 @@ import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const { id } = await params;
     const { isCompleted } = await req.json();
-    await toggleSubtask(Number(params.id), isCompleted);
+    await toggleSubtask(Number(id), isCompleted);
 
     revalidateTag(EPICS_CACHE_TAG, "max");
 

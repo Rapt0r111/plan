@@ -1,30 +1,10 @@
 "use client";
-/**
- * @file SyncNotificationBridge.tsx — features/sync
- *
- * РЕФАКТОРИНГ: перемещён из shared/lib/ в features/sync/
- *
- * ПРИЧИНА:
- *  shared/ по FSD не должен импортировать из widgets/.
- *  SyncNotificationBridge использовал useNotify() из widgets/notifications/DynamicIsland —
- *  это нарушение пирамиды зависимостей (shared → widgets недопустимо).
- *
- * features/ может импортировать из widgets/ — правило соблюдено.
- *
- * ФАЙЛЫ К УДАЛЕНИЮ ПОСЛЕ МИГРАЦИИ:
- *  - shared/lib/SyncNotificationBridge.tsx
- *  - app/providers/SyncNotificationBridge.tsx (дубль)
- *
- * ИМПОРТ В app/layout.tsx:
- *  import { SyncNotificationBridge } from "@/features/sync/SyncNotificationBridge";
- */
-
 import { useEffect, useRef } from "react";
 import { useTaskStore } from "@/shared/store/useTaskStore";
-import { useNotify } from "./DynamicIsland";
+import { useNotificationStore } from "./useNotificationStore";
 
 export function SyncNotificationBridge() {
-  const notify = useNotify();
+  const push       = useNotificationStore((s) => s.push);
   const syncStatus = useTaskStore((s) => s.syncStatus);
   const prevStatus = useRef(syncStatus);
 
@@ -33,17 +13,14 @@ export function SyncNotificationBridge() {
     prevStatus.current = syncStatus;
 
     if (prev !== "error" && syncStatus === "error") {
-      notify({
-        type: "sync_error",
+      push({
+        kind:  "error",
         title: "Ошибка синхронизации",
-        body: "Изменения не сохранены. Повтор...",
-        duration: 4000,
+        body:  "Изменения не сохранены. Повтор...",
       });
     }
-
-    // syncing → synced: намеренно без нотификации
-    // Notification fatigue: пользователь не должен видеть «OK» после каждого клика
-  }, [syncStatus, notify]);
+    // syncing → synced: без уведомления (notification fatigue)
+  }, [syncStatus, push]);
 
   return null;
 }

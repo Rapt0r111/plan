@@ -34,7 +34,6 @@
  */
 
 import { Suspense } from "react";
-import dynamic from "next/dynamic";
 import { getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
@@ -42,38 +41,8 @@ import { Header } from "@/widgets/header/Header";
 import { EpicCard } from "@/widgets/epic-card/EpicCard";
 import { RoleBadge } from "@/features/role-badge/RoleBadge";
 import { StoreHydrator } from "@/shared/store/StoreHydrator";
+import { DashboardClientWidgets } from "./DashboardClientWidgets";
 import Link from "next/link";
-
-/**
- * Dynamic imports для тяжёлых client-only виджетов.
- * Оба используют Zustand (ssr: false) и тяжёлый framer-motion.
- * Выносим в отдельные JS-чанки — не блокируют первичный бандл страницы.
- */
-const WorkloadBalancer = dynamic(
-  () => import("@/features/workload/WorkloadBalancer").then((m) => ({ default: m.WorkloadBalancer })),
-  {
-    ssr: false,
-    loading: () => (
-      <div
-        className="rounded-2xl animate-pulse"
-        style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", height: 56 }}
-      />
-    ),
-  }
-);
-
-const InfiniteTimeline = dynamic(
-  () => import("@/features/timeline/InfiniteTimeline").then((m) => ({ default: m.InfiniteTimeline })),
-  {
-    ssr: false,
-    loading: () => (
-      <div
-        className="rounded-2xl animate-pulse"
-        style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", height: 200 }}
-      />
-    ),
-  }
-);
 
 // ─── Async компонент для тяжёлых виджетов ────────────────────────────────────
 // Вынесен отдельно — обёрнут в <Suspense> в основном компоненте.
@@ -83,27 +52,13 @@ async function HeavyWidgets() {
 
   return (
     <>
-      {/*
-       * StoreHydrator внутри Suspense-границы:
-       * клиент получит его как часть streaming-фрагмента,
-       * useEffect запустится и заполнит Zustand-стор для WorkloadBalancer
-       * и InfiniteTimeline.
-       */}
       <StoreHydrator epics={epicsWithTasks} />
-
-      <section>
-        <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">
-          Нагрузка
-        </h2>
-        <WorkloadBalancer />
-      </section>
-
-      <section>
-        <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">
-          Хронолента
-        </h2>
-        <InfiniteTimeline />
-      </section>
+      {/*
+       * DashboardClientWidgets — Client Component с lazy-loaded виджетами.
+       * dynamic(ssr:false) нельзя использовать в Server Components (Next.js 16),
+       * поэтому WorkloadBalancer и InfiniteTimeline вынесены в отдельный клиентский модуль.
+       */}
+      <DashboardClientWidgets />
     </>
   );
 }

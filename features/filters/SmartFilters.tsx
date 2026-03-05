@@ -9,13 +9,25 @@
  */
 import { useCallback } from "react";
 import { cn } from "@/shared/lib/utils";
-import { ROLE_META } from "@/shared/config/roles";
+import { useRoleStore } from "@/shared/store/useRoleStore";
+
 import type { TaskStatus, TaskPriority, Role, TaskView } from "@/shared/types";
+const roles = useRoleStore((s) => s.roles);
 
 export interface FilterState {
-  roles: Role[];
+  roleKeys: string[];    // ← было: roles: Role[]
   statuses: TaskStatus[];
   priorities: TaskPriority[];
+}
+
+
+{
+  roles.map((r) => (
+    <Chip key={r.key} label={r.label} color={r.hex}
+      active={filters.roleKeys.includes(r.key)}
+      onClick={() => toggle("roleKeys", r.key)}
+    />
+  ))
 }
 
 export const EMPTY_FILTERS: FilterState = { roles: [], statuses: [], priorities: [] };
@@ -26,17 +38,17 @@ interface Props {
 }
 
 const STATUS_OPTS: { value: TaskStatus; label: string; color: string }[] = [
-  { value: "todo",        label: "К работе",     color: "#64748b" },
-  { value: "in_progress", label: "В работе",      color: "#38bdf8" },
-  { value: "done",        label: "Готово",        color: "#34d399" },
-  { value: "blocked",     label: "Заблокировано", color: "#f87171" },
+  { value: "todo", label: "К работе", color: "#64748b" },
+  { value: "in_progress", label: "В работе", color: "#38bdf8" },
+  { value: "done", label: "Готово", color: "#34d399" },
+  { value: "blocked", label: "Заблокировано", color: "#f87171" },
 ];
 
 const PRIORITY_OPTS: { value: TaskPriority; label: string; color: string }[] = [
   { value: "critical", label: "Критично", color: "#ef4444" },
-  { value: "high",     label: "Высокий",  color: "#f97316" },
-  { value: "medium",   label: "Средний",  color: "#eab308" },
-  { value: "low",      label: "Низкий",   color: "#475569" },
+  { value: "high", label: "Высокий", color: "#f97316" },
+  { value: "medium", label: "Средний", color: "#eab308" },
+  { value: "low", label: "Низкий", color: "#475569" },
 ];
 
 export function SmartFilters({ filters, onChange }: Props) {
@@ -100,7 +112,7 @@ export function SmartFilters({ filters, onChange }: Props) {
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[rgba(239,68,68,0.12)] text-[#f87171] border border-[rgba(239,68,68,0.25)] hover:bg-[rgba(239,68,68,0.20)] transition-all duration-150"
         >
           <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M2 2l8 8M10 2l-8 8"/>
+            <path d="M2 2l8 8M10 2l-8 8" />
           </svg>
           Сбросить
         </button>
@@ -142,9 +154,9 @@ function Chip({ label, color, active, onClick }: {
 }
 
 export function applyFilters(tasks: TaskView[], filters: FilterState): TaskView[] {
-  if (!filters.roles.length && !filters.statuses.length && !filters.priorities.length) return tasks;
   return tasks.filter((t) => {
-    if (filters.roles.length && !t.assignees.some((a) => filters.roles.includes(a.role as Role))) return false;
+    if (filters.roleKeys.length &&
+      !t.assignees.some((a) => filters.roleKeys.includes(a.roleMeta.key))) return false;
     if (filters.statuses.length && !filters.statuses.includes(t.status)) return false;
     if (filters.priorities.length && !filters.priorities.includes(t.priority)) return false;
     return true;

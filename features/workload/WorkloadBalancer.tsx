@@ -1,30 +1,21 @@
 "use client";
-/**
- * @file WorkloadBalancer.tsx — features/workload
- *
- * РЕФАКТОРИНГ: устранено дублирование логики подсчёта нагрузки.
- *
- * ДО: WorkloadBalancer содержал собственный useMemo с подсчётом задач по ролям
- *     (строки 22–39 оригинала) — полная копия calculateLoad(), без нормализации
- *     и EnergyLevel классификации.
- *
- * ПОСЛЕ: импортируем calculateLoad() из features/energy/model/calculateLoad.
- *   Это даёт нам бесплатно:
- *   — EnergyLevel ("calm" | "moderate" | "high" | "critical")
- *   — normalised energy scalar 0–1
- *   — completionRate
- *   — getEnergyColor() для визуального маппинга
- *
- * UX rationale: WorkloadBalancer теперь показывает те же данные, что и EnergyMap,
- * только в другом представлении — консистентность без дополнительного кода.
- */
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
-import { calculateLoad, getEnergyColor, type RoleLoad } from "@/features/energy/model/calculateLoad";
+import { useRoleStore } from "@/shared/store/useRoleStore";
 import { cn } from "@/shared/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface RoleLoad {
+  role: string;
+  label: string;
+  hex: string;
+  total: number;
+  pending: number;
+  /** Normalised 0–1 relative to the most loaded role */
+  energy: number;
+}
 
 interface Suggestion {
   from: string;
@@ -37,6 +28,15 @@ type Phase = "idle" | "analyzing" | "result" | "applied";
 
 const ANALYZE_DURATION = 1800;
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getRoleColor(hex: string, energy: number): string {
+  if (energy >= 0.75) return "#f87171"; // high load → red
+  if (energy >= 0.5) return "#fb923c"; // moderate → orange
+  if (energy >= 0.25) return "#facc15"; // low-moderate → yellow
+  return hex;                            // calm → role colour
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 interface LoadBarProps {
@@ -46,7 +46,7 @@ interface LoadBarProps {
 }
 
 function LoadBar({ load, index, isMax }: LoadBarProps) {
-  const barColor = getEnergyColor(load.level, load.hex);
+  const barColor = getRoleColor(load.hex, load.energy);
   const pct = load.energy * 100;
 
   return (
@@ -81,19 +81,6 @@ function LoadBar({ load, index, isMax }: LoadBarProps) {
       >
         {load.pending}
       </span>
-      {/* Energy level badge — новая информация, которой не было до рефакторинга */}
-      {load.level !== "calm" && (
-        <span
-          className="text-[9px] font-mono px-1.5 rounded-full shrink-0"
-          style={{
-            background: `${barColor}18`,
-            color: barColor,
-            border: `1px solid ${barColor}30`,
-          }}
-        >
-          {load.level}
-        </span>
-      )}
     </motion.div>
   );
 }
@@ -144,15 +131,43 @@ function SuggestionCard({ suggestion, index }: SuggestionCardProps) {
 
 export function WorkloadBalancer() {
   const epics = useTaskStore((s) => s.epics);
+  const roles = useRoleStore((s) => s.roles);
   const [phase, setPhase] = useState<Phase>("idle");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
 
-  /**
-   * calculateLoad() заменяет ~20 строк дублированного кода.
-   * Дополнительно получаем: EnergyLevel, completionRate, normalised energy.
-   */
-  const loads = useMemo(() => calculateLoad(epics), [epics]);
+  const loads = useMemo<RoleLoad[]>(() => {
+    const map = new Map<string, { label: string; hex: string; total: number; pending: number }>();
+
+    for (const role of roles) {
+      map.set(role.key, { label: role.label, hex: role.hex, total: 0, pending: 0 });
+    }
+
+    for (const epic of epics) {
+      for (const task of epic.tasks ?? []) {
+        for (const assignee of task.assignees ?? []) {
+          const key = assignee.roleMeta.key; // ← ВОТ ОНО
+
+          const entry = map.get(key);
+          if (!entry) continue;
+
+          entry.total++;
+          if (task.status !== "done") entry.pending++;
+        }
+      }
+    }
+
+    const maxPending = Math.max(...[...map.values()].map((v) => v.pending), 1);
+
+    return [...map.entries()].map(([role, v]) => ({
+      role,
+      label: v.label,
+      hex: v.hex,
+      total: v.total,
+      pending: v.pending,
+      energy: v.pending / maxPending,
+    }));
+  }, [epics, roles]);
 
   const maxCount = Math.max(...loads.map((l) => l.pending), 1);
   const totalAssigned = loads.reduce((s, l) => s + l.total, 0);

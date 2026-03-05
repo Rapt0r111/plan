@@ -1,16 +1,13 @@
 /**
  * @file schema.ts — shared/db
  *
- * ИСПРАВЛЕНИЕ: добавлена роль "security_officer" в ROLES array.
+ * BREAKING CHANGE v2:
+ *   - Добавлена таблица roles (canonical source of truth)
+ *   - users.role: text → users.roleId: integer FK → roles.id
+ *   - Удалён ROLES array и Role enum
  *
- * ПРОБЛЕМА: shared/config/roles.ts определял security_officer в типе Role
- * и в ROLE_META, но в schema.ts этой роли не было. Это приводило к:
- *   1. Несовместимости типов Role между schema.ts и roles.ts
- *   2. Потенциальному падению ROLE_META[row.role] при обращении
- *      к пользователю с этой ролью (undefined → TypeError)
- *   3. Несоответствию типов при Drizzle-инференсе
+ * Migration: см. drizzle/XXXX_roles.sql
  */
-
 import { sql } from "drizzle-orm";
 import {
   integer,
@@ -19,32 +16,25 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-// ─── DOMAIN CONSTANTS ────────────────────────────────────────────────────────
-
-export const ROLES = [
-  "company_commander",   // КНР
-  "platoon_1_commander", // КВ1
-  "platoon_2_commander", // КВ2
-  "deputy_platoon_1",    // ЗКВ1
-  "deputy_platoon_2",    // ЗКВ2
-  "squad_commander_2",   // КО2
-  "sergeant_major",      // СР
-  "security_officer",    // ЗГТ  ← ДОБАВЛЕНО (было в ROLE_META, не было в schema)
-  "duty_officer",        // ПС
-] as const;
-
-export type Role = (typeof ROLES)[number];
-export const TASK_STATUSES = ["todo", "in_progress", "done", "blocked"] as const;
-export type TaskStatus = (typeof TASK_STATUSES)[number];
-export const TASK_PRIORITIES = ["low", "medium", "high", "critical"] as const;
-export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+// ─── TABLE: roles ─────────────────────────────────────────────────────────────
+export const roles = sqliteTable("roles", {
+  id:          integer("id").primaryKey({ autoIncrement: true }),
+  key:         text("key").notNull().unique(),
+  label:       text("label").notNull(),
+  short:       text("short").notNull(),
+  hex:         text("hex").notNull(),
+  description: text("description"),
+  sortOrder:   integer("sort_order").notNull().default(0),
+  createdAt:   text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt:   text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
 
 // ─── TABLE: users ─────────────────────────────────────────────────────────────
 export const users = sqliteTable("users", {
   id:       integer("id").primaryKey({ autoIncrement: true }),
   name:     text("name").notNull(),
   login:    text("login").notNull().unique(),
-  role:     text("role").$type<Role>().notNull(),
+  roleId:   integer("role_id").notNull().references(() => roles.id),
   initials: text("initials").notNull(),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
@@ -62,6 +52,12 @@ export const epics = sqliteTable("epics", {
 });
 
 // ─── TABLE: tasks ─────────────────────────────────────────────────────────────
+export const TASK_STATUSES = ["todo", "in_progress", "done", "blocked"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
+export const TASK_PRIORITIES = ["low", "medium", "high", "critical"] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
 export const tasks = sqliteTable("tasks", {
   id:          integer("id").primaryKey({ autoIncrement: true }),
   epicId:      integer("epic_id").notNull().references(() => epics.id, { onDelete: "cascade" }),

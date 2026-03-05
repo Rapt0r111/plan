@@ -9,10 +9,20 @@ import { Suspense } from "react";
 import { Sidebar } from "@/widgets/sidebar/Sidebar";
 import { getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
-
+import { getAllRoles } from "@/entities/role/roleRepository";
+import { RoleHydrator } from "@/shared/store/RoleHydrator";
 async function SidebarLoader() {
-  const [epics, users] = await Promise.all([getAllEpics(), getAllUsers()]);
-  return <Sidebar epics={epics} users={users} />;
+  const [epics, users, roles] = await Promise.all([
+    getAllEpics(),
+    getAllUsers(),
+    getAllRoles(),   // ← добавлено
+  ]);
+  return (
+    <>
+      <RoleHydrator roles={roles} />   {/* ← добавлено */}
+      <Sidebar epics={epics} users={users} />
+    </>
+  );
 }
 
 function SidebarSkeleton() {

@@ -1,65 +1,21 @@
 /**
  * @file epicRepository.ts — entities/epic
- *
- * ═══════════════════════════════════════════════════════════════
- * PERFORMANCE AUDIT — v3
- * ═══════════════════════════════════════════════════════════════
- *
- * ИЗМЕНЕНИЯ v3:
- *
- * 1. TTL увеличен с 30s до 60s для getAllEpicsWithTasks.
- *    Rationale: мутации всегда инвалидируют кеш через revalidateTag,
- *    значит 30s → 60s не ухудшает свежесть данных, но снижает нагрузку.
- *
- * 2. CACHE_TTL_LIGHT = 120s для getAllEpics (лёгкий запрос для сайдбара/дашборда).
- *    Счётчики задач менее критичны к мгновенной свежести.
- *
- * 3. Явная пометка unstable_cache ключей — разные ключи для разных функций,
- *    чтобы revalidateTag("epics") сбрасывал ОБА кеша одновременно.
  */
 
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { db } from "@/shared/db/client";
-import { epics, tasks, taskAssignees, users, subtasks } from "@/shared/db/schema";
+import { epics, tasks, taskAssignees, users, subtasks, roles } from "@/shared/db/schema";
 import { eq, inArray, sql, count } from "drizzle-orm";
 import type { DbEpic, EpicWithTasks, TaskView, UserWithMeta, SubtaskView } from "@/shared/types";
-import { ROLE_META } from "@/shared/config/roles";
 
 export const EPICS_CACHE_TAG = "epics";
 
-/** TTL для тяжёлого запроса (полный граф задач) */
-const CACHE_TTL = 60;
-
-/** TTL для лёгкого запроса (только счётчики) */
+const CACHE_TTL       = 60;
 const CACHE_TTL_LIGHT = 120;
-
-// ─── Вспомогательный тип для JOIN-строки ─────────────────────────────────────
-type JoinedUser = typeof users.$inferSelect;
-
-function toUserWithMeta(row: JoinedUser): UserWithMeta {
-  const meta = ROLE_META[row.role as keyof typeof ROLE_META];
-  // Fallback для роли, не найденной в ROLE_META (защита от рассинхрона schema/config)
-  if (!meta) {
-    return {
-      ...row,
-      roleMeta: {
-        role: row.role as never,
-        label: row.role,
-        short: row.role.slice(0, 3).toUpperCase(),
-        bgClass: "bg-slate-500/10",
-        textClass: "text-slate-400",
-        borderClass: "border-slate-500/20",
-        hex: "#94a3b8",
-      },
-    };
-  }
-  return { ...row, roleMeta: { ...meta, role: row.role } };
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getAllEpics — лёгкий список для сайдбара и карточек дашборда
-// 1 SQL-запрос (LEFT JOIN + GROUP BY + CASE WHEN)
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function _getAllEpics(): Promise<(DbEpic & { taskCount: number; doneCount: number })[]> {
@@ -81,14 +37,8 @@ async function _getAllEpics(): Promise<(DbEpic & { taskCount: number; doneCount:
     .from(epics)
     .leftJoin(tasks, eq(tasks.epicId, epics.id))
     .groupBy(
-      epics.id,
-      epics.title,
-      epics.description,
-      epics.color,
-      epics.startDate,
-      epics.endDate,
-      epics.createdAt,
-      epics.updatedAt,
+      epics.id, epics.title, epics.description, epics.color,
+      epics.startDate, epics.endDate, epics.createdAt, epics.updatedAt,
     );
 
   return rows;
@@ -100,6 +50,56 @@ export const getAllEpics = cache(
     tags: [EPICS_CACHE_TAG],
   }),
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+type AssigneeRow = {
+  taskId: number;
+  user: typeof users.$inferSelect;
+  role: typeof roles.$inferSelect;
+};
+
+function buildAssigneesByTask(rows: AssigneeRow[]): Map<number, UserWithMeta[]> {
+  const map = new Map<number, UserWithMeta[]>();
+  for (const row of rows) {
+    const arr = map.get(row.taskId) ?? [];
+    arr.push({ ...row.user, roleMeta: row.role });
+    map.set(row.taskId, arr);
+  }
+  return map;
+}
+
+async function fetchAssignees(taskIds: number[]): Promise<AssigneeRow[]> {
+  return db
+    .select({
+      taskId: taskAssignees.taskId,
+      user: {
+        id:        users.id,
+        name:      users.name,
+        login:     users.login,
+        roleId:    users.roleId,
+        initials:  users.initials,
+        createdAt: users.createdAt,
+      },
+      role: {
+        id:          roles.id,
+        key:         roles.key,
+        label:       roles.label,
+        short:       roles.short,
+        hex:         roles.hex,
+        description: roles.description,
+        sortOrder:   roles.sortOrder,
+        createdAt:   roles.createdAt,
+        updatedAt:   roles.updatedAt,
+      },
+    })
+    .from(taskAssignees)
+    .innerJoin(users, eq(taskAssignees.userId, users.id))
+    .innerJoin(roles, eq(users.roleId, roles.id))
+    .where(inArray(taskAssignees.taskId, taskIds));
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getEpicById — страница одного эпика (не кешируется — нужна свежесть)
@@ -129,11 +129,7 @@ export const getEpicById = cache(async function getEpicById(
       .from(subtasks)
       .where(inArray(subtasks.taskId, taskIds))
       .orderBy(subtasks.taskId, subtasks.sortOrder),
-    db
-      .select({ taskId: taskAssignees.taskId, user: users })
-      .from(taskAssignees)
-      .innerJoin(users, eq(taskAssignees.userId, users.id))
-      .where(inArray(taskAssignees.taskId, taskIds)),
+    fetchAssignees(taskIds),
   ]);
 
   const subtasksByTask = new Map<number, SubtaskView[]>();
@@ -143,12 +139,7 @@ export const getEpicById = cache(async function getEpicById(
     subtasksByTask.set(st.taskId, arr);
   }
 
-  const assigneesByTask = new Map<number, UserWithMeta[]>();
-  for (const row of allAssigneeRows) {
-    const arr = assigneesByTask.get(row.taskId) ?? [];
-    arr.push(toUserWithMeta(row.user));
-    assigneesByTask.set(row.taskId, arr);
-  }
+  const assigneesByTask = buildAssigneesByTask(allAssigneeRows);
 
   const hydratedTasks: TaskView[] = taskRows.map((task) => {
     const taskSubtasks = subtasksByTask.get(task.id) ?? [];
@@ -176,10 +167,6 @@ export const getEpicById = cache(async function getEpicById(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getAllEpicsWithTasks — полный граф для Zustand store
-// 3 SQL-запроса (epics → tasks → [subtasks + assignees] параллельно)
-// Используется только там, где нужен полный граф:
-//   - /board (BoardPage)
-//   - HeavyWidgets на /dashboard (внутри <Suspense>)
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
@@ -222,11 +209,7 @@ async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
       .from(subtasks)
       .where(inArray(subtasks.taskId, taskIds))
       .orderBy(subtasks.taskId, subtasks.sortOrder),
-    db
-      .select({ taskId: taskAssignees.taskId, user: users })
-      .from(taskAssignees)
-      .innerJoin(users, eq(taskAssignees.userId, users.id))
-      .where(inArray(taskAssignees.taskId, taskIds)),
+    fetchAssignees(taskIds),
   ]);
 
   const subtasksByTask = new Map<number, SubtaskView[]>();
@@ -236,12 +219,7 @@ async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
     subtasksByTask.set(st.taskId, arr);
   }
 
-  const assigneesByTask = new Map<number, UserWithMeta[]>();
-  for (const row of assigneeRows) {
-    const arr = assigneesByTask.get(row.taskId) ?? [];
-    arr.push(toUserWithMeta(row.user));
-    assigneesByTask.set(row.taskId, arr);
-  }
+  const assigneesByTask = buildAssigneesByTask(assigneeRows);
 
   type TaskRow = (typeof allTasks)[number];
   const tasksByEpic = new Map<number, TaskRow[]>();

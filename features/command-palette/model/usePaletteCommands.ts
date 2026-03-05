@@ -3,15 +3,16 @@
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useTaskStore } from "@/shared/store/useTaskStore";
+import { useRoleStore } from "@/shared/store/useRoleStore";
 import { useCommandPaletteStore } from "../useCommandPaletteStore";
 import { useZenStore } from "@/features/zen-mode/useZenStore";
 import { buildZenCommands } from "@/features/zen-mode/zenCommands";
-import { ROLE_META } from "@/shared/config/roles";
 import type { CommandItem } from "./fuzzy";
 
 export function usePaletteCommands(): CommandItem[] {
   const router  = useRouter();
   const epics   = useTaskStore((s) => s.epics);
+  const roles   = useRoleStore((s) => s.roles);
   const { close } = useCommandPaletteStore();
   const { activate: activateZen, setQueue: setZenQueue } = useZenStore();
 
@@ -45,12 +46,14 @@ export function usePaletteCommands(): CommandItem[] {
       onSelect: () => { router.push(`/epics/${epic.id}`); close(); },
     }));
 
-    const teamCmds: CommandItem[] = Object.values(ROLE_META).map((meta) => ({
-      id: `role-${meta.role}`, category: "team" as const,
-      label: meta.label,
+    // Роли из Zustand store (гидрируются через RoleHydrator в layout.tsx)
+    const teamCmds: CommandItem[] = roles.map((role) => ({
+      id: `role-${role.key}`, category: "team" as const,
+      label: role.label,
       description: "Фильтровать задачи по роли → Доска",
-      icon: meta.label.slice(0, 2), color: meta.hex,
-      keywords: [meta.role, "роль", "фильтр", "команда"],
+      icon: role.short,
+      color: role.hex,
+      keywords: [role.key, "роль", "фильтр", "команда"],
       onSelect: () => { router.push("/board"); close(); },
     }));
 
@@ -96,5 +99,7 @@ export function usePaletteCommands(): CommandItem[] {
     ];
 
     return [...nav, ...epicCmds, ...teamCmds, ...actions];
-  }, [epics, router, close, activateZen, setZenQueue]);
+
+  // roles добавлен в deps: при изменении ролей палитра пересчитывается
+  }, [epics, roles, router, close, activateZen, setZenQueue]);
 }

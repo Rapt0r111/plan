@@ -5,7 +5,6 @@ import { db } from "@/shared/db/client";
 import { tasks, subtasks, taskAssignees, users } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
 import type { TaskStatus, NewTask, TaskView } from "@/shared/types";
-import { ROLE_META } from "@/shared/config/roles";
 
 export async function getTaskById(id: number): Promise<TaskView | null> {
   const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
@@ -50,4 +49,8 @@ export async function updateTask(id: number, data: Partial<NewTask>): Promise<vo
 
 export async function toggleSubtask(subtaskId: number, isCompleted: boolean): Promise<void> {
   await db.update(subtasks).set({ isCompleted }).where(eq(subtasks.id, subtaskId));
+}
+
+export async function deleteTask(id: number): Promise<void> {
+  await db.delete(tasks).where(eq(tasks.id, id));
 }

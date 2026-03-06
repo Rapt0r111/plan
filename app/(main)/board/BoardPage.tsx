@@ -158,7 +158,7 @@ export function BoardPage() {
     const [activeTask, setActiveTask] = useState<TaskView | null>(null);
 
     const visibleEpics = useMemo(() => {
-        if (!filters.roles.length && !filters.statuses.length && !filters.priorities.length) {
+        if (!filters.roleKeys.length && !filters.statuses.length && !filters.priorities.length) {
             return epics;
         }
         return epics.filter((e) => applyFilters(e.tasks, filters).length > 0);
@@ -171,7 +171,7 @@ export function BoardPage() {
     });
 
     const hasActiveFilters =
-        filters.roles.length > 0 || filters.statuses.length > 0 || filters.priorities.length > 0;
+        filters.roleKeys.length > 0 || filters.statuses.length > 0 || filters.priorities.length > 0;
 
     return (
         <div className="flex flex-col h-full overflow-hidden">

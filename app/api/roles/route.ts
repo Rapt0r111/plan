@@ -10,10 +10,10 @@ import { USERS_CACHE_TAG } from "@/entities/user/userRepository";
 import { z } from "zod";
 
 const CreateRoleSchema = z.object({
-  key:         z.string().min(1).max(64).regex(/^[a-z0-9_]+$/, "key must be snake_case"),
+  key:         z.string().min(1).max(64).regex(/^[a-z0-9_]+$/),
   label:       z.string().min(1).max(128),
   short:       z.string().min(1).max(8),
-  hex:         z.string().regex(/^#[0-9a-fA-F]{6}$/, "hex must be #RRGGBB"),
+  hex:         z.string().regex(/^#[0-9a-fA-F]{6}$/),
   description: z.string().max(512).nullish(),
   sortOrder:   z.number().int().default(0),
 });

@@ -263,3 +263,46 @@ export const getAllEpicsWithTasks = cache(
     tags: [EPICS_CACHE_TAG],
   }),
 );
+
+export async function createEpic(data: {
+  title: string;
+  description?: string | null;
+  color?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+}): Promise<DbEpic> {
+  const [row] = await db
+    .insert(epics)
+    .values({
+      title: data.title,
+      description: data.description ?? null,
+      color: data.color ?? "#8b5cf6",
+      startDate: data.startDate ?? null,
+      endDate: data.endDate ?? null,
+    })
+    .returning();
+  return row;
+}
+
+export async function updateEpic(
+  id: number,
+  data: Partial<{
+    title: string;
+    description: string | null;
+    color: string;
+    startDate: string | null;
+    endDate: string | null;
+  }>
+): Promise<DbEpic> {
+  const [row] = await db
+    .update(epics)
+    .set({ ...data, updatedAt: new Date().toISOString() })
+    .where(eq(epics.id, id))
+    .returning();
+  if (!row) throw new Error(`Epic ${id} not found`);
+  return row;
+}
+
+export async function deleteEpic(id: number): Promise<void> {
+  await db.delete(epics).where(eq(epics.id, id));
+}

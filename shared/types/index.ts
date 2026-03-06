@@ -1,12 +1,5 @@
-/**
- * @file index.ts — shared/types
- *
- * ИЗМЕНЕНИЯ v2:
- *   - RoleMeta теперь = DbRole (Drizzle infer). Нет bgClass/textClass/borderClass.
- *   - Tailwind-классы вычисляются на лету через hexToRoleStyles() из inline styles.
- *   - Role type удалён (не нужен без enum)
- *   - DbUser.roleId: integer (было role: text)
- */
+// shared/types/index.ts — полная версия
+
 import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
 import type {
   users,
@@ -35,11 +28,6 @@ export type NewEpic  = InferInsertModel<typeof epics>;
 export type NewTask  = InferInsertModel<typeof tasks>;
 
 // ─── ROLE METADATA ────────────────────────────────────────────────────────────
-/**
- * RoleMeta = DbRole.
- * Aliased для читаемости в компонентах.
- * Нет bgClass/textClass — используйте hexToRoleStyles(roleMeta.hex).
- */
 export type RoleMeta = DbRole;
 
 // ─── ENRICHED APPLICATION TYPES ──────────────────────────────────────────────
@@ -59,6 +47,12 @@ export interface EpicWithTasks extends DbEpic {
   tasks:    TaskView[];
   progress: { done: number; total: number };
 }
+
+// ─── EpicSummary — лёгкая версия для списков и сайдбара ──────────────────────
+export type EpicSummary = DbEpic & {
+  taskCount: number;
+  doneCount: number;
+};
 
 // ─── API RESPONSE SHAPES ──────────────────────────────────────────────────────
 export interface ApiSuccess<T> { ok: true; data: T }

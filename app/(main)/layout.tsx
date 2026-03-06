@@ -10,7 +10,6 @@ import { Sidebar } from "@/widgets/sidebar/Sidebar";
 import { getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
 import { getAllRoles } from "@/entities/role/roleRepository";
-import { RoleHydrator } from "@/shared/store/RoleHydrator";
 async function SidebarLoader() {
   const [epics, users, roles] = await Promise.all([
     getAllEpics(),
@@ -19,7 +18,6 @@ async function SidebarLoader() {
   ]);
   return (
     <>
-      <RoleHydrator roles={roles} />   {/* ← добавлено */}
       <Sidebar epics={epics} users={users} />
     </>
   );

@@ -8,7 +8,7 @@
  * - Нельзя удалить роль с пользователями (409 → toast)
  * - Оптимистичные обновления через useRoleStore
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRoleStore } from "@/shared/store/useRoleStore";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
 import type { DbRole } from "@/shared/types";
@@ -21,7 +21,10 @@ export function RolesTab({ initialRoles }: Props) {
   const { roles, hydrateRoles, optimisticCreate, optimisticUpdate, optimisticDelete, rollbackRoles } =
     useRoleStore();
 
-  // Гидрация при монтировании (если store ещё не hydrated)
+  useEffect(() => {
+    hydrateRoles(initialRoles);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const storeRoles = roles.length > 0 ? roles : initialRoles;
 
   const [creating, setCreating] = useState(false);
@@ -137,8 +140,21 @@ function RoleCard({
   onDelete: () => void;
 }) {
   const [editingLabel, setEditingLabel] = useState(false);
-  const [labelDraft, setLabelDraft] = useState(role.label);
+  const [draft, setDraft] = useState("");
   const styles = hexToRoleStyles(role.hex);
+
+  const startEdit = () => {
+    setDraft(role.label);
+    setEditingLabel(true);
+  };
+
+  const saveLabel = () => {
+    setEditingLabel(false);
+    const val = draft.trim();
+    if (val && val !== role.label) {
+      onUpdate({ label: val });
+    }
+  };
 
   return (
     <div
@@ -174,26 +190,19 @@ function RoleCard({
         {editingLabel ? (
           <input
             autoFocus
-            value={labelDraft}
-            onChange={(e) => setLabelDraft(e.target.value)}
-            onBlur={() => {
-              setEditingLabel(false);
-              if (labelDraft.trim() && labelDraft !== role.label) {
-                onUpdate({ label: labelDraft.trim() });
-              } else {
-                setLabelDraft(role.label);
-              }
-            }}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={saveLabel}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
-              if (e.key === "Escape") { setLabelDraft(role.label); setEditingLabel(false); }
+              if (e.key === "Escape") setEditingLabel(false);
             }}
             className="w-full text-sm font-medium bg-[var(--glass-01)] border border-[var(--accent-500)] rounded px-2 py-0.5 outline-none"
             style={{ color: "var(--text-primary)" }}
           />
         ) : (
           <button
-            onClick={() => setEditingLabel(true)}
+            onClick={startEdit}
             className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent-400)] transition-colors group/lbl"
           >
             {role.label}

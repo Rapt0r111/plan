@@ -54,3 +54,10 @@ export const useRoleStore = create<RoleStore>((set, get) => ({
 
   rollbackRoles: (snapshot) => set({ roles: snapshot }),
 }));
+
+export function initRoleStore(roles: DbRole[]) {
+  const { hydrated } = useRoleStore.getState();
+  if (!hydrated) {
+    useRoleStore.setState({ roles, hydrated: true });
+  }
+}

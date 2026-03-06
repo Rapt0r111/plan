@@ -1,21 +1,33 @@
 "use client";
+/**
+ * @file SettingsTabs.tsx — app/(main)/settings
+ *
+ * UPDATED v2: Added Epics and Tasks tabs.
+ */
 import { useState } from "react";
 import { RolesTab } from "./RolesTab";
 import { UsersTab } from "./UsersTab";
-import type { DbRole, UserWithMeta } from "@/shared/types";
+import { EpicsTab } from "./EpicsTab";
+import { TasksTab } from "./TasksTab";
+import type { DbRole, UserWithMeta, EpicWithTasks } from "@/shared/types";
 
 interface Props {
   initialRoles: DbRole[];
   initialUsers: UserWithMeta[];
+  initialEpics: EpicWithTasks[];
 }
 
 const TABS = [
-  { key: "roles" as const, label: "Роли" },
-  { key: "users" as const, label: "Пользователи" },
+  { key: "roles"  as const, label: "Роли"        },
+  { key: "users"  as const, label: "Пользователи" },
+  { key: "epics"  as const, label: "Эпики"        },
+  { key: "tasks"  as const, label: "Задачи"       },
 ];
 
-export function SettingsTabs({ initialRoles, initialUsers }: Props) {
-  const [tab, setTab] = useState<"roles" | "users">("roles");
+type TabKey = (typeof TABS)[number]["key"];
+
+export function SettingsTabs({ initialRoles, initialUsers, initialEpics }: Props) {
+  const [tab, setTab] = useState<TabKey>("roles");
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
@@ -31,8 +43,11 @@ export function SettingsTabs({ initialRoles, initialUsers }: Props) {
             className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
             style={
               tab === t.key
-                ? { background: "var(--accent-glow)", color: "var(--accent-400)",
-                    border: "1px solid rgba(139,92,246,0.3)" }
+                ? {
+                    background: "var(--accent-glow)",
+                    color: "var(--accent-400)",
+                    border: "1px solid rgba(139,92,246,0.3)",
+                  }
                 : { color: "var(--text-secondary)" }
             }
           >
@@ -43,11 +58,10 @@ export function SettingsTabs({ initialRoles, initialUsers }: Props) {
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {tab === "roles" ? (
-          <RolesTab initialRoles={initialRoles} />
-        ) : (
-          <UsersTab initialUsers={initialUsers} roles={initialRoles} />
-        )}
+        {tab === "roles" && <RolesTab initialRoles={initialRoles} />}
+        {tab === "users" && <UsersTab initialUsers={initialUsers} roles={initialRoles} />}
+        {tab === "epics" && <EpicsTab initialEpics={initialEpics} />}
+        {tab === "tasks" && <TasksTab initialEpics={initialEpics} users={initialUsers} />}
       </div>
     </div>
   );

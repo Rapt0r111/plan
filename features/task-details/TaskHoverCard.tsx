@@ -13,7 +13,6 @@
  *  Prefers right side of anchor; flips left when near viewport edge.
  *  Vertically clamped to stay within viewport bounds.
  */
-import { useLayoutEffect, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatDate } from "@/shared/lib/utils";

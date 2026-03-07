@@ -15,7 +15,6 @@ interface Props {
 export function TimelineRow({ bar, index, hovered, onHover, onOpenModal }: Props) {
   const { epic, pct, overdue } = bar;
   const donePct = Math.round(pct * 100);
-  const accentColor = overdue ? "var(--priority-critical)" : epic.color;
   const accentHex   = overdue ? "#dc2626" : epic.color; // нужен hex для rgba()
 
   return (

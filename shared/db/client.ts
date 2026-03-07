@@ -14,9 +14,10 @@ const globalForDb = globalThis as unknown as { _db?: ReturnType<typeof createDb>
 
 function createDb() {
   const sqlite = new Database(DB_PATH, { create: true });
-  sqlite.exec("PRAGMA journal_mode = WAL;");
-  sqlite.exec("PRAGMA foreign_keys = ON;");
-  sqlite.exec("PRAGMA synchronous = NORMAL;");
+  sqlite.run("PRAGMA busy_timeout = 10000;");
+  sqlite.run("PRAGMA journal_mode = WAL;");
+  sqlite.run("PRAGMA foreign_keys = ON;");
+  sqlite.run("PRAGMA synchronous = NORMAL;");
   return drizzle(sqlite, { schema });
 }
 

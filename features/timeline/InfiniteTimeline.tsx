@@ -10,12 +10,6 @@ import { TimelineRow } from "./ui/TimelineRow";
 import { EpicModal } from "./ui/EpicModal";
 import type { TaskStatus } from "@/shared/types";
 
-const S_COLOR: Record<TaskStatus, string> = {
-  in_progress: "var(--color-in-progress)",
-  todo:        "var(--color-todo)",
-  blocked:     "var(--color-blocked)",
-  done:        "var(--color-done)",
-};
 // Hex fallbacks нужны там где CSS var нельзя использовать напрямую (напр. rgba())
 const S_COLOR_HEX: Record<TaskStatus, string> = {
   in_progress: "#38bdf8", todo: "#6b7fa3", blocked: "#f87171", done: "#34d399",

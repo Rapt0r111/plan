@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { db } from "@/shared/db/client";
 import { taskAssignees } from "@/shared/db/schema";
-import { and, eq } from "drizzle-orm";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 
 type Params = { params: Promise<{ id: string }> };

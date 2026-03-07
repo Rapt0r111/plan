@@ -45,9 +45,7 @@ interface ShinyEffectReturn {
 export function useShinyEffect({
   stiffness = 220,
   damping = 24,
-  accentColor = "#8b5cf6",
   intensity = 0.07,
-  auroraIntensity = 0.12,
 }: ShinyEffectOptions = {}): ShinyEffectReturn {
   const elementRef = useRef<HTMLElement | null>(null);
 
@@ -60,8 +58,7 @@ export function useShinyEffect({
   const springY = useSpring(rawY, { stiffness, damping });
 
   // Aurora offset — slightly behind the primary shine for depth
-  const auroraX = useSpring(rawX, { stiffness: stiffness * 0.65, damping: damping * 1.1 });
-  const auroraY = useSpring(rawY, { stiffness: stiffness * 0.65, damping: damping * 1.1 });
+
 
   // Opacity driven by distance from center
   const shineOpacity = useMotionValue(0);
@@ -90,26 +87,14 @@ export function useShinyEffect({
       `radial-gradient(circle at ${x}% ${y}%, rgba(255,255,255,${intensity}) 0%, rgba(255,255,255,${intensity * 0.3}) 35%, transparent 65%)`
   );
 
-  const auroraBackground = useTransform(
-    [auroraX, auroraY],
-    ([x, y]: number[]) => {
-      // Parse hex to rgb for rgba construction
-      const hex = accentColor.replace("#", "");
-      const r = parseInt(hex.substring(0, 2), 16);
-      const g = parseInt(hex.substring(2, 4), 16);
-      const b = parseInt(hex.substring(4, 6), 16);
-      return `radial-gradient(ellipse 55% 45% at ${x + 8}% ${y + 6}%, rgba(${r},${g},${b},${auroraIntensity}) 0%, transparent 70%)`;
-    }
-  );
-
   const shineStyle: MotionStyle = {
-    background: shineBackground as any,
+    background: shineBackground as MotionStyle["background"],
     opacity: shineOpacitySpring,
     mixBlendMode: "screen",
   };
 
   const auroraStyle: MotionStyle = {
-    background: auroraBackground as any,
+    background: shineBackground as MotionStyle["background"],
     opacity: shineOpacitySpring,
     mixBlendMode: "screen",
   };

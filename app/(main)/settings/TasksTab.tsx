@@ -338,8 +338,8 @@ function TaskCard({
                                         {task.subtasks.map((st) => (
                                             <div key={st.id} className="flex items-center gap-2 text-xs"
                                                 style={{ color: st.isCompleted ? "var(--text-muted)" : "var(--text-secondary)" }}>
-                                                <span className={cn("w-3 h-3 rounded flex-shrink-0 flex items-center justify-center border text-white",
-                                                    st.isCompleted ? "bg-[var(--accent-500)] border-[var(--accent-500)]" : "border-[var(--glass-border)]")}>
+                                                <span className={cn("w-3 h-3 rounded shrink-0 flex items-center justify-center border text-white",
+                                                    st.isCompleted ? "bg-(--accent-500) border-(--accent-500)" : "border-[var(--glass-border)]")}>
                                                     {st.isCompleted && <svg className="w-2 h-2" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 4l2 2 4-4" /></svg>}
                                                 </span>
                                                 <span className={cn(st.isCompleted && "line-through")}>{st.title}</span>
@@ -463,9 +463,6 @@ function CreateTaskForm({
     });
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState<string | null>(null);
-
-    const statusMeta = STATUS_META[form.status];
-    const priorityMeta = PRIORITY_META[form.priority];
 
     async function submit() {
         if (!form.title.trim()) { setErr("Введите название"); return; }

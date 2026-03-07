@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
+
 import { DarkTaskCard } from "@/widgets/task-list/DarkTaskCard";
 import { TaskSlideover } from "@/features/task-details/TaskSlideover";
 import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
@@ -11,10 +12,10 @@ const STATUS_CFG: Record<
   TaskStatus,
   { label: string; color: string; bg: string }
 > = {
-  in_progress: { label: "В работе",      color: "#38bdf8", bg: "rgba(14,165,233,0.10)" },
-  todo:        { label: "К работе",      color: "#64748b", bg: "rgba(100,116,139,0.10)" },
-  blocked:     { label: "Заблокировано", color: "#f87171", bg: "rgba(239,68,68,0.10)" },
-  done:        { label: "Готово",        color: "#34d399", bg: "rgba(16,185,129,0.10)" },
+  in_progress: { label: "В работе", color: "#38bdf8", bg: "rgba(14,165,233,0.10)" },
+  todo: { label: "К работе", color: "#64748b", bg: "rgba(100,116,139,0.10)" },
+  blocked: { label: "Заблокировано", color: "#f87171", bg: "rgba(239,68,68,0.10)" },
+  done: { label: "Готово", color: "#34d399", bg: "rgba(16,185,129,0.10)" },
 };
 
 function groupByStatus(tasks: EpicWithTasks["tasks"]) {

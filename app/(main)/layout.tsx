@@ -9,12 +9,10 @@ import { Suspense } from "react";
 import { Sidebar } from "@/widgets/sidebar/Sidebar";
 import { getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
-import { getAllRoles } from "@/entities/role/roleRepository";
 async function SidebarLoader() {
-  const [epics, users, roles] = await Promise.all([
+  const [epics, users] = await Promise.all([
     getAllEpics(),
     getAllUsers(),
-    getAllRoles(),   // ← добавлено
   ]);
   return (
     <>
@@ -34,7 +32,7 @@ function SidebarSkeleton() {
         className="absolute inset-0"
         style={{ background: "linear-gradient(to bottom, var(--sidebar-top), var(--bg-base))" }}
       />
-      <div className="absolute inset-y-0 right-0 w-px bg-[var(--glass-border)]" />
+      <div className="absolute inset-y-0 right-0 w-px bg-(--glass-border)" />
 
       <div className="relative flex flex-col h-full px-3 pt-4 gap-3 animate-pulse">
         {/* Logo placeholder */}

@@ -16,7 +16,7 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { db } from "@/shared/db/client";
 import { roles, users } from "@/shared/db/schema";
-import { eq, sql, count } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
 
 export type DbRole = InferSelectModel<typeof roles>;

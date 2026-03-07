@@ -6,7 +6,6 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getAllRoles, createRole, ROLES_CACHE_TAG } from "@/entities/role/roleRepository";
-import { USERS_CACHE_TAG } from "@/entities/user/userRepository";
 import { z } from "zod";
 
 const CreateRoleSchema = z.object({

@@ -341,3 +341,152 @@ html.light [data-dragging="true"] {
   perspective: 800px;
   perspective-origin: center center;
 }
+
+/* ── QuickAddTask ─────────────────────────────────────────────────────────── */
+
+.quick-add-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: transparent;
+  border: 1px dashed var(--glass-border);
+  color: var(--text-muted);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.quick-add-trigger:hover {
+  border-color: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 55%, transparent);
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 7%, transparent);
+}
+html.light .quick-add-trigger:hover {
+  background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 5%, transparent);
+}
+
+.quick-add-trigger-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--glass-02);
+  flex-shrink: 0;
+  transition: background 0.2s ease;
+}
+.quick-add-trigger:hover .quick-add-trigger-icon {
+  background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 18%, transparent);
+}
+
+/* ── Карточка ── */
+.quick-add-card {
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-overlay);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.3),
+    0 0 0 1px color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 18%, transparent);
+}
+html.light .quick-add-card {
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-elevated);
+  border-color: var(--glass-border);
+}
+
+.quick-add-accent-line {
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    var(--quick-add-accent, var(--accent-500)) 0%,
+    transparent 100%
+  );
+  transform-origin: left;
+}
+
+/* ── Input ── */
+.quick-add-input {
+  width: 100%;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+.quick-add-input::placeholder {
+  color: var(--text-muted);
+}
+/* ── Кнопка Добавить ── */
+.quick-add-save-btn {
+  position: relative;
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  outline: none;
+  overflow: hidden;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: all 0.2s ease;
+
+  /* 1. Адаптивный цвет текста: белый в тёмной теме, тёмный в светлой */
+  color: var(--text-primary);
+  text-shadow: none;
+
+  /* 2. Оттеночный фон: смешиваем глубокий цвет карточки и 25% цвета Эпика.
+        Это гарантирует отличный контраст текста даже если цвет Эпика — чисто белый. */
+  background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 25%, var(--bg-overlay));
+
+  /* Бордер делает кнопку более очерченной */
+  border: 1px solid color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 35%, transparent);
+
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.quick-add-save-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  /* При наведении усиливаем цвет Эпика до 35% */
+  background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 35%, var(--bg-overlay));
+  border-color: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 50%, transparent);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.quick-add-save-btn:active:not(:disabled) {
+  transform: translateY(0);
+  background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 15%, var(--bg-overlay));
+}
+
+/* ── Состояние Disabled (Когда инпут пустой) ── */
+.quick-add-save-btn:disabled {
+  background: var(--glass-02);
+  color: var(--text-muted);
+  border: 1px solid var(--glass-border);
+  box-shadow: none;
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* ── Переопределение для Светлой Темы ── */
+html.light .quick-add-save-btn {
+  /* В светлой теме смешиваем цвет Эпика с белым фоном карточки */
+  background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 15%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 30%, transparent);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+html.light .quick-add-save-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 22%, var(--bg-surface));
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}

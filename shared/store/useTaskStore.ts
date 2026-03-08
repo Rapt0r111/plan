@@ -289,9 +289,9 @@ export const useTaskStore = create<TaskStore>()(
       const subtasksToUpdate: number[] = [];
       const updatedSubtasks = status === "done"
         ? task.subtasks.map((st) => {
-            if (!st.isCompleted) { subtasksToUpdate.push(st.id); return { ...st, isCompleted: true }; }
-            return st;
-          })
+          if (!st.isCompleted) { subtasksToUpdate.push(st.id); return { ...st, isCompleted: true }; }
+          return st;
+        })
         : task.subtasks;
 
       set((s) => {
@@ -420,7 +420,49 @@ export const useTaskStore = create<TaskStore>()(
         done();
       }
     },
+    // В useTaskStore нет deleteTask — добавить:
+    deleteTask: async (taskId: number) => {
+      const task = get().tasks[taskId];
+      if (!task) return;
 
+      // Сохраняем snapshot для rollback
+      const epicSnapshot = get().epics.find((e) => e.id === task.epicId);
+
+      // Оптимистичное удаление
+      set((s) => {
+        const { [taskId]: _removed, ...restTasks } = s.tasks;
+        return {
+          tasks: restTasks,
+          epics: s.epics.map((e) =>
+            e.id !== task.epicId ? e : {
+              ...e,
+              tasks: e.tasks.filter((t) => t.id !== taskId),
+              progress: {
+                total: e.progress.total - 1,
+                done: task.status === "done" ? e.progress.done - 1 : e.progress.done,
+              },
+            }
+          ),
+        };
+      });
+
+      const done = get()._beginOp();
+      try {
+        const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+        if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
+      } catch {
+        // Rollback
+        if (epicSnapshot) {
+          set((s) => ({
+            tasks: { ...s.tasks, [taskId]: task },
+            epics: s.epics.map((e) => (e.id === epicSnapshot.id ? epicSnapshot : e)),
+            syncStatus: "error",
+          }));
+        }
+      } finally {
+        done();
+      }
+    },
     // ── reorderTasks ─────────────────────────────────────────────────────────
     reorderTasks: async (epicId, orderedIds) => {
       const prevOrder = get().epics.find((e) => e.id === epicId)?.tasks.map((t) => t.id);

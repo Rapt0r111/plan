@@ -19,6 +19,7 @@ import { applyFilters } from "@/features/filters/SmartFilters";
 import type { FilterState } from "@/features/filters/SmartFilters";
 import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
 import { QuickAddTask } from "./QuickAddTask";
+import { AnimatedCounter } from "@/shared/ui/AnimatedCounter";
 
 
 const STATUS_SECTIONS: { key: TaskStatus; label: string }[] = [
@@ -122,9 +123,8 @@ export function EpicColumn({
               {filteredTasks.length}/{epic.tasks.length}
             </span>
           ) : (
-            <span className="text-xs font-mono text-(--text-muted)">
-              {epic.tasks.length}
-            </span>
+            <AnimatedCounter value={epic.tasks.length} className="text-xs font-mono text-(--text-muted)" />
+
           )}
 
           <span
@@ -149,12 +149,24 @@ export function EpicColumn({
       {/* ── Progress bar ─────────────────────────────────────────────────── */}
       <div className="h-0.5 bg-[var(--glass-02)]">
         <motion.div
-          className="h-full"
+          className="h-full relative overflow-hidden"
           style={{ backgroundColor: epic.color }}
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
           transition={{ duration: 0.7, ease: "easeOut", delay: 0.15 }}
-        />
+        >
+          {/* Shimmer при pct === 100 */}
+          {pct === 100 && (
+            <motion.div
+              className="absolute inset-0"
+              style={{
+                background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)",
+              }}
+              animate={{ x: ["-100%", "200%"] }}
+              transition={{ duration: 1.2, repeat: 3, ease: "easeInOut" }}
+            />
+          )}
+        </motion.div>
       </div>
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
@@ -223,7 +235,14 @@ export function EpicColumn({
                               key={task.id} layout
                               initial={{ opacity: 0, y: 6 }}
                               animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.95 }}
+                              exit={{
+                                opacity: 0,
+                                scale: 0.88,
+                                y: 12,
+                                rotate: Math.random() > 0.5 ? 3 : -3, // случайный наклон
+                                filter: "blur(2px)",
+                                transition: { duration: 0.25, ease: [0.4, 0, 1, 1] },
+                              }}
                               transition={{ duration: 0.18, delay: idx * 0.04 }}
                             >
                               <BoardTaskCard

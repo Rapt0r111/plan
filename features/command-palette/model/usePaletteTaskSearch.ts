@@ -9,56 +9,101 @@
  *  triggered only when a non-empty query is present — avoids
  *  flooding the palette with hundreds of task items on open.
  *
+ * CONTEXTUAL GROUPS (query < 2 chars):
+ *  Instead of an empty state, show smart buckets:
+ *   • Просрочено  — dueDate < now
+ *   • Заблокировано — status === "blocked"
+ *   • Без исполнителя — assignees.length === 0
+ *
  * ACTION ON SELECT:
- *  Navigates to the epic detail page where the task lives.
- *  The EpicDetailClient renders all tasks and the TaskSlideover,
- *  so the user lands in the right context immediately.
+ *  Opens the TaskSlideover via useGlobalTaskStore — keeps the user
+ *  in the current page context instead of navigating away.
  */
 import { useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { useCommandPaletteStore } from "../useCommandPaletteStore";
 import { scoreTaskQuery } from "./fuzzy";
 import type { CommandItem } from "./fuzzy";
+import { useGlobalTaskStore } from "@/shared/store/useGlobalTaskStore";
 
-// Status icon + colour for visual scanning in results
+// ── Visual config ─────────────────────────────────────────────────────────────
+
 const STATUS_ICON: Record<string, string> = {
-  todo:        "○",
+  todo: "○",
   in_progress: "◑",
-  done:        "●",
-  blocked:     "⊘",
+  done: "●",
+  blocked: "⊘",
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  todo:        "#64748b",
+  todo: "#64748b",
   in_progress: "#38bdf8",
-  done:        "#34d399",
-  blocked:     "#f87171",
+  done: "#34d399",
+  blocked: "#f87171",
 };
 
 const PRIORITY_LABEL: Record<string, string> = {
   critical: "Критично",
-  high:     "Высокий",
-  medium:   "Средний",
-  low:      "Низкий",
+  high: "Высокий",
+  medium: "Средний",
+  low: "Низкий",
 };
 
 const MAX_RESULTS = 8;
 
-export function usePaletteTaskSearch(debouncedQuery: string): CommandItem[] {
-  const tasks  = useTaskStore((s) => s.tasks);
-  const epics  = useTaskStore((s) => s.epics);
-  const router = useRouter();
-  const { close } = useCommandPaletteStore();
+// ── Hook ──────────────────────────────────────────────────────────────────────
 
+const getCurrentTime = () => Date.now();
+
+export function usePaletteTaskSearch(debouncedQuery: string): CommandItem[] {
+  const tasks = useTaskStore((s) => s.tasks);
+  const epics = useTaskStore((s) => s.epics);
+  const { close } = useCommandPaletteStore();
+  const now = useMemo(() => getCurrentTime(), []);
   return useMemo(() => {
     const q = debouncedQuery.trim();
-    if (q.length < 2) return [];
 
-    // Build epic lookup once
     const epicMap = new Map(epics.map((e) => [e.id, e]));
+    const allTasks = Object.values(tasks);
 
-    return Object.values(tasks)
+    // ── Contextual groups when no query ──────────────────────────────────
+    if (q.length < 2) {
+
+
+      const overdue = allTasks.filter(
+        (t) => t.dueDate && new Date(t.dueDate).getTime() < now && t.status !== "done",
+      );
+      const blocked = allTasks.filter((t) => t.status === "blocked");
+      const unassigned = allTasks.filter((t) => t.assignees.length === 0 && t.status !== "done");
+
+      const buckets: Array<{ tasks: typeof allTasks; groupLabel: string; icon: string; color: string }> = [
+        { tasks: overdue, groupLabel: "Просрочено", icon: "⏰", color: "#f87171" },
+        { tasks: blocked, groupLabel: "Заблокировано", icon: "⊘", color: "#f87171" },
+        { tasks: unassigned, groupLabel: "Без исполнителя", icon: "?", color: "#64748b" },
+      ];
+
+      return buckets.flatMap(({ tasks: bucket, groupLabel, icon, color }) =>
+        bucket.slice(0, 3).map((task) => {
+          const epic = epicMap.get(task.epicId);
+          return {
+            id: `ctx-${groupLabel}-${task.id}`,
+            category: "task" as const,
+            label: task.title,
+            description: epic ? `${groupLabel} · ${epic.title}` : groupLabel,
+            icon,
+            color,
+            keywords: [],
+            onSelect: () => {
+              useGlobalTaskStore.getState().openTask(task.id);
+              close();
+            },
+          } satisfies CommandItem;
+        }),
+      );
+    }
+
+    // ── Full fuzzy search ─────────────────────────────────────────────────
+    return allTasks
       .map((task) => ({
         task,
         score: scoreTaskQuery(q, task.title, task.description),
@@ -67,11 +112,10 @@ export function usePaletteTaskSearch(debouncedQuery: string): CommandItem[] {
       .sort((a, b) => b.score - a.score)
       .slice(0, MAX_RESULTS)
       .map(({ task, score }) => {
-        const epic       = epicMap.get(task.epicId);
+        const epic = epicMap.get(task.epicId);
         const statusIcon = STATUS_ICON[task.status] ?? "○";
         const statusColor = STATUS_COLOR[task.status] ?? "#64748b";
 
-        // Description line: epic title + priority badge
         const priorityPart = PRIORITY_LABEL[task.priority]
           ? ` · ${PRIORITY_LABEL[task.priority]}`
           : "";
@@ -85,14 +129,13 @@ export function usePaletteTaskSearch(debouncedQuery: string): CommandItem[] {
           label: task.title,
           description,
           icon: statusIcon,
-          // Inherit epic colour for the icon background tint
           color: statusColor,
           keywords: [],
           onSelect: () => {
-            router.push(`/epics/${task.epicId}`);
+            useGlobalTaskStore.getState().openTask(task.id);
             close();
           },
         } satisfies CommandItem;
       });
-  }, [debouncedQuery, tasks, epics, router, close]);
+  }, [debouncedQuery, tasks, epics, close, now]);
 }

@@ -101,17 +101,17 @@ function AssigneeDots({ task }: { task: TaskView }) {
 }
 
 const STATUS_CFG: Record<TaskStatus, { label: string; bg: string; text: string }> = {
-  todo:        { label: "К работе",     bg: "rgba(100,116,139,0.18)", text: "#94a3b8" },
-  in_progress: { label: "В работе",      bg: "rgba(14,165,233,0.18)",  text: "#38bdf8" },
-  done:        { label: "Готово",        bg: "rgba(16,185,129,0.18)",  text: "#34d399" },
-  blocked:     { label: "Заблокировано", bg: "rgba(239,68,68,0.18)",   text: "#f87171" },
+  todo: { label: "К работе", bg: "rgba(100,116,139,0.18)", text: "#94a3b8" },
+  in_progress: { label: "В работе", bg: "rgba(14,165,233,0.18)", text: "#38bdf8" },
+  done: { label: "Готово", bg: "rgba(16,185,129,0.18)", text: "#34d399" },
+  blocked: { label: "Заблокировано", bg: "rgba(239,68,68,0.18)", text: "#f87171" },
 };
 
 const PRIORITY_COLOR: Record<string, string> = {
   critical: "#ef4444",
-  high:     "#f97316",
-  medium:   "#eab308",
-  low:      "#475569",
+  high: "#f97316",
+  medium: "#eab308",
+  low: "#475569",
 };
 
 interface Props {
@@ -164,9 +164,9 @@ export function TaskCard({ task, onOpen }: Props) {
     <motion.div
       ref={cardRef}
       // Fixed: Merged all style props into one object
-      style={{ 
-        rotateX, 
-        rotateY, 
+      style={{
+        rotateX,
+        rotateY,
         transformStyle: "preserve-3d",
         background: "var(--bg-overlay)",
         border: "1px solid var(--glass-border)",
@@ -195,17 +195,25 @@ export function TaskCard({ task, onOpen }: Props) {
       <div className="px-3.5 py-3 flex flex-col gap-2.5">
         {/* Top row: status pill + priority dot */}
         <div className="flex items-center justify-between gap-2">
-          <button
+          <motion.button
             onClick={cycleStatus}
-            className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium hover:opacity-80 transition-opacity"
+            whileTap={{ scale: 0.92 }}
+            // Ripple через pseudo-element в CSS или inline:
+            className="relative overflow-hidden flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
             style={{ backgroundColor: bg, color: text }}
           >
-            <span
-              className="w-1.5 h-1.5 rounded-full shrink-0"
-              style={{ backgroundColor: priorityColor }}
+            {/* Ripple */}
+            <motion.div
+              className="absolute inset-0 rounded-full pointer-events-none"
+              initial={{ scale: 0, opacity: 0.4 }}
+              whileTap={{ scale: 2.5, opacity: 0 }}
+              transition={{ duration: 0.4 }}
+              style={{ backgroundColor: text, originX: "50%", originY: "50%" }}
             />
-            {label}
-          </button>
+            <span className="w-1.5 h-1.5 rounded-full shrink-0 relative z-10"
+              style={{ backgroundColor: priorityColor }} />
+            <span className="relative z-10">{label}</span>
+          </motion.button>
 
           {liveTask.dueDate && (
             <span className="text-xs font-mono text-(--text-muted) shrink-0">

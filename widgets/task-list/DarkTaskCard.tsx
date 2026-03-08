@@ -49,6 +49,7 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
       style={{
         background: "var(--bg-overlay)",
         border: "1px solid var(--glass-border)",
+        backgroundImage: `radial-gradient(ellipse at top left, ${epicColor}08 0%, transparent 50%)`,
       }}
       onClick={() => onOpen?.(liveTask)}
     >

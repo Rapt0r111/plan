@@ -8,6 +8,10 @@
  * цвет эпика в дочерние CSS-классы через color-mix / linear-gradient).
  *
  * Поддерживает dark / light тему автоматически через CSS-переменные.
+ *
+ * NEW: AI-подсказка приоритета — эвристика по тексту задачи без API.
+ *   suggestPriority() вызывается на каждый onChange и если приоритет
+ *   ещё не трогали (=== "medium") — автовыставляет + показывает hint.
  */
 
 import {
@@ -20,6 +24,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/shared/config/task-meta";
+import { suggestPriority } from "@/features/ai/useAISuggestions";
 import type { TaskStatus, TaskPriority, TaskView } from "@/shared/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -60,11 +65,11 @@ function PriorityChip({
       style={
         active
           ? {
-            background: `${meta.color}22`,
-            color: meta.color,
-            borderColor: `${meta.color}44`,
-            boxShadow: `0 0 8px ${meta.color}28`,
-          }
+              background:   `${meta.color}22`,
+              color:         meta.color,
+              borderColor:  `${meta.color}44`,
+              boxShadow:    `0 0 8px ${meta.color}28`,
+            }
           : undefined
       }
     >
@@ -139,26 +144,30 @@ export function QuickAddTask({
   epicColor,
   onCreated,
 }: Props) {
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [priority, setPriority] = useState<TaskPriority>("medium");
-  const [assigneeId, setAssigneeId] = useState<number | null>(null);
-  const [metaVisible, setMetaVisible] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [open,              setOpen]              = useState(false);
+  const [title,             setTitle]             = useState("");
+  const [priority,          setPriority]          = useState<TaskPriority>("medium");
+  const [assigneeId,        setAssigneeId]        = useState<number | null>(null);
+  const [metaVisible,       setMetaVisible]       = useState(false);
+  const [saving,            setSaving]            = useState(false);
+  // null = нет подсказки; строка = AI что-то предложил
+  const [suggestedPriority, setSuggestedPriority] = useState<TaskPriority | null>(null);
+  // флаг: пользователь сам кликал на chip — не перезаписываем AI-подсказкой
+  const priorityTouchedRef = useRef(false);
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef     = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const createTask = useTaskStore((s) => s.createTask);
+  const createTask   = useTaskStore((s) => s.createTask);
   const { users, fetchUsers } = useUsers();
 
-  // Fallback: если epicColor не передан — используем accent из CSS
   const accentHex = epicColor ?? "#8b5cf6";
 
+  // ── Open / Close ────────────────────────────────────────────────────────
   const handleOpen = useCallback(() => {
     setOpen(true);
     fetchUsers();
     requestAnimationFrame(() =>
-      requestAnimationFrame(() => inputRef.current?.focus())
+      requestAnimationFrame(() => inputRef.current?.focus()),
     );
   }, [fetchUsers]);
 
@@ -166,12 +175,45 @@ export function QuickAddTask({
     setOpen(false);
     setTitle("");
     setMetaVisible(false);
+    setSuggestedPriority(null);
+    priorityTouchedRef.current = false;
   }, []);
 
+  // ── AI-подсказка ────────────────────────────────────────────────────────
+  function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setTitle(val);
+
+    // Не перезаписываем выбор пользователя
+    if (priorityTouchedRef.current) return;
+
+    const suggested = suggestPriority(val);
+    if (suggested) {
+      setPriority(suggested);
+      setSuggestedPriority(suggested);
+    } else {
+      // Текст стёрт / паттерн исчез — вернуть дефолт и убрать hint
+      setPriority("medium");
+      setSuggestedPriority(null);
+    }
+  }
+
+  // Обёртка для ручного выбора chip'а
+  function handlePriorityClick(p: TaskPriority) {
+    priorityTouchedRef.current = true;
+    setPriority(p);
+    setSuggestedPriority(null); // hint больше не нужен
+  }
+
+  // ── Save ────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     const trimmed = title.trim();
     if (!trimmed || saving) return;
+
     setSaving(true);
+    setTitle(""); // optimistic field reset
+    inputRef.current?.focus();
+
     try {
       const task = await createTask({
         epicId,
@@ -188,8 +230,11 @@ export function QuickAddTask({
         }
       }
       onCreated?.(task!);
-      setTitle("");
-      inputRef.current?.focus();
+      setSuggestedPriority(null);
+      priorityTouchedRef.current = false;
+      setPriority("medium");
+    } catch {
+      setTitle(trimmed); // rollback только поля при ошибке
     } finally {
       setSaving(false);
     }
@@ -197,12 +242,13 @@ export function QuickAddTask({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") { e.preventDefault(); handleSave(); }
+      if (e.key === "Enter")  { e.preventDefault(); handleSave();  }
       if (e.key === "Escape") { e.preventDefault(); handleClose(); }
     },
     [handleSave, handleClose],
   );
 
+  // ── Click outside ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -214,8 +260,8 @@ export function QuickAddTask({
     return () => document.removeEventListener("mousedown", handler);
   }, [open, handleClose]);
 
+  // ── Render ──────────────────────────────────────────────────────────────
   return (
-    // Единственный inline-style: пробрасываем цвет эпика как CSS-переменную
     <div
       ref={containerRef}
       style={{ "--quick-add-accent": accentHex } as React.CSSProperties}
@@ -259,7 +305,7 @@ export function QuickAddTask({
             key="card"
             layout
             initial={{ opacity: 0, scale: 0.97, y: -6 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
+            animate={{ opacity: 1, scale: 1,    y: 0  }}
             exit={{ opacity: 0, scale: 0.97, y: -4, transition: { duration: 0.14 } }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
             className="quick-add-card"
@@ -278,7 +324,7 @@ export function QuickAddTask({
                 ref={inputRef}
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={handleTitleChange}
                 onKeyDown={handleKeyDown}
                 onFocus={() => setMetaVisible(true)}
                 placeholder="Название задачи..."
@@ -287,6 +333,33 @@ export function QuickAddTask({
                 className="quick-add-input disabled:opacity-50"
               />
 
+              {/* AI hint — появляется под инпутом когда эвристика сработала */}
+              <AnimatePresence>
+                {suggestedPriority && (
+                  <motion.p
+                    key={suggestedPriority}
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1,  y: 0  }}
+                    exit={{   opacity: 0,  y: -4  }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    className="text-[10px] flex items-center gap-1"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    <span style={{ color: PRIORITY_META[suggestedPriority].color }}>
+                      ✦
+                    </span>
+                    AI предлагает:{" "}
+                    <span
+                      className="font-semibold"
+                      style={{ color: PRIORITY_META[suggestedPriority].color }}
+                    >
+                      {PRIORITY_META[suggestedPriority].label}
+                    </span>
+                    <span className="opacity-50">· нажмите на chip чтобы изменить</span>
+                  </motion.p>
+                )}
+              </AnimatePresence>
+
               {/* Прогрессивное раскрытие */}
               <AnimatePresence>
                 {metaVisible && (
@@ -294,15 +367,17 @@ export function QuickAddTask({
                     key="meta"
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
+                    exit={{   opacity: 0, height: 0 }}
                     transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                     className="overflow-hidden"
                   >
                     <div className="pt-1 space-y-2">
                       {/* Приоритет */}
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[10px] font-medium shrink-0 mr-0.5"
-                          style={{ color: "var(--text-muted)" }}>
+                        <span
+                          className="text-[10px] font-medium shrink-0 mr-0.5"
+                          style={{ color: "var(--text-muted)" }}
+                        >
                           Приоритет:
                         </span>
                         {PRIORITY_ORDER.map((p) => (
@@ -310,7 +385,7 @@ export function QuickAddTask({
                             key={p}
                             priority={p}
                             active={priority === p}
-                            onClick={() => setPriority(p)}
+                            onClick={() => handlePriorityClick(p)}
                           />
                         ))}
                       </div>
@@ -318,8 +393,10 @@ export function QuickAddTask({
                       {/* Исполнители */}
                       {users.length > 0 && (
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] font-medium shrink-0 mr-0.5"
-                            style={{ color: "var(--text-muted)" }}>
+                          <span
+                            className="text-[10px] font-medium shrink-0 mr-0.5"
+                            style={{ color: "var(--text-muted)" }}
+                          >
                             Исполнитель:
                           </span>
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -329,7 +406,7 @@ export function QuickAddTask({
                                 user={u}
                                 selected={assigneeId === u.id}
                                 onClick={() =>
-                                  setAssigneeId((prev) => prev === u.id ? null : u.id)
+                                  setAssigneeId((prev) => (prev === u.id ? null : u.id))
                                 }
                               />
                             ))}
@@ -373,7 +450,7 @@ export function QuickAddTask({
                     onClick={handleSave}
                     disabled={!title.trim() || saving}
                     whileHover={title.trim() && !saving ? { scale: 1.04 } : {}}
-                    whileTap={title.trim() && !saving ? { scale: 0.96 } : {}}
+                    whileTap={title.trim()   && !saving ? { scale: 0.96 } : {}}
                     className="quick-add-save-btn"
                     style={{ opacity: saving ? 0.72 : 1 }}
                   >
@@ -382,7 +459,8 @@ export function QuickAddTask({
                       <motion.div
                         className="absolute inset-0 pointer-events-none"
                         style={{
-                          background: "linear-gradient(90deg, transparent 30%, var(--glass-border-active) 50%, transparent 70%)",
+                          background:
+                            "linear-gradient(90deg, transparent 30%, var(--glass-border-active) 50%, transparent 70%)",
                         }}
                         animate={{ x: ["-100%", "200%"] }}
                         transition={{ duration: 0.85, repeat: Infinity, ease: "easeInOut" }}

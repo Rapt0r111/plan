@@ -15,6 +15,7 @@
  *  suppressHydrationWarning говорит React: «не трогай атрибуты этого элемента».
  *
  * ПОРЯДОК МОНТИРОВАНИЯ ГЛОБАЛЬНЫХ СЛОЁВ (z-index):
+ *  OfflineBanner          (z-9999) — сетевой статус (самый верхний)
  *  CommandPalette         (z-50)   — поиск и навигация
  *  DynamicIsland          (z-9998) — нотификации
  *  SyncNotificationBridge (нет DOM) — Zustand → нотификации bridge
@@ -23,6 +24,7 @@
 import type { Metadata } from "next";
 import { GlobalClientComponents } from "./GlobalClientComponents";
 import { ThemeProvider } from "@/shared/ui/ThemeProvider";
+import { OfflineBanner } from "@/shared/ui/OfflineBanner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -43,6 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="antialiased">
         <ThemeProvider>
+          {/* ── Offline status — above everything, including modals ── */}
+          <OfflineBanner />
+
           {children}
 
           {/* ── Global UI Layer ─────────────────────────────────── */}

@@ -1,22 +1,31 @@
 "use client";
+/**
+ * @file EpicDetailClient.tsx — app/(main)/epics/[id]
+ *
+ * NEW: Reads ?openTask=<id> from the URL on mount and auto-opens the
+ * TaskSlideover for that task. Used by /tasks/[id]/page.tsx redirect so
+ * direct task URLs resolve to the correct epic + open the slideover.
+ */
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { useSearchParams } from "next/navigation";
 
 import { DarkTaskCard } from "@/widgets/task-list/DarkTaskCard";
 import { TaskSlideover } from "@/features/task-details/TaskSlideover";
 import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const STATUS_ORDER = ["in_progress", "todo", "blocked", "done"] as const;
 
-const STATUS_CFG: Record<
-  TaskStatus,
-  { label: string; color: string; bg: string }
-> = {
-  in_progress: { label: "В работе", color: "#38bdf8", bg: "rgba(14,165,233,0.10)" },
-  todo: { label: "К работе", color: "#64748b", bg: "rgba(100,116,139,0.10)" },
-  blocked: { label: "Заблокировано", color: "#f87171", bg: "rgba(239,68,68,0.10)" },
-  done: { label: "Готово", color: "#34d399", bg: "rgba(16,185,129,0.10)" },
+const STATUS_CFG: Record<TaskStatus, { label: string; color: string; bg: string }> = {
+  in_progress: { label: "В работе",      color: "#38bdf8", bg: "rgba(14,165,233,0.10)"  },
+  todo:        { label: "К работе",      color: "#64748b", bg: "rgba(100,116,139,0.10)" },
+  blocked:     { label: "Заблокировано", color: "#f87171", bg: "rgba(239,68,68,0.10)"   },
+  done:        { label: "Готово",        color: "#34d399", bg: "rgba(16,185,129,0.10)"  },
 };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function groupByStatus(tasks: EpicWithTasks["tasks"]) {
   const g: Record<TaskStatus, typeof tasks> = {
@@ -26,8 +35,20 @@ function groupByStatus(tasks: EpicWithTasks["tasks"]) {
   return g;
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
-  const [activeTask, setActiveTask] = useState<TaskView | null>(null);
+  const searchParams = useSearchParams();
+
+  // Lazy initializer: if ?openTask=<id> is present when the component first
+  // mounts (e.g. redirect from /tasks/[id]/page.tsx), open that task
+  // immediately — no effect, no extra render.
+  const [activeTask, setActiveTask] = useState<TaskView | null>(() => {
+    const id = searchParams?.get("openTask");
+    if (!id) return null;
+    return epic.tasks.find((t) => t.id === Number(id)) ?? null;
+  });
+
   const grouped = groupByStatus(epic.tasks);
   const pct =
     epic.progress.total > 0
@@ -46,9 +67,9 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             className="relative rounded-2xl overflow-hidden p-5"
             style={{
-              background: "var(--bg-elevated)",
-              border: "1px solid var(--glass-border)",
-              borderLeft: `4px solid ${epic.color}`,
+              background:  "var(--bg-elevated)",
+              border:      "1px solid var(--glass-border)",
+              borderLeft:  `4px solid ${epic.color}`,
             }}
           >
             {/* Ambient glow */}
@@ -65,8 +86,8 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
                 className="mt-0.5 w-10 h-10 rounded-xl shrink-0 flex items-center justify-center"
                 style={{
                   backgroundColor: `${epic.color}20`,
-                  border: `1px solid ${epic.color}40`,
-                  boxShadow: `0 0 20px ${epic.color}30`,
+                  border:          `1px solid ${epic.color}40`,
+                  boxShadow:       `0 0 20px ${epic.color}30`,
                 }}
               >
                 <span
@@ -77,7 +98,10 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
 
               <div className="flex-1 min-w-0 space-y-3">
                 {epic.description && (
-                  <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                  <p
+                    className="text-sm leading-relaxed"
+                    style={{ color: "var(--text-secondary)" }}
+                  >
                     {epic.description}
                   </p>
                 )}
@@ -88,7 +112,10 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
                     <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                       Прогресс
                     </span>
-                    <span className="text-xs font-mono font-semibold" style={{ color: epic.color }}>
+                    <span
+                      className="text-xs font-mono font-semibold"
+                      style={{ color: epic.color }}
+                    >
                       {epic.progress.done}/{epic.progress.total}
                     </span>
                   </div>
@@ -100,7 +127,7 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
                       className="h-full rounded-full"
                       style={{
                         backgroundColor: epic.color,
-                        boxShadow: `0 0 10px ${epic.color}80`,
+                        boxShadow:       `0 0 10px ${epic.color}80`,
                       }}
                       initial={{ width: 0 }}
                       animate={{ width: `${pct}%` }}
@@ -111,10 +138,7 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
               </div>
 
               {/* Big pct */}
-              <div
-                className="shrink-0 text-right"
-                style={{ color: epic.color }}
-              >
+              <div className="shrink-0 text-right" style={{ color: epic.color }}>
                 <motion.span
                   className="text-3xl font-bold font-mono tabular-nums"
                   initial={{ opacity: 0 }}
@@ -130,6 +154,7 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
           {/* ── Status sections ───────────────────────────────────────── */}
           {STATUS_ORDER.map((status, sectionIdx) => {
             const group = grouped[status];
+            // Hide "blocked" section entirely when empty
             if (!group?.length && status === "blocked") return null;
             const { label, color, bg } = STATUS_CFG[status];
 
@@ -140,8 +165,8 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{
                   duration: 0.4,
-                  ease: [0.16, 1, 0.3, 1],
-                  delay: 0.1 + sectionIdx * 0.07,
+                  ease:     [0.16, 1, 0.3, 1],
+                  delay:    0.1 + sectionIdx * 0.07,
                 }}
               >
                 {/* Section header */}
@@ -156,25 +181,15 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
                     />
                     {label}
                   </div>
-                  <span
-                    className="text-xs font-mono"
-                    style={{ color: "var(--text-muted)" }}
-                  >
+                  <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
                     {group?.length ?? 0}
                   </span>
-                  {/* Divider line */}
-                  <div
-                    className="flex-1 h-px"
-                    style={{ background: "var(--glass-border)" }}
-                  />
+                  <div className="flex-1 h-px" style={{ background: "var(--glass-border)" }} />
                 </div>
 
                 {/* Task grid */}
                 {!group?.length ? (
-                  <p
-                    className="text-xs pl-2"
-                    style={{ color: "var(--text-muted)" }}
-                  >
+                  <p className="text-xs pl-2" style={{ color: "var(--text-muted)" }}>
                     Нет задач
                   </p>
                 ) : (
@@ -183,17 +198,15 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
                     initial="hidden"
                     animate="visible"
                     variants={{
-                      visible: {
-                        transition: { staggerChildren: 0.05 },
-                      },
+                      visible: { transition: { staggerChildren: 0.05 } },
                     }}
                   >
                     {group.map((task) => (
                       <motion.div
                         key={task.id}
                         variants={{
-                          hidden: { opacity: 0, y: 8 },
-                          visible: {
+                          hidden:   { opacity: 0, y: 8 },
+                          visible:  {
                             opacity: 1,
                             y: 0,
                             transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] },

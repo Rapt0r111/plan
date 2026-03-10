@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { useRoleStore } from "@/shared/store/useRoleStore";
 import { cn } from "@/shared/lib/utils";
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RoleLoad {

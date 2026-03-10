@@ -23,6 +23,7 @@ import { cn } from "@/shared/lib/utils";
 import { formatDate } from "@/shared/lib/utils";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import type { TaskView, TaskStatus } from "@/shared/types";
+import { useMotionTemplate } from "framer-motion";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -136,6 +137,7 @@ export function TaskCard({ task, onOpen }: Props) {
   });
   const glareX = useTransform(mouseX, [-0.5, 0.5], ["0%", "100%"]);
   const glareY = useTransform(mouseY, [-0.5, 0.5], ["0%", "100%"]);
+  const glareBackground = useMotionTemplate`radial-gradient(circle at ${glareX} ${glareY}, rgba(255,255,255,0.05) 0%, transparent 60%)`;
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
     const rect = cardRef.current?.getBoundingClientRect();
@@ -183,12 +185,8 @@ export function TaskCard({ task, onOpen }: Props) {
       whileHover={{ z: 8 }}
     >
       {/* Specular highlight — follows cursor */}
-      <motion.div
-        className="pointer-events-none absolute inset-0 opacity-0 hover:opacity-100 transition-opacity duration-300"
-        style={{
-          background: `radial-gradient(circle at ${glareX} ${glareY}, rgba(255,255,255,0.06) 0%, transparent 60%)`,
-        }}
-      />
+      <motion.div style={{ background: glareBackground }} />
+
 
       {/* Priority left accent line is handled by [data-priority] in globals.css */}
 

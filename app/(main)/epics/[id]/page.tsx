@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getEpicById } from "@/entities/epic/epicRepository";
 import { Header } from "@/widgets/header/Header";
 import { EpicDetailClient } from "./EpicDetailClient";
+import { Suspense } from "react";
 
 export default async function EpicDetailPage({
   params,
@@ -35,7 +36,9 @@ export default async function EpicDetailPage({
           </span>
         }
       />
-      <EpicDetailClient epic={epic} />
+      <Suspense>
+        <EpicDetailClient epic={epic} />
+      </Suspense>
     </div>
   );
 }

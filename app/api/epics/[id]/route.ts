@@ -21,7 +21,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const { id } = await params;
     const body = await req.json();
     const epic = await updateEpic(Number(id), body);
-    revalidateTag(EPICS_CACHE_TAG, "default");
+    revalidateTag(EPICS_CACHE_TAG, "max");
     return NextResponse.json({ ok: true, data: epic });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
@@ -32,7 +32,7 @@ export async function DELETE(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
     await deleteEpic(Number(id));
-    revalidateTag(EPICS_CACHE_TAG, "default");
+    revalidateTag(EPICS_CACHE_TAG, "max");
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

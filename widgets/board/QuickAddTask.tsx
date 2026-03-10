@@ -65,11 +65,11 @@ function PriorityChip({
       style={
         active
           ? {
-              background:   `${meta.color}22`,
-              color:         meta.color,
-              borderColor:  `${meta.color}44`,
-              boxShadow:    `0 0 8px ${meta.color}28`,
-            }
+            background: `${meta.color}22`,
+            color: meta.color,
+            borderColor: `${meta.color}44`,
+            boxShadow: `0 0 8px ${meta.color}28`,
+          }
           : undefined
       }
     >
@@ -144,20 +144,20 @@ export function QuickAddTask({
   epicColor,
   onCreated,
 }: Props) {
-  const [open,              setOpen]              = useState(false);
-  const [title,             setTitle]             = useState("");
-  const [priority,          setPriority]          = useState<TaskPriority>("medium");
-  const [assigneeId,        setAssigneeId]        = useState<number | null>(null);
-  const [metaVisible,       setMetaVisible]       = useState(false);
-  const [saving,            setSaving]            = useState(false);
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [priority, setPriority] = useState<TaskPriority>("medium");
+  const [assigneeId, setAssigneeId] = useState<number | null>(null);
+  const [metaVisible, setMetaVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
   // null = нет подсказки; строка = AI что-то предложил
   const [suggestedPriority, setSuggestedPriority] = useState<TaskPriority | null>(null);
   // флаг: пользователь сам кликал на chip — не перезаписываем AI-подсказкой
   const priorityTouchedRef = useRef(false);
 
-  const inputRef     = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const createTask   = useTaskStore((s) => s.createTask);
+  const createTask = useTaskStore((s) => s.createTask);
   const { users, fetchUsers } = useUsers();
 
   const accentHex = epicColor ?? "#8b5cf6";
@@ -221,15 +221,32 @@ export function QuickAddTask({
         status: defaultStatus,
         priority,
       });
-      if (task && assigneeId !== null) {
+
+      if (!task) {
+        setTitle(trimmed); // rollback
+        return;
+      }
+
+      if (assigneeId !== null) {
         const user = users.find((u) => u.id === assigneeId);
+
         if (user) {
-          useTaskStore
-            .getState()
-            .addAssignee(task.id, user as TaskView["assignees"][0]);
+          const assignee: TaskView["assignees"][0] = {
+            id: user.id,
+            name: user.name,
+            initials: user.initials,
+            login: "",
+            roleId: 0,
+            createdAt: new Date().toISOString(),
+            roleMeta: user.roleMeta as TaskView["assignees"][0]["roleMeta"]
+          };
+
+          const store = useTaskStore.getState();
+          store.addAssignee(task.id, assignee);
         }
       }
-      onCreated?.(task!);
+
+      onCreated?.(task);
       setSuggestedPriority(null);
       priorityTouchedRef.current = false;
       setPriority("medium");
@@ -242,7 +259,7 @@ export function QuickAddTask({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter")  { e.preventDefault(); handleSave();  }
+      if (e.key === "Enter") { e.preventDefault(); handleSave(); }
       if (e.key === "Escape") { e.preventDefault(); handleClose(); }
     },
     [handleSave, handleClose],
@@ -305,7 +322,7 @@ export function QuickAddTask({
             key="card"
             layout
             initial={{ opacity: 0, scale: 0.97, y: -6 }}
-            animate={{ opacity: 1, scale: 1,    y: 0  }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: -4, transition: { duration: 0.14 } }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
             className="quick-add-card"
@@ -339,8 +356,8 @@ export function QuickAddTask({
                   <motion.p
                     key={suggestedPriority}
                     initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1,  y: 0  }}
-                    exit={{   opacity: 0,  y: -4  }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.18, ease: "easeOut" }}
                     className="text-[10px] flex items-center gap-1"
                     style={{ color: "var(--text-muted)" }}
@@ -367,7 +384,7 @@ export function QuickAddTask({
                     key="meta"
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
-                    exit={{   opacity: 0, height: 0 }}
+                    exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                     className="overflow-hidden"
                   >
@@ -450,7 +467,7 @@ export function QuickAddTask({
                     onClick={handleSave}
                     disabled={!title.trim() || saving}
                     whileHover={title.trim() && !saving ? { scale: 1.04 } : {}}
-                    whileTap={title.trim()   && !saving ? { scale: 0.96 } : {}}
+                    whileTap={title.trim() && !saving ? { scale: 0.96 } : {}}
                     className="quick-add-save-btn"
                     style={{ opacity: saving ? 0.72 : 1 }}
                   >

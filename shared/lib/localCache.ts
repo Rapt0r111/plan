@@ -4,13 +4,20 @@
 const DB_NAME = "plan-cache";
 const STORE_NAME = "epics";
 
+let _db: IDBDatabase | null = null;
+
 async function openDB(): Promise<IDBDatabase> {
+  if (_db) return _db;
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => {
       req.result.createObjectStore(STORE_NAME);
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      _db = req.result;
+      _db.addEventListener("close", () => { _db = null; });
+      resolve(_db);
+    };
     req.onerror = () => reject(req.error);
   });
 }

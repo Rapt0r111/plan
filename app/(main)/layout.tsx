@@ -10,14 +10,16 @@ import { Sidebar } from "@/widgets/sidebar/Sidebar";
 import { getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
 import { OfflineHydrator } from "@/shared/store/StoreHydrator";
+import { RoleHydrator } from "@/shared/store/RoleHydrator";
+import { getAllRoles } from "@/entities/role/roleRepository";
 
 async function SidebarLoader() {
-  const [epics, users] = await Promise.all([
-    getAllEpics(),
-    getAllUsers(),
+  const [epics, users, roles] = await Promise.all([
+    getAllEpics(), getAllUsers(), getAllRoles(),
   ]);
   return (
     <>
+      <RoleHydrator roles={roles} />
       <Sidebar epics={epics} users={users} />
     </>
   );

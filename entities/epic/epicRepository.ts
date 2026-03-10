@@ -11,7 +11,7 @@ import type { DbEpic, EpicWithTasks, TaskView, UserWithMeta, SubtaskView } from 
 
 export const EPICS_CACHE_TAG = "epics";
 
-const CACHE_TTL       = 60;
+const CACHE_TTL = 60;
 const CACHE_TTL_LIGHT = 120;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,14 +21,14 @@ const CACHE_TTL_LIGHT = 120;
 async function _getAllEpics(): Promise<(DbEpic & { taskCount: number; doneCount: number })[]> {
   const rows = await db
     .select({
-      id:          epics.id,
-      title:       epics.title,
+      id: epics.id,
+      title: epics.title,
       description: epics.description,
-      color:       epics.color,
-      startDate:   epics.startDate,
-      endDate:     epics.endDate,
-      createdAt:   epics.createdAt,
-      updatedAt:   epics.updatedAt,
+      color: epics.color,
+      startDate: epics.startDate,
+      endDate: epics.endDate,
+      createdAt: epics.createdAt,
+      updatedAt: epics.updatedAt,
       taskCount: count(tasks.id),
       doneCount: sql<number>`
         CAST(COUNT(CASE WHEN ${tasks.status} = 'done' THEN 1 END) AS INTEGER)
@@ -76,23 +76,23 @@ async function fetchAssignees(taskIds: number[]): Promise<AssigneeRow[]> {
     .select({
       taskId: taskAssignees.taskId,
       user: {
-        id:        users.id,
-        name:      users.name,
-        login:     users.login,
-        roleId:    users.roleId,
-        initials:  users.initials,
+        id: users.id,
+        name: users.name,
+        login: users.login,
+        roleId: users.roleId,
+        initials: users.initials,
         createdAt: users.createdAt,
       },
       role: {
-        id:          roles.id,
-        key:         roles.key,
-        label:       roles.label,
-        short:       roles.short,
-        hex:         roles.hex,
+        id: roles.id,
+        key: roles.key,
+        label: roles.label,
+        short: roles.short,
+        hex: roles.hex,
         description: roles.description,
-        sortOrder:   roles.sortOrder,
-        createdAt:   roles.createdAt,
-        updatedAt:   roles.updatedAt,
+        sortOrder: roles.sortOrder,
+        createdAt: roles.createdAt,
+        updatedAt: roles.updatedAt,
       },
     })
     .from(taskAssignees)
@@ -105,65 +105,71 @@ async function fetchAssignees(taskIds: number[]): Promise<AssigneeRow[]> {
 // getEpicById — страница одного эпика (не кешируется — нужна свежесть)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getEpicById = cache(async function getEpicById(
-  id: number,
-): Promise<EpicWithTasks | null> {
-  const [epic] = await db.select().from(epics).where(eq(epics.id, id));
-  if (!epic) return null;
+export const getEpicById = cache(
+  unstable_cache(
+    async function getEpicById(id: number): Promise<EpicWithTasks | null> {
+      const [epic] = await db.select().from(epics).where(eq(epics.id, id));
+      if (!epic) return null;
 
-  const taskRows = await db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.epicId, id))
-    .orderBy(tasks.sortOrder);
+      const taskRows = await db
+        .select()
+        .from(tasks)
+        .where(eq(tasks.epicId, id))
+        .orderBy(tasks.sortOrder);
 
-  if (!taskRows.length) {
-    return { ...epic, tasks: [], progress: { done: 0, total: 0 } };
-  }
+      if (!taskRows.length) {
+        return { ...epic, tasks: [], progress: { done: 0, total: 0 } };
+      }
 
-  const taskIds = taskRows.map((t) => t.id);
+      const taskIds = taskRows.map((t) => t.id);
 
-  const [allSubtasks, allAssigneeRows] = await Promise.all([
-    db
-      .select()
-      .from(subtasks)
-      .where(inArray(subtasks.taskId, taskIds))
-      .orderBy(subtasks.taskId, subtasks.sortOrder),
-    fetchAssignees(taskIds),
-  ]);
+      const [allSubtasks, allAssigneeRows] = await Promise.all([
+        db
+          .select()
+          .from(subtasks)
+          .where(inArray(subtasks.taskId, taskIds))
+          .orderBy(subtasks.taskId, subtasks.sortOrder),
+        fetchAssignees(taskIds),
+      ]);
 
-  const subtasksByTask = new Map<number, SubtaskView[]>();
-  for (const st of allSubtasks) {
-    const arr = subtasksByTask.get(st.taskId) ?? [];
-    arr.push(st);
-    subtasksByTask.set(st.taskId, arr);
-  }
+      const subtasksByTask = new Map<number, SubtaskView[]>();
+      for (const st of allSubtasks) {
+        const arr = subtasksByTask.get(st.taskId) ?? [];
+        arr.push(st);
+        subtasksByTask.set(st.taskId, arr);
+      }
 
-  const assigneesByTask = buildAssigneesByTask(allAssigneeRows);
+      const assigneesByTask = buildAssigneesByTask(allAssigneeRows);
 
-  const hydratedTasks: TaskView[] = taskRows.map((task) => {
-    const taskSubtasks = subtasksByTask.get(task.id) ?? [];
-    const assignees    = assigneesByTask.get(task.id) ?? [];
-    return {
-      ...task,
-      assignees,
-      subtasks: taskSubtasks,
-      progress: {
-        done:  taskSubtasks.filter((s) => s.isCompleted).length,
-        total: taskSubtasks.length,
-      },
-    };
-  });
+      const hydratedTasks: TaskView[] = taskRows.map((task) => {
+        const taskSubtasks = subtasksByTask.get(task.id) ?? [];
+        const assignees = assigneesByTask.get(task.id) ?? [];
+        return {
+          ...task,
+          assignees,
+          subtasks: taskSubtasks,
+          progress: {
+            done: taskSubtasks.filter((s) => s.isCompleted).length,
+            total: taskSubtasks.length,
+          },
+        };
+      });
 
-  return {
-    ...epic,
-    tasks: hydratedTasks,
-    progress: {
-      done:  hydratedTasks.filter((t) => t.status === "done").length,
-      total: hydratedTasks.length,
+      return {
+        ...epic,
+        tasks: hydratedTasks,
+        progress: {
+          done: hydratedTasks.filter((t) => t.status === "done").length,
+          total: hydratedTasks.length,
+        },
+      };
     },
-  };
-});
+    ["getEpicById"], {
+    revalidate: 30,
+    tags: [EPICS_CACHE_TAG],
+  }
+  )
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getAllEpicsWithTasks — полный граф для Zustand store
@@ -172,14 +178,14 @@ export const getEpicById = cache(async function getEpicById(
 async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
   const epicRows = await db
     .select({
-      id:          epics.id,
-      title:       epics.title,
+      id: epics.id,
+      title: epics.title,
       description: epics.description,
-      color:       epics.color,
-      startDate:   epics.startDate,
-      endDate:     epics.endDate,
-      createdAt:   epics.createdAt,
-      updatedAt:   epics.updatedAt,
+      color: epics.color,
+      startDate: epics.startDate,
+      endDate: epics.endDate,
+      createdAt: epics.createdAt,
+      updatedAt: epics.updatedAt,
     })
     .from(epics);
 
@@ -234,13 +240,13 @@ async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
 
     const hydratedTasks: TaskView[] = epicTasks.map((task) => {
       const taskSubtasks = subtasksByTask.get(task.id) ?? [];
-      const assignees    = assigneesByTask.get(task.id) ?? [];
+      const assignees = assigneesByTask.get(task.id) ?? [];
       return {
         ...task,
         assignees,
         subtasks: taskSubtasks,
         progress: {
-          done:  taskSubtasks.filter((s) => s.isCompleted).length,
+          done: taskSubtasks.filter((s) => s.isCompleted).length,
           total: taskSubtasks.length,
         },
       };
@@ -250,7 +256,7 @@ async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
       ...epic,
       tasks: hydratedTasks,
       progress: {
-        done:  hydratedTasks.filter((t) => t.status === "done").length,
+        done: hydratedTasks.filter((t) => t.status === "done").length,
         total: hydratedTasks.length,
       },
     };

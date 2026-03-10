@@ -28,21 +28,22 @@ import { formatDate } from "@/shared/lib/utils";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { TaskHoverCard } from "@/features/task-details/TaskHoverCard";
 import type { TaskView, TaskStatus } from "@/shared/types";
+import { useMotionTemplate } from "framer-motion";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_CFG: Record<TaskStatus, { label: string; bg: string; text: string }> = {
-  todo:        { label: "К работе",      bg: "rgba(100,116,139,0.18)", text: "#94a3b8" },
-  in_progress: { label: "В работе",      bg: "rgba(14,165,233,0.18)",  text: "#38bdf8" },
-  done:        { label: "Готово",        bg: "rgba(16,185,129,0.18)",  text: "#34d399" },
-  blocked:     { label: "Заблокировано", bg: "rgba(239,68,68,0.18)",   text: "#f87171" },
+  todo: { label: "К работе", bg: "rgba(100,116,139,0.18)", text: "#94a3b8" },
+  in_progress: { label: "В работе", bg: "rgba(14,165,233,0.18)", text: "#38bdf8" },
+  done: { label: "Готово", bg: "rgba(16,185,129,0.18)", text: "#34d399" },
+  blocked: { label: "Заблокировано", bg: "rgba(239,68,68,0.18)", text: "#f87171" },
 };
 
 const PRIORITY_DOT: Record<string, string> = {
   critical: "#ef4444",
-  high:     "#f97316",
-  medium:   "#eab308",
-  low:      "#475569",
+  high: "#f97316",
+  medium: "#eab308",
+  low: "#475569",
 };
 
 const HOVER_DELAY_MS = 350;
@@ -57,29 +58,31 @@ interface DragProps {
 }
 
 interface Props {
-  task:       TaskView;
-  dragProps:  DragProps;
-  onOpen?:    (task: TaskView) => void;
+  task: TaskView;
+  dragProps: DragProps;
+  onOpen?: (task: TaskView) => void;
   /** True when this card is the keyboard-focused task */
   isFocused?: boolean;
   /** Called when user clicks the card to update keyboard focus too */
-  onFocus?:   (taskId: number) => void;
+  onFocus?: (taskId: number) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function BoardTaskCard({ task, dragProps, onOpen, isFocused = false, onFocus }: Props) {
-  const [expanded,     setExpanded]     = useState(false);
-  const [anchorEl,     setAnchorEl]     = useState<HTMLDivElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
   const [hoverVisible, setHoverVisible] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const toggleSubtask    = useTaskStore((s) => s.toggleSubtask);
+  const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
   const liveTask = useTaskStore((s) => s.getTask(task.id)) ?? task;
 
   const { label, bg, text } = STATUS_CFG[liveTask.status];
   const isDragging = dragProps["data-dragging"];
+
+
 
   // ── 3D tilt ──────────────────────────────────────────────────────────────
   const mouseX = useMotionValue(0);
@@ -96,6 +99,7 @@ export function BoardTaskCard({ task, dragProps, onOpen, isFocused = false, onFo
 
   const glareX = useTransform(mouseX, [-0.5, 0.5], ["0%", "100%"]);
   const glareY = useTransform(mouseY, [-0.5, 0.5], ["0%", "100%"]);
+  const glareBackground = useMotionTemplate`radial-gradient(circle at ${glareX} ${glareY}, rgba(255,255,255,0.05) 0%, transparent 60%)`;
 
   // resetTilt is intentionally NOT wrapped in useCallback — it's a stable
   // inline closure over MotionValues (not React state), so re-creating it
@@ -160,8 +164,8 @@ export function BoardTaskCard({ task, dragProps, onOpen, isFocused = false, onFo
     <>
       <motion.div
         style={{
-          rotateX:        isDragging ? 0 : rotateX,
-          rotateY:        isDragging ? 0 : rotateY,
+          rotateX: isDragging ? 0 : rotateX,
+          rotateY: isDragging ? 0 : rotateY,
           transformStyle: "preserve-3d",
         }}
         onMouseMove={handleMouseMove}
@@ -187,16 +191,12 @@ export function BoardTaskCard({ task, dragProps, onOpen, isFocused = false, onFo
           )}
           style={{
             background: "var(--bg-overlay)",
-            border:     "1px solid var(--glass-border)",
+            border: "1px solid var(--glass-border)",
           }}
         >
           {/* Specular highlight */}
-          <motion.div
-            className="pointer-events-none absolute inset-0 opacity-0 hover:opacity-100 transition-opacity duration-300"
-            style={{
-              background: `radial-gradient(circle at ${glareX} ${glareY}, rgba(255,255,255,0.05) 0%, transparent 60%)`,
-            }}
-          />
+          <motion.div style={{ background: glareBackground }} />
+
 
           {/* ── Card content ──────────────────────────────────────────── */}
           <div className="px-3 py-2.5 flex items-start gap-2.5">

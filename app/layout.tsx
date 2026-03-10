@@ -33,11 +33,14 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+
   return (
     <html lang="ru" suppressHydrationWarning>
       <head suppressHydrationWarning>
         {/* Anti-FOUC: тема применяется до первого paint */}
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.className=t;}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.className='light';}else{document.documentElement.className='dark';}}catch(e){document.documentElement.className='dark';}})();`,
           }}

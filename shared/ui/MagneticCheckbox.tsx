@@ -109,9 +109,8 @@ export function MagneticCheckbox({
           : { scale: 1 }
         }
         transition={checked
-          // ИСправлено: используем keyframes для массива значений
-          ? { type: "keyframes", times: [0, 0.4, 0.7, 1], duration: 0.4, ease: "easeInOut" }
-          : { duration: 0.15 }
+          ? { type: "tween", times: [0, 0.4, 0.7, 1], duration: 0.4, ease: "easeInOut" }
+          : { type: "tween", duration: 0.15 }
         }
       >
         <motion.div

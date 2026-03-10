@@ -68,11 +68,11 @@ export function EpicColumn({
   );
 
   const grouped = useMemo(() => {
-    const map: Record<TaskStatus, TaskView[]> = {
-      in_progress: [], todo: [], blocked: [], done: [],
-    };
+    const map = new Map<TaskStatus, TaskView[]>([
+      ["in_progress", []], ["todo", []], ["blocked", []], ["done", []]
+    ]);
     for (const t of filteredTasks) {
-      if (map[t.status]) map[t.status].push(t);
+      map.get(t.status)?.push(t);
     }
     return map;
   }, [filteredTasks]);
@@ -93,14 +93,18 @@ export function EpicColumn({
       }}
     >
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div
-        className="px-4 py-3.5 flex items-center gap-3 cursor-pointer select-none"
+      <button
+        className="px-4 py-3.5 flex items-center gap-3 cursor-pointer select-none w-full text-left"
         style={{
           background: `linear-gradient(135deg, ${epic.color}14 0%, transparent 60%)`,
           borderBottom: "1px solid var(--glass-border)",
         }}
         onClick={() => setCollapsed((v) => !v)}
+        aria-expanded={!collapsed}
+        aria-controls={`epic-body-${epic.id}`}
+        aria-label={`${epic.title} — ${collapsed ? "развернуть" : "свернуть"}`}
       >
+        Кнопка
         <span
           className="w-2.5 h-2.5 rounded-full shrink-0"
           style={{ backgroundColor: epic.color, boxShadow: `0 0 8px ${epic.color}90` }}
@@ -144,7 +148,7 @@ export function EpicColumn({
             <path d="M4 6l4 4 4-4" />
           </motion.svg>
         </div>
-      </div>
+      </button>
 
       {/* ── Progress bar ─────────────────────────────────────────────────── */}
       <div className="h-0.5 bg-[var(--glass-02)]">
@@ -172,16 +176,10 @@ export function EpicColumn({
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <AnimatePresence>
         {!collapsed && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="overflow-hidden"
-          >
+          <motion.div id={`epic-body-${epic.id}`} role="region" aria-label={epic.title}>
             <div className="p-3 space-y-4">
               {STATUS_SECTIONS.map(({ key, label }) => {
-                const tasks = grouped[key];
+                const tasks = grouped.get(key) ?? [];
                 const isActive = key === "in_progress" || key === "todo";
                 if (!isActive && !tasks.length) return null;
 
@@ -237,7 +235,7 @@ export function EpicColumn({
                         </div>
                       ) : (
                         <motion.div layout className="space-y-2">
-                          {tasks.map((task, idx) => (
+                          {tasks.map((task: TaskView, idx: number) => (
                             <motion.div
                               key={task.id} layout
                               initial={{ opacity: 0, y: 6 }}

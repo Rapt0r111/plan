@@ -33,6 +33,8 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
  */
 function createGhostElement(task: TaskView, isDark: boolean): HTMLElement {
   const ghost = document.createElement("div");
+  ghost.style.cssText =
+    "position:fixed;top:-9999px;left:-9999px;z-index:-1;pointer-events:none;";
 
   const bg = isDark ? "rgba(26,29,53,0.92)" : "rgba(237,233,227,0.95)";
   const textColor = isDark ? "rgba(255,255,255,0.88)" : "rgba(20,15,8,0.88)";
@@ -42,84 +44,120 @@ function createGhostElement(task: TaskView, isDark: boolean): HTMLElement {
 
   const priorityColor = PRIORITY_COLOR[task.priority] ?? "#475569";
   const statusLabel = STATUS_LABEL[task.status] ?? task.status;
-  const assigneeDots = task.assignees
-    .slice(0, 3)
-    .map(
-      (a) =>
-        `<div style="
-          width:18px;height:18px;border-radius:50%;
-          background:${a.roleMeta.hex};
-          display:inline-flex;align-items:center;justify-content:center;
-          font-size:8px;font-weight:700;color:#fff;
-          margin-right:-5px;
-          border:1.5px solid rgba(0,0,0,0.25);
-        ">${a.initials}</div>`,
-    )
-    .join("");
 
-  ghost.innerHTML = `
-    <div style="
-      display:flex;flex-direction:column;gap:8px;
-      padding:10px 12px;
-      background:${bg};
-      border:1px solid ${borderColor};
-      border-left:3px solid ${priorityColor};
-      border-radius:12px;
-      box-shadow:0 16px 48px rgba(0,0,0,0.45),0 0 0 1px rgba(139,92,246,0.12);
-      backdrop-filter:blur(16px);
-      -webkit-backdrop-filter:blur(16px);
-      pointer-events:none;
-      transform:scale(1.04) rotate(-1deg);
-      font-family:'DM Sans',sans-serif;
-      width:240px;
-    ">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-        <div style="
-          display:inline-flex;align-items:center;gap:5px;
-          padding:2px 8px;border-radius:99px;
-          background:${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"};
-          font-size:10px;font-weight:500;color:${mutedColor};
-        ">
-          <span style="width:6px;height:6px;border-radius:50%;background:${priorityColor};display:inline-block;"></span>
-          ${statusLabel}
-        </div>
-        <span style="font-size:10px;font-family:'DM Mono',monospace;color:${mutedColor};">
-          #${task.id}
-        </span>
-      </div>
-
-      <p style="
-        font-size:12px;font-weight:500;line-height:1.45;
-        color:${textColor};
-        margin:0;
-        overflow:hidden;display:-webkit-box;
-        -webkit-line-clamp:2;-webkit-box-orient:vertical;
-      ">${task.title}</p>
-
-      ${task.assignees.length > 0
-      ? `<div style="display:flex;align-items:center;margin-top:2px;">${assigneeDots}</div>`
-      : ""
-    }
-
-      <div style="
-        height:2px;border-radius:99px;
-        background:${trackBg};
-        overflow:hidden;
-      ">
-        ${task.progress.total > 0
-      ? `<div style="
-                height:100%;border-radius:99px;
-                width:${Math.round((task.progress.done / task.progress.total) * 100)}%;
-                background:${priorityColor};
-              "></div>`
-      : ""
-    }
-      </div>
-    </div>
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = `
+    display:flex;flex-direction:column;gap:8px;
+    padding:10px 12px;
+    background:${bg};
+    border:1px solid ${borderColor};
+    border-left:3px solid ${priorityColor};
+    border-radius:12px;
+    box-shadow:0 16px 48px rgba(0,0,0,0.45),0 0 0 1px rgba(139,92,246,0.12);
+    backdrop-filter:blur(16px);
+    -webkit-backdrop-filter:blur(16px);
+    pointer-events:none;
+    transform:scale(1.04) rotate(-1deg);
+    font-family:'DM Sans',sans-serif;
+    width:240px;
   `;
 
-  ghost.style.cssText =
-    "position:fixed;top:-9999px;left:-9999px;z-index:-1;pointer-events:none;";
+  // ── Header ─────────────────────────────
+
+  const header = document.createElement("div");
+  header.style.cssText =
+    "display:flex;align-items:center;justify-content:space-between;gap:6px;";
+
+  const status = document.createElement("div");
+  status.style.cssText = `
+    display:inline-flex;align-items:center;gap:5px;
+    padding:2px 8px;border-radius:99px;
+    background:${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"};
+    font-size:10px;font-weight:500;color:${mutedColor};
+  `;
+
+  const statusDot = document.createElement("span");
+  statusDot.style.cssText =
+    `width:6px;height:6px;border-radius:50%;background:${priorityColor};display:inline-block;`;
+
+  const statusText = document.createElement("span");
+  statusText.textContent = statusLabel;
+
+  status.appendChild(statusDot);
+  status.appendChild(statusText);
+
+  const idEl = document.createElement("span");
+  idEl.textContent = `#${task.id}`;
+  idEl.style.cssText =
+    "font-size:10px;font-family:'DM Mono',monospace;color:" + mutedColor;
+
+  header.appendChild(status);
+  header.appendChild(idEl);
+
+  // ── Title (SAFE) ───────────────────────
+
+  const titleEl = document.createElement("p");
+  titleEl.textContent = task.title;
+  titleEl.style.cssText = `
+    font-size:12px;font-weight:500;line-height:1.45;
+    color:${textColor};
+    margin:0;
+    overflow:hidden;display:-webkit-box;
+    -webkit-line-clamp:2;-webkit-box-orient:vertical;
+  `;
+
+  // ── Assignees ──────────────────────────
+
+  if (task.assignees.length > 0) {
+    const assignees = document.createElement("div");
+    assignees.style.cssText = "display:flex;align-items:center;margin-top:2px;";
+
+    task.assignees.slice(0, 3).forEach((a) => {
+      const avatar = document.createElement("div");
+      avatar.textContent = a.initials;
+      avatar.style.cssText = `
+        width:18px;height:18px;border-radius:50%;
+        background:${a.roleMeta.hex};
+        display:inline-flex;align-items:center;justify-content:center;
+        font-size:8px;font-weight:700;color:#fff;
+        margin-right:-5px;
+        border:1.5px solid rgba(0,0,0,0.25);
+      `;
+      assignees.appendChild(avatar);
+    });
+
+    wrapper.appendChild(assignees);
+  }
+
+  // ── Progress ───────────────────────────
+
+  const progressTrack = document.createElement("div");
+  progressTrack.style.cssText = `
+    height:2px;border-radius:99px;
+    background:${trackBg};
+    overflow:hidden;
+  `;
+
+  if (task.progress.total > 0) {
+    const progressBar = document.createElement("div");
+    const percent = Math.round((task.progress.done / task.progress.total) * 100);
+
+    progressBar.style.cssText = `
+      height:100%;border-radius:99px;
+      width:${percent}%;
+      background:${priorityColor};
+    `;
+
+    progressTrack.appendChild(progressBar);
+  }
+
+  // ── Assembly ───────────────────────────
+
+  wrapper.appendChild(header);
+  wrapper.appendChild(titleEl);
+  wrapper.appendChild(progressTrack);
+
+  ghost.appendChild(wrapper);
 
   return ghost;
 }

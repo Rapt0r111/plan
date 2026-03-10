@@ -19,7 +19,7 @@ export async function DELETE(_req: Request, { params }: Params) {
           eq(taskAssignees.userId, Number(userId)),
         ),
       );
-    revalidateTag(EPICS_CACHE_TAG, "default");
+    revalidateTag(EPICS_CACHE_TAG, "max");
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

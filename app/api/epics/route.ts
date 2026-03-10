@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "title is required" }, { status: 422 });
     }
     const epic = await createEpic(body);
-    revalidateTag(EPICS_CACHE_TAG, "default");
+    revalidateTag(EPICS_CACHE_TAG, "max");
     return NextResponse.json({ ok: true, data: epic }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

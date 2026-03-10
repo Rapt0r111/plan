@@ -18,7 +18,7 @@ export async function POST(req: Request, { params }: Params) {
       .insert(taskAssignees)
       .values({ taskId: Number(id), userId: Number(userId) })
       .onConflictDoNothing();
-    revalidateTag(EPICS_CACHE_TAG, "default");
+    revalidateTag(EPICS_CACHE_TAG, "max");
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

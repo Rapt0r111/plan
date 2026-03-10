@@ -68,9 +68,12 @@ function KbdHint({ children }: { children: React.ReactNode }) {
 const HINT_STORAGE_KEY = "board_keynav_hint_dismissed";
 
 function KeyboardHint() {
-    const [visible, setVisible] = useState<boolean>(() => {
+    const [visible, setVisible] = useState(() => {
+        if (typeof window === "undefined") return false;
+
         try {
-            return !localStorage.getItem(HINT_STORAGE_KEY);
+            const dismissed = localStorage.getItem(HINT_STORAGE_KEY);
+            return !dismissed;
         } catch {
             return true;
         }

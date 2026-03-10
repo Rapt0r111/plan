@@ -490,3 +490,50 @@ html.light .quick-add-save-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 22%, var(--bg-surface));
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
+
+.quick-add-priority-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--glass-01);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+  font-family: var(--font-sans);
+}
+
+.quick-add-cancel-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  cursor: pointer;
+  outline: none;
+  font-family: var(--font-sans);
+  transition: all 0.15s ease;
+}
+.quick-add-cancel-btn:hover {
+  background: var(--glass-02);
+  color: var(--text-secondary);
+}
+
+.quick-add-kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: var(--glass-02);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+}

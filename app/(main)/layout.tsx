@@ -9,6 +9,8 @@ import { Suspense } from "react";
 import { Sidebar } from "@/widgets/sidebar/Sidebar";
 import { getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
+import { OfflineHydrator } from "@/shared/store/StoreHydrator";
+
 async function SidebarLoader() {
   const [epics, users] = await Promise.all([
     getAllEpics(),
@@ -79,6 +81,7 @@ function SidebarSkeleton() {
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden">
+      <OfflineHydrator />
       <Suspense fallback={<SidebarSkeleton />}>
         <SidebarLoader />
       </Suspense>

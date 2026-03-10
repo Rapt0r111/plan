@@ -28,6 +28,7 @@ interface TaskStore {
   lastSyncedAt: Date | null;
   pendingOps: number;
 
+
   getEpic: (id: number) => EpicWithTasks | undefined;
   getTask: (id: number) => TaskView | undefined;
   getTasksForEpic: (epicId: number) => TaskView[];
@@ -44,6 +45,7 @@ interface TaskStore {
   removeAssignee: (taskId: number, userId: number) => Promise<void>;
   toggleSubtask: (taskId: number, subtaskId: number, current: boolean) => Promise<void>;
   reorderTasks: (epicId: number, orderedIds: number[]) => Promise<void>;
+  deleteTask: (taskId: number) => Promise<void>;
   _beginOp: () => () => void;
 }
 
@@ -117,7 +119,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── addTask ──────────────────────────────────────────────────────────────
     addTask: async (epicId, title, status = "todo") => {
-      const tempId = -(Date.now());
+      let _tempIdCounter = 0;
+      const nextTempId = () => -(++_tempIdCounter);
+      const tempId = nextTempId();
       const now = new Date().toISOString();
 
       const tempTask: TaskView = {
@@ -483,7 +487,7 @@ export const useTaskStore = create<TaskStore>()(
       const done = get()._beginOp();
       try {
         await Promise.all(
-          orderedIds.map((id, idx) => apiPatch(`/api/tasks/${id}`, { sort_order: idx }))
+          orderedIds.map((id, idx) => apiPatch(`/api/tasks/${id}`, { sortOrder: idx }))
         );
       } catch {
         if (prevOrder) {

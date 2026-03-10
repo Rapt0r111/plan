@@ -14,16 +14,16 @@ export interface DragState {
 
 const PRIORITY_COLOR: Record<string, string> = {
   critical: "#ef4444",
-  high:     "#f97316",
-  medium:   "#eab308",
-  low:      "#475569",
+  high: "#f97316",
+  medium: "#eab308",
+  low: "#475569",
 };
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
-  todo:        "К работе",
+  todo: "К работе",
   in_progress: "В работе",
-  done:        "Готово",
-  blocked:     "Заблокировано",
+  done: "Готово",
+  blocked: "Заблокировано",
 };
 
 /**
@@ -34,15 +34,15 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 function createGhostElement(task: TaskView, isDark: boolean): HTMLElement {
   const ghost = document.createElement("div");
 
-  const bg          = isDark ? "rgba(26,29,53,0.92)"      : "rgba(237,233,227,0.95)";
-  const textColor   = isDark ? "rgba(255,255,255,0.88)"   : "rgba(20,15,8,0.88)";
-  const mutedColor  = isDark ? "rgba(255,255,255,0.30)"   : "rgba(20,15,8,0.38)";
-  const borderColor = isDark ? "rgba(255,255,255,0.10)"   : "rgba(0,0,0,0.10)";
-  const trackBg     = isDark ? "rgba(255,255,255,0.06)"   : "rgba(0,0,0,0.06)";
+  const bg = isDark ? "rgba(26,29,53,0.92)" : "rgba(237,233,227,0.95)";
+  const textColor = isDark ? "rgba(255,255,255,0.88)" : "rgba(20,15,8,0.88)";
+  const mutedColor = isDark ? "rgba(255,255,255,0.30)" : "rgba(20,15,8,0.38)";
+  const borderColor = isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)";
+  const trackBg = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)";
 
   const priorityColor = PRIORITY_COLOR[task.priority] ?? "#475569";
-  const statusLabel   = STATUS_LABEL[task.status] ?? task.status;
-  const assigneeDots  = task.assignees
+  const statusLabel = STATUS_LABEL[task.status] ?? task.status;
+  const assigneeDots = task.assignees
     .slice(0, 3)
     .map(
       (a) =>
@@ -96,26 +96,24 @@ function createGhostElement(task: TaskView, isDark: boolean): HTMLElement {
         -webkit-line-clamp:2;-webkit-box-orient:vertical;
       ">${task.title}</p>
 
-      ${
-        task.assignees.length > 0
-          ? `<div style="display:flex;align-items:center;margin-top:2px;">${assigneeDots}</div>`
-          : ""
-      }
+      ${task.assignees.length > 0
+      ? `<div style="display:flex;align-items:center;margin-top:2px;">${assigneeDots}</div>`
+      : ""
+    }
 
       <div style="
         height:2px;border-radius:99px;
         background:${trackBg};
         overflow:hidden;
       ">
-        ${
-          task.progress.total > 0
-            ? `<div style="
+        ${task.progress.total > 0
+      ? `<div style="
                 height:100%;border-radius:99px;
                 width:${Math.round((task.progress.done / task.progress.total) * 100)}%;
                 background:${priorityColor};
               "></div>`
-            : ""
-        }
+      : ""
+    }
       </div>
     </div>
   `;
@@ -130,15 +128,15 @@ function createGhostElement(task: TaskView, isDark: boolean): HTMLElement {
 
 export function useBoardDnD() {
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
-  const getTask          = useTaskStore((s) => s.getTask);
+  const getTask = useTaskStore((s) => s.getTask);
   const [dragState, setDragState] = useState<DragState>({ draggingId: null, overStatus: null });
   const draggingIdRef = useRef<number | null>(null);
-  const ghostRef      = useRef<HTMLElement | null>(null);
+  const ghostRef = useRef<HTMLElement | null>(null);
 
   const getDragProps = useCallback(
     (taskId: number) => ({
       draggable: true as const,
-      "data-dragging": dragState.draggingId === taskId,
+      "data-dragging": draggingIdRef.current === taskId,
 
       onDragStart: (e: React.DragEvent) => {
         e.dataTransfer.effectAllowed = "move";
@@ -169,7 +167,7 @@ export function useBoardDnD() {
         setDragState({ draggingId: null, overStatus: null });
       },
     }),
-    [dragState.draggingId, getTask],
+    [getTask],
   );
 
   const getDropProps = useCallback(

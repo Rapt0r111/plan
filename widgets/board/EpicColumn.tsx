@@ -221,12 +221,19 @@ export function EpicColumn({
                       {tasks.length === 0 ? (
                         <div
                           className={cn(
-                            "flex items-center justify-center h-10 rounded-lg text-xs text-(--text-muted)",
-                            "border border-dashed border-[var(--glass-border)] transition-colors",
+                            "flex flex-col items-center justify-center gap-2 min-h-10 rounded-lg text-xs text-(--text-muted)",
+                            "border border-dashed border-[var(--glass-border)] transition-colors px-1 py-2",
                             isDropActive && "border-[var(--accent-500)] text-[var(--accent-400)]",
                           )}
                         >
-                          {isDropActive ? "Отпустите здесь" : "Нет задач"}
+                          <span>{isDropActive ? "Отпустите здесь" : "Нет задач"}</span>
+                          {(key === "todo" || key === "in_progress") && (
+                            <QuickAddTask
+                              epicId={epic.id}
+                              defaultStatus={key}
+                              epicColor={epic.color}
+                            />
+                          )}
                         </div>
                       ) : (
                         <motion.div layout className="space-y-2">
@@ -239,7 +246,7 @@ export function EpicColumn({
                                 opacity: 0,
                                 scale: 0.88,
                                 y: 12,
-                                rotate: Math.random() > 0.5 ? 3 : -3, // случайный наклон
+                                rotate: Math.random() > 0.5 ? 3 : -3,
                                 filter: "blur(2px)",
                                 transition: { duration: 0.25, ease: [0.4, 0, 1, 1] },
                               }}

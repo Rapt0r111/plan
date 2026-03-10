@@ -5,8 +5,8 @@
  * Vim-style keyboard navigation for the board.
  *
  * SHORTCUTS:
- *  J       — focus next task (down across all visible epics, flattened)
- *  K       — focus previous task
+ *  J / ↓   — focus next task (down across all visible epics, flattened)
+ *  K / ↑   — focus previous task
  *  Enter   — open focused task in Slideover
  *  Escape  — clear focus
  *  E       — cycle focused task's status (todo → in_progress → done → blocked → todo)
@@ -23,9 +23,26 @@
  * GUARD:
  *  Navigation is suppressed when the user is typing in an input/textarea
  *  to prevent accidental navigation while using SmartFilters or CommandPalette.
+ *
+ * BUG FIX (safeFocusedTaskId):
+ *  The previous version computed `safeFocusedTaskId` correctly but the
+ *  keyDown useEffect still closed over the raw `focusedTaskId`, so keyboard
+ *  actions (Enter, E) fired against tasks that were no longer visible after
+ *  a filter change.
+ *
+ *  Fix strategy:
+ *   1. Derive `safeFocusedTaskId` as a plain variable (no state mutation,
+ *      no effect — eliminates react-hooks/set-state-in-effect).
+ *   2. Mirror it into a ref via useLayoutEffect — runs synchronously after
+ *      the DOM is painted, before any user event can fire, so the keyDown
+ *      handler always reads the fresh post-filter value.
+ *      Writing the ref here (not during render) satisfies react-hooks/refs.
+ *   3. The keyDown useEffect reads safeFocusedTaskIdRef.current instead of
+ *      the stale closure value, without re-registering the listener on every
+ *      render.
  */
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
 
@@ -82,6 +99,22 @@ export function useBoardKeyNav({ visibleEpics, onOpenTask }: Options): UseBoardK
         [flatTasks, focusedTaskId],
     );
 
+    // ── BUG FIX ───────────────────────────────────────────────────────────────
+    // Plain derived value — no setState, no effect, no lint violation.
+    const safeFocusedTaskId: number | null =
+        focusedTaskId !== null && focusedIndex !== -1 ? focusedTaskId : null;
+
+    // Ref is initialised to null and updated in useLayoutEffect (not during
+    // render) — satisfies react-hooks/refs.
+    // useLayoutEffect fires synchronously after the DOM update, before the
+    // browser has a chance to dispatch any input event, so the keyDown handler
+    // always finds the current post-filter value here.
+    const safeFocusedTaskIdRef = useRef<number | null>(null);
+    useLayoutEffect(() => {
+        safeFocusedTaskIdRef.current = safeFocusedTaskId;
+    }, [safeFocusedTaskId]);
+    // ─────────────────────────────────────────────────────────────────────────
+
     const moveFocus = useCallback((delta: 1 | -1) => {
         if (flatTasks.length === 0) return;
         if (focusedIndex === -1) {
@@ -94,26 +127,25 @@ export function useBoardKeyNav({ visibleEpics, onOpenTask }: Options): UseBoardK
     }, [flatTasks, focusedIndex]);
 
     const cycleStatus = useCallback(() => {
-        if (focusedTaskId == null) return;
-        const live = getTask(focusedTaskId);
+        const safeId = safeFocusedTaskIdRef.current;
+        if (safeId == null) return;
+        const live = getTask(safeId);
         if (!live) return;
         const idx = STATUS_CYCLE.indexOf(live.status);
         const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
-        updateTaskStatus(focusedTaskId, next);
-    }, [focusedTaskId, getTask, updateTaskStatus]);
+        updateTaskStatus(safeId, next);
+    }, [getTask, updateTaskStatus]);
 
-    // Clear focus when the task list changes (e.g. filter applied)
-
-    const safeFocusedTaskId =
-        focusedTaskId !== null && flatTasks.some(t => t.id === focusedTaskId)
-            ? focusedTaskId
-            : null;
     useEffect(() => {
         function onKeyDown(e: KeyboardEvent) {
             // Never fire inside inputs (SmartFilters, CommandPalette, etc.)
             if (isEditable()) return;
             // Never fire with modifier keys (let browser/OS shortcuts through)
             if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+            // Read the ref — always reflects the post-filter safe value,
+            // updated by useLayoutEffect before this handler can fire.
+            const currentId = safeFocusedTaskIdRef.current;
 
             switch (e.key) {
                 case "j":
@@ -129,15 +161,15 @@ export function useBoardKeyNav({ visibleEpics, onOpenTask }: Options): UseBoardK
                     break;
 
                 case "Enter":
-                    if (focusedTaskId !== null) {
+                    if (currentId !== null) {
                         e.preventDefault();
-                        const task = getTask(focusedTaskId);
+                        const task = getTask(currentId);
                         if (task) onOpenTask(task);
                     }
                     break;
 
                 case "Escape":
-                    if (focusedTaskId !== null) {
+                    if (currentId !== null) {
                         e.preventDefault();
                         setFocusedTaskId(null);
                     }
@@ -145,7 +177,7 @@ export function useBoardKeyNav({ visibleEpics, onOpenTask }: Options): UseBoardK
 
                 case "e":
                 case "E":
-                    if (focusedTaskId !== null) {
+                    if (currentId !== null) {
                         e.preventDefault();
                         cycleStatus();
                     }
@@ -155,7 +187,8 @@ export function useBoardKeyNav({ visibleEpics, onOpenTask }: Options): UseBoardK
 
         document.addEventListener("keydown", onKeyDown);
         return () => document.removeEventListener("keydown", onKeyDown);
-    }, [moveFocus, focusedTaskId, getTask, onOpenTask, cycleStatus]);
+    }, [moveFocus, getTask, onOpenTask, cycleStatus]);
+    //   ↑ safeFocusedTaskId intentionally omitted — read via ref inside handler
 
     return { focusedTaskId: safeFocusedTaskId, setFocusedTaskId };
 }

@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
 
   return (
-    <html lang="ru" suppressHydrationWarning>
+    <html lang="ru" suppressHydrationWarning >
       <head suppressHydrationWarning>
         {/* Anti-FOUC: тема применяется до первого paint */}
         <script

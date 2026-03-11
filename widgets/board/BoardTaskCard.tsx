@@ -1,329 +1,365 @@
 "use client";
 /**
- * @file BoardTaskCard.tsx — widgets/board
+ * PATH:    widgets/board/BoardTaskCard.tsx   ← заменить существующий файл
+ * CONNECT: Используется внутри widgets/board/EpicColumn.tsx через проп renderTask.
+ *          Также импортируется напрямую в app/(main)/board/BoardPage.tsx.
+ *          Импорт не меняется — путь тот же.
  *
- * Dark task card with DnD support and Zustand optimistic updates.
+ *          Новые пропы которые нужно передать из BoardPage.tsx / EpicColumn.tsx:
  *
- * NEW IN v2:
- *  • TaskHoverCard: shown after 350ms hover delay, hidden on mouse leave.
- *    Rendered via portal — no z-index/overflow concerns.
- *  • Focus ring: visible when this card is the keyboard-nav focused task.
- *    Styled with accent colour + subtle outer glow.
+ *   <BoardTaskCard
+ *     {...task}
+ *     epicColor={epic.color}          // hex — для цветных теней и частиц
+ *     magnetIndex={i}                 // индекс карточки в колонке
+ *     activeDragIndex={activeDragIdx} // из useBoardDnD (null если не тащим)
+ *     onClick={() => openSlideover(task.id)}
+ *     onStatusChange={handleStatusChange}
+ *   />
  *
- * NEW IN v3:
- *  • 3D tilt via Framer Motion useMotionValue + useSpring + useTransform.
- *    motion.div (tilt shell) is kept separate from the inner draggable div
- *    to avoid Framer's synthetic event types conflicting with React.DragEvent.
+ * ── Типы ─────────────────────────────────────────────────────────────────────
+ *   TaskStatus и TaskPriority берутся из @/shared/types (re-export из schema).
+ *   Локальные объявления удалены — не переопределяем то, что уже есть в проекте.
  */
-import { useState, useRef, useEffect } from "react";
+
+import React, { useRef, useState, useEffect } from "react";
 import {
   motion,
   useMotionValue,
-  useSpring,
+  useVelocity,
   useTransform,
+  useSpring,
+  AnimatePresence,
 } from "framer-motion";
-import { cn } from "@/shared/lib/utils";
-import { RoleBadge } from "@/features/role-badge/RoleBadge";
-import { formatDate } from "@/shared/lib/utils";
-import { useTaskStore } from "@/shared/store/useTaskStore";
-import { TaskHoverCard } from "@/features/task-details/TaskHoverCard";
-import type { TaskView, TaskStatus } from "@/shared/types";
-import { useMotionTemplate } from "framer-motion";
+// Используем типы из единого источника истины — schema через shared/types
+import type { TaskStatus, TaskPriority } from "@/shared/types";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const STATUS_CFG: Record<TaskStatus, { label: string; bg: string; text: string }> = {
-  todo: { label: "К работе", bg: "rgba(100,116,139,0.18)", text: "#94a3b8" },
-  in_progress: { label: "В работе", bg: "rgba(14,165,233,0.18)", text: "#38bdf8" },
-  done: { label: "Готово", bg: "rgba(16,185,129,0.18)", text: "#34d399" },
-  blocked: { label: "Заблокировано", bg: "rgba(239,68,68,0.18)", text: "#f87171" },
-};
-
-const PRIORITY_DOT: Record<string, string> = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#475569",
-};
-
-const HOVER_DELAY_MS = 350;
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface DragProps {
-  draggable: true;
-  "data-dragging": boolean;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragEnd: () => void;
+/* ── Props ─────────────────────────────────────────────────────────────────── */
+export interface BoardTaskCardProps {
+  id:               string;
+  title:            string;
+  status:           TaskStatus;
+  priority:         TaskPriority;
+  epicColor?:       string;
+  assignee?:        string;
+  dueDate?:         string | null;
+  tags?:            string[];
+  subtasks?:        { total: number; done: number };
+  isDragging?:      boolean;
+  magnetIndex?:     number;
+  activeDragIndex?: number | null;
+  onClick?:         () => void;
+  onDragStart?:     (e: React.DragEvent<HTMLDivElement>) => void;
+  onDragEnd?:       (e: React.DragEvent<HTMLDivElement>) => void;
+  onStatusChange?:  (id: string, status: TaskStatus) => void;
 }
 
-interface Props {
-  task: TaskView;
-  dragProps: DragProps;
-  onOpen?: (task: TaskView) => void;
-  /** True when this card is the keyboard-focused task */
-  isFocused?: boolean;
-  /** Called when user clicks the card to update keyboard focus too */
-  onFocus?: (taskId: number) => void;
-}
+/* ── UI constants ──────────────────────────────────────────────────────────── */
+const STATUS_CONFIG: Record<
+  TaskStatus,
+  { label: string; bg: string; text: string; dot: string }
+> = {
+  todo:          { label: "To Do",       bg: "var(--status-todo-bg)",     text: "var(--status-todo-text)",     dot: "var(--color-todo)"        },
+  "in-progress": { label: "In Progress", bg: "var(--status-progress-bg)", text: "var(--status-progress-text)", dot: "var(--color-in-progress)" },
+  done:          { label: "Done",        bg: "var(--status-done-bg)",     text: "var(--status-done-text)",     dot: "var(--color-done)"        },
+  blocked:       { label: "Blocked",     bg: "var(--status-blocked-bg)",  text: "var(--status-blocked-text)",  dot: "var(--color-blocked)"     },
+};
 
-// ── Component ─────────────────────────────────────────────────────────────────
+const PRIORITY_CONFIG: Record<TaskPriority, { color: string; label: string }> = {
+  critical: { color: "var(--priority-critical)", label: "Critical" },
+  high:     { color: "var(--priority-high)",     label: "High"     },
+  medium:   { color: "var(--priority-medium)",   label: "Medium"   },
+  low:      { color: "var(--priority-low)",      label: "Low"      },
+};
 
-export function BoardTaskCard({ task, dragProps, onOpen, isFocused = false, onFocus }: Props) {
-  const [expanded, setExpanded] = useState(false);
-  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
-  const [hoverVisible, setHoverVisible] = useState(false);
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+/* ── Completion Burst Particles ────────────────────────────────────────────── */
+// Math.random() в useRef.initial — вычисляется ровно один раз при монтировании
+function CompletionBurst({ color, onDone }: { color: string; onDone: () => void }) {
+  const particles = useRef(
+    Array.from({ length: 12 }, (_, i) => {
+      const angle = (i / 12) * Math.PI * 2;
+      const dist  = 28 + Math.random() * 18;
+      return {
+        id:    i,
+        px:    Math.cos(angle) * dist,
+        py:    Math.sin(angle) * dist,
+        size:  2 + Math.random() * 3,
+        delay: Math.random() * 0.08,
+      };
+    })
+  ).current;
 
-  const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
-  const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
-  const liveTask = useTaskStore((s) => s.getTask(task.id)) ?? task;
+  useEffect(() => {
+    const t = setTimeout(onDone, 600);
+    return () => clearTimeout(t);
+  }, [onDone]);
 
-  const { label, bg, text } = STATUS_CFG[liveTask.status];
-  const isDragging = dragProps["data-dragging"];
-
-
-
-  // ── 3D tilt ──────────────────────────────────────────────────────────────
-  const mouseX = useMotionValue(0);
-  const mouseY = useMotionValue(0);
-
-  const rotateX = useSpring(
-    useTransform(mouseY, [-0.5, 0.5], [2, -2]),
-    { stiffness: 400, damping: 40 },
-  );
-  const rotateY = useSpring(
-    useTransform(mouseX, [-0.5, 0.5], [-2, 2]),
-    { stiffness: 400, damping: 40 },
-  );
-
-  const glareX = useTransform(mouseX, [-0.5, 0.5], ["0%", "100%"]);
-  const glareY = useTransform(mouseY, [-0.5, 0.5], ["0%", "100%"]);
-  const glareBackground = useMotionTemplate`radial-gradient(circle at ${glareX} ${glareY}, rgba(255,255,255,0.05) 0%, transparent 60%)`;
-
-  // resetTilt is intentionally NOT wrapped in useCallback — it's a stable
-  // inline closure over MotionValues (not React state), so re-creating it
-  // each render is free and avoids the React Compiler dep-mismatch warning.
-  function resetTilt() {
-    mouseX.set(0);
-    mouseY.set(0);
-  }
-
-  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
-    if (isDragging) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    mouseX.set((e.clientX - rect.left) / rect.width - 0.5);
-    mouseY.set((e.clientY - rect.top) / rect.height - 0.5);
-  }
-
-  // ── Hover card management ────────────────────────────────────────────────
-  // useCallback omitted intentionally: React Compiler manages memoisation.
-  // Adding resetTilt to the dep array would cause the "inferred dep not in
-  // source" warning because resetTilt is recreated each render.
-  const handleMouseEnter = () => {
-    hoverTimer.current = setTimeout(() => setHoverVisible(true), HOVER_DELAY_MS);
-  };
-
-  const handleMouseLeave = () => {
-    if (hoverTimer.current) {
-      clearTimeout(hoverTimer.current);
-      hoverTimer.current = null;
-    }
-    setHoverVisible(false);
-    resetTilt();
-  };
-
-  useEffect(() => () => {
-    if (hoverTimer.current) clearTimeout(hoverTimer.current);
-  }, []);
-
-  // ── Status cycle ─────────────────────────────────────────────────────────
-  function cycleStatus(e: React.MouseEvent) {
-    e.stopPropagation();
-    const order: TaskStatus[] = ["todo", "in_progress", "done"];
-    const next = order[(order.indexOf(liveTask.status as TaskStatus) + 1) % order.length];
-    updateTaskStatus(liveTask.id, next);
-  }
-
-  // ── Click handler ────────────────────────────────────────────────────────
-  function handleClick() {
-    onFocus?.(liveTask.id);
-    onOpen?.(liveTask);
-  }
-
-  // ── Render ───────────────────────────────────────────────────────────────
-  //
-  // Structure:
-  //   motion.div   — owns rotateX/Y tilt + specular glare overlay.
-  //                  No drag props here → avoids Framer synthetic-event
-  //                  type conflicts with React.DragEvent.
-  //   └─ div       — owns draggable/onDragStart/onDragEnd + all other handlers.
-  //                  ref forwarded to anchorEl for TaskHoverCard positioning.
-  //
   return (
-    <>
+    <div className="absolute inset-0 pointer-events-none overflow-visible" style={{ zIndex: 10 }}>
+      {particles.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute top-1/2 left-1/2 rounded-full"
+          style={{ width: p.size, height: p.size, background: color }}
+          initial={{ x: 0, y: 0, scale: 1, opacity: 1 }}
+          animate={{ x: p.px, y: p.py, scale: 0, opacity: 0 }}
+          transition={{ duration: 0.45, delay: p.delay, ease: [0.16, 1, 0.3, 1] }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ── Liquid Status Pill ────────────────────────────────────────────────────── */
+// Stateless — AnimatePresence key={status} обеспечивает wipe-анимацию при смене пропа
+function LiquidStatusPill({ status }: { status: TaskStatus }) {
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <div
+      className="relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium overflow-hidden"
+      style={{
+        background: cfg.bg,
+        color:      cfg.text,
+        transition: "background 0.25s ease, color 0.25s ease",
+      }}
+    >
+      <span
+        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+        style={{ background: cfg.dot, transition: "background 0.25s ease" }}
+      />
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={status}
+          initial={{ clipPath: "inset(0 100% 0 0 round 4px)" }}
+          animate={{ clipPath: "inset(0 0% 0 0 round 4px)"   }}
+          exit={{    clipPath: "inset(0 0 0 100% round 4px)"  }}
+          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {cfg.label}
+        </motion.span>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ── Main Component ────────────────────────────────────────────────────────── */
+export function BoardTaskCard({
+  id,
+  title,
+  status,
+  priority,
+  epicColor = "#7c3aed",
+  assignee,
+  dueDate,
+  tags = [],
+  subtasks,
+  isDragging,
+  magnetIndex,
+  activeDragIndex,
+  onClick,
+  onDragStart,
+  onDragEnd,
+  onStatusChange,
+}: BoardTaskCardProps) {
+  const [isFocused,    setIsFocused]    = useState(false);
+  const [showBurst,    setShowBurst]    = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  // prevStatusRef отслеживает предыдущий статус без лишнего state.
+  // setShowBurst завёрнут в setTimeout(0) — не синхронно в эффекте.
+  const prevStatusRef = useRef<TaskStatus>(status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    if (prev !== status) {
+      prevStatusRef.current = status;
+      if (status === "done" && prev !== "done") {
+        const t = setTimeout(() => setShowBurst(true), 0);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [status]);
+
+  // Velocity-sensitive rotation во время drag
+  const dragX     = useMotionValue(0);
+  const velocityX = useVelocity(dragX);
+  const rotate    = useTransform(velocityX, [-800, 0, 800], [-8, 0, 8]);
+  const springRot = useSpring(rotate, { stiffness: 120, damping: 18 });
+
+  // Magnetic repel соседних карточек
+  const magnetY = useSpring(0, { stiffness: 200, damping: 25 });
+  useEffect(() => {
+    if (activeDragIndex != null && magnetIndex !== undefined) {
+      const dist = magnetIndex - activeDragIndex;
+      magnetY.set(Math.abs(dist) === 1 ? (dist > 0 ? 8 : -8) : 0);
+    } else {
+      magnetY.set(0);
+    }
+  }, [activeDragIndex, magnetIndex, magnetY]);
+
+  const priorityCfg = PRIORITY_CONFIG[priority];
+  const isDone      = status === "done";
+
+  const cardShadow = isDone
+    ? "0 0 0 1px rgba(52,211,153,0.2), 0 8px 24px rgba(52,211,153,0.08)"
+    : "0 0 0 1px var(--glass-border), var(--shadow-card)";
+
+  // HTML5 DnD на внешнем <div> — React.DragEvent гарантирует clientX/clientY.
+  // motion.div внутри — только визуал, без конфликта с Framer PanInfo.
+  function handleHtmlDragStart(e: React.DragEvent<HTMLDivElement>) {
+    setIsDragActive(true);
+    dragX.set(e.clientX);
+    onDragStart?.(e);
+  }
+  function handleHtmlDragEnd(e: React.DragEvent<HTMLDivElement>) {
+    setIsDragActive(false);
+    onDragEnd?.(e);
+  }
+  function handleHtmlDrag(e: React.DragEvent<HTMLDivElement>) {
+    if (e.clientX !== 0) dragX.set(e.clientX);
+  }
+
+  return (
+    <div
+      draggable
+      data-priority={priority}
+      tabIndex={0}
+      className={isFocused ? "focus-heartbeat" : ""}
+      style={{ position: "relative", outline: "none", cursor: "grab" }}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      onClick={onClick}
+      onDragStart={handleHtmlDragStart}
+      onDragEnd={handleHtmlDragEnd}
+      onDrag={handleHtmlDrag}
+    >
       <motion.div
+        layoutId={id}
         style={{
-          rotateX: isDragging ? 0 : rotateX,
-          rotateY: isDragging ? 0 : rotateY,
-          transformStyle: "preserve-3d",
+          rotate:               isDragActive ? springRot : 0,
+          y:                    magnetY,
+          boxShadow:            cardShadow,
+          borderRadius:         12,
+          background:           "var(--glass-01)",
+          backdropFilter:       "blur(14px)",
+          WebkitBackdropFilter: "blur(14px)",
+          border:               "1px solid var(--glass-border)",
+          padding:              "10px 12px",
+          userSelect:           "none",
+          willChange:           "transform",
+          position:             "relative",
+          overflow:             "hidden",
         }}
-        onMouseMove={handleMouseMove}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        whileHover={isDragging ? {} : { z: 4 }}
+        animate={{
+          scale:   isDragging ? 0.97 : 1,
+          opacity: isDragging ? 0.3  : 1,
+        }}
+        whileHover={{
+          y:         -1,
+          boxShadow: `0 0 0 1px ${epicColor}30, 0 8px 24px ${epicColor}14, var(--shadow-elevated)`,
+        }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
       >
+        {showBurst && (
+          <CompletionBurst
+            color="var(--color-done)"
+            onDone={() => setShowBurst(false)}
+          />
+        )}
+
+        {/* Chromatic aberration */}
         <div
-          ref={setAnchorEl}
-          {...dragProps}
-          data-priority={liveTask.priority}
-          onClick={handleClick}
-          className={cn(
-            "relative rounded-xl overflow-hidden cursor-grab active:cursor-grabbing",
-            "select-none transition-shadow duration-200",
-            isDragging
-              ? "opacity-40 scale-[0.98] ring-1 ring-[var(--accent-500)]"
-              : "hover:shadow-[0_6px_20px_rgba(0,0,0,0.4)]",
-            isFocused && !isDragging && [
-              "ring-2 ring-[var(--accent-500)]",
-              "shadow-[0_0_0_2px_rgba(139,92,246,0.25),0_6px_20px_rgba(0,0,0,0.4)]",
-            ],
-          )}
+          className="absolute inset-0 pointer-events-none opacity-0 hover:opacity-100 transition-opacity duration-300"
           style={{
-            background: "var(--bg-overlay)",
-            border: "1px solid var(--glass-border)",
+            borderRadius: 12,
+            background: `
+              linear-gradient(135deg, rgba(255,80,80,0.015) 0%, transparent 35%),
+              linear-gradient(225deg, rgba(80,140,255,0.018) 0%, transparent 35%)
+            `,
+          }}
+        />
+
+        {/* Статус + приоритет */}
+        <div className="flex items-center justify-between mb-2 gap-2">
+          <LiquidStatusPill status={status} />
+          <span
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ background: priorityCfg.color, boxShadow: `0 0 6px ${priorityCfg.color}80` }}
+            title={priorityCfg.label}
+          />
+        </div>
+
+        {/* Заголовок */}
+        <p
+          className="text-sm font-medium leading-snug mb-2"
+          style={{
+            color:          isDone ? "var(--text-secondary)" : "var(--text-primary)",
+            textDecoration: isDone ? "line-through" : "none",
+            opacity:        isDone ? 0.7 : 1,
           }}
         >
-          {/* Specular highlight */}
-          <motion.div style={{ background: glareBackground }} />
+          {title}
+        </p>
 
-
-          {/* ── Card content ──────────────────────────────────────────── */}
-          <div className="px-3 py-2.5 flex items-start gap-2.5">
-
-            {/* Status pill */}
-            <button
-              onClick={(e) => { e.stopPropagation(); cycleStatus(e); }}
-              className="mt-0.5 flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium shrink-0 hover:opacity-80 transition-opacity"
-              style={{ backgroundColor: bg, color: text }}
-            >
+        {/* Теги */}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {tags.slice(0, 3).map((tag) => (
               <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{ backgroundColor: PRIORITY_DOT[liveTask.priority] }}
+                key={tag}
+                className="text-xs px-1.5 py-0.5 rounded-md"
+                style={{
+                  background: "var(--glass-02)",
+                  color:      "var(--text-muted)",
+                  border:     "1px solid var(--glass-border)",
+                }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Прогресс подзадач */}
+        {subtasks && subtasks.total > 0 && (
+          <div className="mb-2">
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {subtasks.done}/{subtasks.total} subtasks
+            </span>
+            <div className="mt-1 h-0.5 rounded-full overflow-hidden" style={{ background: "var(--glass-02)" }}>
+              <motion.div
+                className="h-full rounded-full liquid-bar"
+                style={{ color: epicColor }}
+                initial={{ width: 0 }}
+                animate={{ width: `${(subtasks.done / subtasks.total) * 100}%` }}
+                transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
               />
-              {label}
-            </button>
-
-            {/* Main content */}
-            <div className="flex-1 min-w-0">
-              <p
-                className={cn(
-                  "text-xs font-medium leading-snug",
-                  liveTask.status === "done"
-                    ? "line-through text-(--text-muted)"
-                    : "text-[var(--text-primary)]",
-                )}
-              >
-                {liveTask.title}
-              </p>
-
-              {liveTask.description && (
-                <p className="text-xs text-(--text-muted) mt-0.5 line-clamp-1">
-                  {liveTask.description}
-                </p>
-              )}
-
-              <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
-                {liveTask.assignees.slice(0, 2).map((a) => (
-                  <RoleBadge key={a.id} roleMeta={a.roleMeta} size="sm" showLabel={false} />
-                ))}
-                {liveTask.assignees.length > 0 && (
-                  <span className="text-xs text-(--text-muted) truncate">
-                    {liveTask.assignees[0].roleMeta.label}
-                    {liveTask.assignees.length > 1 && ` +${liveTask.assignees.length - 1}`}
-                  </span>
-                )}
-                {liveTask.dueDate && (
-                  <span className="ml-auto text-xs font-mono text-(--text-muted)">
-                    {formatDate(liveTask.dueDate)}
-                  </span>
-                )}
-              </div>
             </div>
+          </div>
+        )}
 
-            {/* Subtask toggle */}
-            {liveTask.subtasks.length > 0 && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
-                className="shrink-0 flex items-center gap-1 text-xs text-(--text-muted) hover:text-[var(--text-secondary)] transition-colors"
-              >
-                <span className="font-mono">
-                  {liveTask.progress.done}/{liveTask.progress.total}
-                </span>
-                <svg
-                  className={cn("w-3 h-3 transition-transform", expanded && "rotate-180")}
-                  viewBox="0 0 12 12"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
+        {/* Футер */}
+        {(assignee || dueDate) && (
+          <div className="flex items-center justify-between gap-2 mt-1">
+            {assignee && (
+              <div className="flex items-center gap-1">
+                <span
+                  className="w-4 h-4 rounded-full flex items-center justify-center font-semibold flex-shrink-0"
+                  style={{ background: epicColor + "30", color: epicColor, fontSize: 9 }}
                 >
-                  <path d="M2 4l4 4 4-4" />
-                </svg>
-              </button>
+                  {assignee[0].toUpperCase()}
+                </span>
+                <span className="text-xs truncate max-w-[80px]" style={{ color: "var(--text-muted)" }}>
+                  {assignee}
+                </span>
+              </div>
+            )}
+            {dueDate && (
+              <span className="text-xs font-mono ml-auto flex-shrink-0" style={{ color: "var(--text-muted)" }}>
+                {dueDate}
+              </span>
             )}
           </div>
-
-          {/* Subtask progress bar */}
-          {liveTask.subtasks.length > 0 && (
-            <div className="mx-3 mb-1 h-0.5 bg-[var(--glass-02)] rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-[var(--accent-500)] rounded-full"
-                animate={{
-                  width: `${(liveTask.progress.done / liveTask.progress.total) * 100}%`,
-                }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
-              />
-            </div>
-          )}
-
-          {/* Expanded subtask list */}
-          {expanded && (
-            <div
-              className="border-t border-[var(--glass-border)] px-3 py-2 space-y-1"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {liveTask.subtasks.map((st) => (
-                <label key={st.id} className="flex items-center gap-2 py-0.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={st.isCompleted}
-                    onChange={() => toggleSubtask(liveTask.id, st.id, st.isCompleted)}
-                    className="w-3 h-3 rounded accent-indigo-500"
-                  />
-                  <span
-                    className={cn(
-                      "text-xs",
-                      st.isCompleted
-                        ? "line-through text-(--text-muted)"
-                        : "text-[var(--text-secondary)]",
-                    )}
-                  >
-                    {st.title}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
       </motion.div>
-
-      {/* Hover preview — rendered via portal */}
-      <TaskHoverCard
-        task={liveTask}
-        anchorEl={anchorEl}
-        visible={hoverVisible && !isDragging}
-      />
-    </>
+    </div>
   );
 }

@@ -1,516 +1,506 @@
 "use client";
 /**
- * @file TaskSlideover.tsx — features/task-details
+ * PATH:    features/task-details/TaskSlideover.tsx   ← заменить существующий файл
+ * CONNECT: app/(main)/board/BoardPage.tsx — там уже импортируется TaskSlideover.
+ *          Импорт не меняется — путь тот же.
  *
- * THEME CHANGES:
- *  • DueDatePicker: [color-scheme:dark] → dynamic from useThemeStore
- *    so the native date picker chrome matches the active theme.
- *  • Backdrop: rgba(8,9,15,0.55) → var(--modal-backdrop)
+ *          Новые пропы которые принимает обновлённый компонент:
+ *
+ *   <TaskSlideover
+ *     task={selectedTask}              // TaskDetail | null
+ *     isOpen={!!selectedTask}
+ *     onClose={() => setSelectedTask(null)}
+ *     onStatusChange={(id, status) => updateTask(id, { status })}
+ *     onPriorityChange={(id, priority) => updateTask(id, { priority })}
+ *   />
+ *
+ * ── Типы ─────────────────────────────────────────────────────────────────────
+ *   TaskStatus, TaskPriority, SubtaskView — из @/shared/types.
+ *   TaskDetail расширяет DbTask — id здесь number (как в schema).
+ *   epicColor и epicName — дополнительные поля, подмешиваются при открытии
+ *   slideover в BoardPage.tsx (см. INTEGRATION.md, шаг [5]).
+ *
+ * ── Изменения относительно оригинала ─────────────────────────────────────────
+ *   - subtasks: SubtaskView[] вместо кастомного Array<{id:string; ...}>
+ *     SubtaskView.id — number (как в schema), done — boolean из DbSubtask
+ *   - id типа number, приводится к string только для отображения (#id)
+ *   - Все TaskStatus / TaskPriority — из shared/types, без локального override
  */
-import {
-  useState, useRef, useEffect, useCallback,
-  type KeyboardEvent, type ChangeEvent,
-} from "react";
+
+import React, { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/shared/lib/utils";
-import { SubtaskList } from "./SubtaskList";
-import { useTaskStore } from "@/shared/store/useTaskStore";
-import { useThemeStore } from "@/shared/store/useThemeStore";
-import { STATUS_META, PRIORITY_META, STATUS_ORDER, PRIORITY_ORDER } from "@/shared/config/task-meta";
-import type { TaskView, TaskStatus, TaskPriority } from "@/shared/types";
+import type {
+  TaskStatus,
+  TaskPriority,
+  SubtaskView,
+  DbTask,
+} from "@/shared/types";
 
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-[10px] font-bold uppercase tracking-widest text-(--text-muted) mb-2">
-      {children}
-    </p>
-  );
+/* ── TaskDetail — то что приходит в slideover ──────────────────────────────── */
+// Расширяем DbTask (реальные поля из schema) и подмешиваем UI-поля
+export interface TaskDetail extends DbTask {
+  // Из schema: id (number), title, status, priority, description, dueDate, epicId, ...
+  // UI-поля, подмешиваемые в BoardPage.tsx при открытии:
+  epicName?:  string;
+  epicColor?: string;
+  // Обогащённые данные из taskRepository / useTaskStore:
+  assigneeNames?: string[];   // имена исполнителей (уже строки, не объекты)
+  subtasks?:      SubtaskView[];
+  comments?:      Array<{ author: string; text: string; date: string }>;
+  tags?:          string[];
 }
 
-// ─── EditableTitle ─────────────────────────────────────────────────────────────
-function EditableTitle({ taskId, value }: { taskId: number; value: string }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const updateTaskTitle = useTaskStore((s) => s.updateTaskTitle);
-
-  useEffect(() => { setDraft(value); }, [value]);
-
-  const save = useCallback(() => {
-    setEditing(false);
-    if (draft.trim() && draft.trim() !== value) updateTaskTitle(taskId, draft.trim());
-    else setDraft(value);
-  }, [draft, value, taskId, updateTaskTitle]);
-
-  const handleKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") { e.preventDefault(); inputRef.current?.blur(); }
-    if (e.key === "Escape") { setDraft(value); setEditing(false); }
-  };
-
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        autoFocus
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={save}
-        onKeyDown={handleKey}
-        className="w-full bg-[var(--glass-01)] border border-[var(--accent-500)] rounded-lg px-2 py-1 text-base font-semibold text-[var(--text-primary)] outline-none leading-snug"
-      />
-    );
-  }
-
-  return (
-    <button
-      onClick={() => setEditing(true)}
-      title="Нажмите для редактирования"
-      className="w-full text-left text-base font-semibold text-[var(--text-primary)] leading-snug hover:text-[var(--accent-400)] transition-colors group"
-    >
-      {value}
-      <span className="ml-1.5 opacity-0 group-hover:opacity-60 transition-opacity text-xs">✎</span>
-    </button>
-  );
+interface TaskSlideoverProps {
+  task:              TaskDetail | null;
+  isOpen:            boolean;
+  onClose:           () => void;
+  onStatusChange?:   (id: number, status: TaskStatus) => void;
+  onPriorityChange?: (id: number, priority: TaskPriority) => void;
 }
 
-// ─── EditableDescription ──────────────────────────────────────────────────────
-function EditableDescription({ taskId, value }: { taskId: number; value: string | null }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value ?? "");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription);
+/* ── UI constants ──────────────────────────────────────────────────────────── */
+const STATUS_OPTIONS: TaskStatus[]    = ["todo", "in-progress", "done", "blocked"];
+const PRIORITY_OPTIONS: TaskPriority[] = ["critical", "high", "medium", "low"];
 
-  useEffect(() => {
-    if (editing && textareaRef.current) {
-      textareaRef.current.focus();
-      textareaRef.current.selectionStart = textareaRef.current.value.length;
-    }
-  }, [editing]);
+const STATUS_LABELS: Record<TaskStatus, string> = {
+  "todo":        "To Do",
+  "in-progress": "In Progress",
+  "done":        "Done",
+  "blocked":     "Blocked",
+};
+const STATUS_COLORS: Record<TaskStatus, string> = {
+  "todo":        "var(--status-todo-text)",
+  "in-progress": "var(--status-progress-text)",
+  "done":        "var(--status-done-text)",
+  "blocked":     "var(--status-blocked-text)",
+};
+const STATUS_BG: Record<TaskStatus, string> = {
+  "todo":        "var(--status-todo-bg)",
+  "in-progress": "var(--status-progress-bg)",
+  "done":        "var(--status-done-bg)",
+  "blocked":     "var(--status-blocked-bg)",
+};
+const PRIORITY_COLORS: Record<TaskPriority, string> = {
+  critical: "var(--priority-critical)",
+  high:     "var(--priority-high)",
+  medium:   "var(--priority-medium)",
+  low:      "var(--priority-low)",
+};
 
-  const save = useCallback(() => {
-    setEditing(false);
-    updateTaskDescription(taskId, draft);
-  }, [draft, taskId, updateTaskDescription]);
+/* ── Animation variants ────────────────────────────────────────────────────── */
+// Spatial entry: разворачивается из пространства за экраном
+const panelVariants = {
+  hidden:  { x: "100%", rotateY: 8,  opacity: 0 },
+  visible: {
+    x: "0%", rotateY: 0, opacity: 1,
+    transition: { type: "spring" as const, stiffness: 260, damping: 28, mass: 0.9 },
+  },
+  exit: {
+    x: "100%", rotateY: 6, opacity: 0,
+    transition: { duration: 0.28, ease: [0.4, 0, 1, 1] as const },
+  },
+};
 
-  const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Escape") { setDraft(value ?? ""); setEditing(false); }
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) textareaRef.current?.blur();
-  };
+const backdropVariants = {
+  hidden:  { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.2 } },
+  exit:    { opacity: 0, transition: { duration: 0.2 } },
+};
 
-  if (editing) {
-    return (
-      <textarea
-        ref={textareaRef}
-        value={draft}
-        rows={4}
-        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setDraft(e.target.value)}
-        onBlur={save}
-        onKeyDown={handleKey}
-        placeholder="Описание задачи..."
-        className="w-full bg-[var(--glass-01)] border border-[var(--accent-500)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-(--text-muted) outline-none resize-none leading-relaxed"
-      />
-    );
-  }
-
-  if (value) {
-    return (
-      <button
-        onClick={() => setEditing(true)}
-        title="Нажмите для редактирования"
-        className="w-full text-left text-sm text-[var(--text-secondary)] leading-relaxed hover:text-[var(--text-primary)] transition-colors group"
+/* ── Section Header ────────────────────────────────────────────────────────── */
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <span
+        className="text-xs font-semibold uppercase tracking-widest"
+        style={{ color: "var(--text-muted)" }}
       >
-        {value}
-        <span className="ml-1 opacity-0 group-hover:opacity-60 transition-opacity text-xs">✎</span>
-      </button>
-    );
-  }
-
-  return (
-    <button
-      onClick={() => setEditing(true)}
-      className="flex items-center gap-1.5 text-xs text-(--text-muted) hover:text-[var(--text-secondary)] transition-colors px-2 py-1.5 rounded-lg border border-dashed border-[var(--glass-border)] w-full"
-    >
-      <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-        <path d="M7 2v10M2 7h10" />
-      </svg>
-      Добавить описание
-    </button>
-  );
-}
-
-// ─── DueDatePicker ────────────────────────────────────────────────────────────
-function DueDatePicker({ taskId, value }: { taskId: number; value: string | null }) {
-  const updateTaskDueDate = useTaskStore((s) => s.updateTaskDueDate);
-  // THEME FIX: dynamic color-scheme so native date picker chrome matches theme
-  const theme = useThemeStore((s) => s.theme);
-  const inputVal = value ? value.slice(0, 10) : "";
-
-  const now = new Date();
-  const due = value ? new Date(value) : null;
-  const isOverdue = due && due < now && due.toDateString() !== now.toDateString();
-  const isToday = due && due.toDateString() === now.toDateString();
-
-  const formatted = due
-    ? due.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })
-    : null;
-
-  return (
-    <div className="flex items-center gap-2">
-      <div className="relative flex-1">
-        <input
-          type="date"
-          value={inputVal}
-          onChange={(e) => updateTaskDueDate(taskId, e.target.value ? new Date(e.target.value).toISOString() : null)}
-          // Was: [color-scheme:dark] hardcoded — now dynamic
-          style={{ colorScheme: theme } as React.CSSProperties}
-          className={cn(
-            "w-full bg-[var(--glass-01)] border rounded-lg px-3 py-2 text-sm outline-none transition-colors",
-            "focus:border-[var(--accent-500)]",
-            isOverdue ? "border-red-500/50" : isToday ? "border-amber-500/50" : "border-[var(--glass-border)]",
-            !formatted ? "text-[var(--text-secondary)]" : "text-transparent",
-          )}
-        />
-        {formatted && (
-          <div className={cn(
-            "absolute inset-0 flex items-center px-3 pointer-events-none text-sm gap-2",
-            isOverdue ? "text-red-400" : isToday ? "text-amber-400" : "text-[var(--text-secondary)]"
-          )}>
-            <span>{formatted}</span>
-            {isOverdue && <span className="text-xs text-red-500 font-semibold">просрочено</span>}
-            {isToday && <span className="text-xs text-amber-500 font-semibold">сегодня</span>}
-          </div>
-        )}
-        {!formatted && (
-          <div className="absolute inset-0 flex items-center px-3 pointer-events-none text-sm text-(--text-muted)">
-            Выберите дату...
-          </div>
-        )}
-      </div>
-      {value && (
-        <button
-          onClick={() => updateTaskDueDate(taskId, null)}
-          className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-(--text-muted) hover:text-red-400 hover:bg-red-500/10 transition-all"
-          title="Убрать дедлайн"
-        >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M2 2l10 10M12 2L2 12" />
-          </svg>
-        </button>
-      )}
+        {label}
+      </span>
+      <div className="flex-1 h-px" style={{ background: "var(--glass-border)" }} />
     </div>
   );
 }
 
-// ─── AssigneeManager ──────────────────────────────────────────────────────────
-type UserOption = TaskView["assignees"][0];
+/* ── Main Component ────────────────────────────────────────────────────────── */
+export function TaskSlideover({
+  task, isOpen, onClose, onStatusChange, onPriorityChange,
+}: TaskSlideoverProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
 
-function AssigneeManager({ taskId, assignees }: { taskId: number; assignees: UserOption[] }) {
-  const [open, setOpen] = useState(false);
-  const [users, setUsers] = useState<UserOption[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const addAssignee = useTaskStore((s) => s.addAssignee);
-  const removeAssignee = useTaskStore((s) => s.removeAssignee);
-  const assignedIds = new Set(assignees.map((a) => a.id));
-
-  const fetchUsers = useCallback(async () => {
-    if (users.length > 0) return;
-    setLoading(true);
-    try {
-      const res = await fetch("/api/users");
-      if (res.ok) {
-        const json = await res.json();
-        setUsers(json.data ?? json ?? []);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [users.length]);
-
-  const handleOpen = () => {
-    setOpen(true);
-    fetchUsers();
-  };
-
+  // Закрытие по Escape
   useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isOpen, onClose]);
 
-  const filtered = users.filter((u) =>
-    !assignedIds.has(u.id) &&
-    (u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.roleMeta.label.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  return (
-    <div className="space-y-2">
-      {assignees.map((a) => (
-        <div
-          key={a.id}
-          className="flex items-center gap-2.5 px-3 py-2 rounded-xl group"
-          style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}
-        >
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-            style={{ backgroundColor: a.roleMeta.hex }}
-          >
-            {a.initials}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-[var(--text-primary)] truncate">{a.name}</p>
-            <p className="text-xs text-(--text-muted) truncate">{a.roleMeta.label}</p>
-          </div>
-          <span
-            className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
-            style={{ backgroundColor: `${a.roleMeta.hex}22`, color: a.roleMeta.hex }}
-          >
-            {a.roleMeta.label}
-          </span>
-          <button
-            onClick={() => removeAssignee(taskId, a.id)}
-            className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 text-(--text-muted) hover:text-red-400 hover:bg-red-500/10 transition-all"
-            title="Убрать ответственного"
-          >
-            <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M1.5 1.5l9 9M10.5 1.5l-9 9" />
-            </svg>
-          </button>
-        </div>
-      ))}
-
-      <div className="relative" ref={dropdownRef}>
-        <button
-          onClick={handleOpen}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-(--text-muted) hover:text-[var(--text-secondary)] hover:bg-[var(--glass-01)] border border-dashed border-[var(--glass-border)] transition-all w-full"
-        >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M7 2v10M2 7h10" />
-          </svg>
-          Добавить ответственного
-        </button>
-
-        <AnimatePresence>
-          {open && (
-            <motion.div
-              initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.97 }}
-              transition={{ duration: 0.15 }}
-              className="absolute bottom-full mb-1.5 left-0 right-0 z-10 rounded-xl overflow-hidden shadow-2xl"
-              style={{ background: "var(--bg-surface)", border: "1px solid var(--glass-border)" }}
-            >
-              <div className="px-3 py-2 border-b border-[var(--glass-border)]">
-                <input
-                  autoFocus
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Поиск по имени или роли..."
-                  className="w-full bg-transparent text-xs text-[var(--text-primary)] placeholder:text-(--text-muted) outline-none"
-                />
-              </div>
-              <div className="max-h-52 overflow-y-auto">
-                {loading && (
-                  <div className="px-3 py-4 text-center text-xs text-(--text-muted)">Загрузка...</div>
-                )}
-                {!loading && filtered.length === 0 && (
-                  <div className="px-3 py-4 text-center text-xs text-(--text-muted)">
-                    {search ? "Не найдено" : "Все уже добавлены"}
-                  </div>
-                )}
-                {filtered.map((u) => (
-                  <button
-                    key={u.id}
-                    onClick={() => { addAssignee(taskId, u); setOpen(false); setSearch(""); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-[var(--glass-01)] transition-colors text-left"
-                  >
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                      style={{ backgroundColor: u.roleMeta.hex }}
-                    >
-                      {u.initials}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[var(--text-primary)] truncate">{u.name}</p>
-                      <p className="text-xs text-(--text-muted) truncate">{u.roleMeta.label}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-// ─── TaskSlideover ────────────────────────────────────────────────────────────
-interface Props {
-  task: TaskView | null;
-  onClose: () => void;
-}
-
-export function TaskSlideover({ task, onClose }: Props) {
-  const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
-  const updateTaskPriority = useTaskStore((s) => s.updateTaskPriority);
-  const liveTask = useTaskStore((s) => (task ? (s.getTask(task.id) ?? task) : null));
-
+  // Блокировка скролла body
   useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+    document.body.style.overflow = isOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [isOpen]);
+
+  const epicColor = task?.epicColor ?? "#7c3aed";
 
   return (
     <AnimatePresence>
-      {liveTask && (
+      {isOpen && task && (
         <>
-          {/* Backdrop — was rgba(8,9,15,0.55), now var(--modal-backdrop) */}
+          {/* Backdrop */}
           <motion.div
             key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-30"
-            style={{ backdropFilter: "blur(4px)", background: "var(--modal-backdrop)" }}
+            className="fixed inset-0 z-40"
+            variants={backdropVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            style={{ background: "var(--modal-backdrop)", backdropFilter: "blur(2px)" }}
             onClick={onClose}
           />
 
-          <motion.aside
-            key="panel"
-            initial={{ x: "100%", opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "100%", opacity: 0 }}
-            transition={{ type: "spring", stiffness: 320, damping: 32 }}
-            className="fixed right-0 top-0 h-screen z-40 flex flex-col overflow-hidden"
-            style={{
-              width: "min(520px, 100vw)",
-              background: "var(--bg-surface)",
-              borderLeft: "1px solid var(--glass-border)",
-              boxShadow: "-24px 0 64px rgba(0,0,0,0.55)",
-            }}
+          {/* Perspective wrapper — создаёт 3D-пространство для spatial entry */}
+          <div
+            className="fixed inset-y-0 right-0 z-50 flex items-stretch"
+            style={{ perspective: "1200px", perspectiveOrigin: "right center" }}
           >
-            {/* Header */}
-            <div
-              className="px-6 py-4 flex items-start gap-4 border-b shrink-0"
-              style={{ borderColor: "var(--glass-border)" }}
+            <motion.div
+              ref={panelRef}
+              key="panel"
+              className="relative flex flex-col overflow-hidden"
+              variants={panelVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              style={{
+                width: "clamp(360px, 42vw, 520px)",
+                background: "var(--modal-bg)",
+                borderLeft: `1px solid ${epicColor}25`,
+                boxShadow: `-24px 0 64px rgba(0,0,0,0.6), 0 0 0 1px ${epicColor}15`,
+                transformStyle: "preserve-3d",
+              }}
             >
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-[var(--text-muted)] font-mono mb-1.5">#{liveTask.id}</p>
-                <EditableTitle taskId={liveTask.id} value={liveTask.title} />
-              </div>
-              <button
-                onClick={onClose}
-                className="shrink-0 w-7 h-7 mt-1 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--glass-02)] transition-all"
+              {/* Epic color — линия сверху */}
+              <div
+                className="absolute top-0 left-0 right-0 h-px pointer-events-none"
+                style={{ background: `linear-gradient(90deg, ${epicColor} 0%, transparent 60%)` }}
+              />
+              {/* Chromatic aberration */}
+              <div
+                className="absolute inset-0 pointer-events-none opacity-40"
+                style={{
+                  background: `
+                    linear-gradient(160deg, rgba(255,80,80,0.012) 0%, transparent 30%),
+                    linear-gradient(200deg, rgba(80,140,255,0.015) 0%, transparent 30%)
+                  `,
+                }}
+              />
+
+              {/* ── Header ── */}
+              <div
+                className="relative flex items-start gap-3 px-5 pt-5 pb-4 flex-shrink-0"
+                style={{ borderBottom: "1px solid var(--glass-border)" }}
               >
-                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M3 3l10 10M13 3L3 13" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-
-              {/* Description */}
-              <div>
-                <Label>Описание</Label>
-                <EditableDescription
-                  key={liveTask.id}
-                  taskId={liveTask.id}
-                  value={liveTask.description}
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1.5"
+                  style={{ background: epicColor, boxShadow: `0 0 8px ${epicColor}80` }}
                 />
-              </div>
-
-              {/* Status + Priority */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Статус</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {STATUS_ORDER.map((s) => {
-                      const meta = STATUS_META[s as TaskStatus];
-                      const active = liveTask.status === s;
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => updateTaskStatus(liveTask.id, s as TaskStatus)}
-                          className="px-2.5 py-1 rounded-full text-xs font-medium transition-all duration-150"
-                          style={active
-                            ? { backgroundColor: meta.bg, color: meta.color, boxShadow: `0 0 8px ${meta.color}30` }
-                            : { backgroundColor: "var(--glass-01)", color: "var(--text-muted)", border: "1px solid var(--glass-border)" }
-                          }
-                        >
-                          {meta.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium mb-1" style={{ color: epicColor }}>
+                    {task.epicName ?? "Task"}
+                  </p>
+                  <h2 className="text-base font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
+                    {task.title}
+                  </h2>
                 </div>
+                <button
+                  onClick={onClose}
+                  className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
+                  style={{
+                    background: "var(--glass-02)",
+                    border: "1px solid var(--glass-border)",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    transition: "background 0.15s ease",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "var(--glass-03)")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "var(--glass-02)")}
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
 
-                <div>
-                  <Label>Приоритет</Label>
+              {/* ── Scrollable body ── */}
+              <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+
+                {/* Статус */}
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <SectionHeader label="Status" />
                   <div className="flex flex-wrap gap-1.5">
-                    {PRIORITY_ORDER.map((p) => {
-                      const meta = PRIORITY_META[p as TaskPriority];
-                      const active = liveTask.priority === p;
-                      return (
-                        <button
-                          key={p}
-                          onClick={() => updateTaskPriority(liveTask.id, p as TaskPriority)}
-                          className="px-2.5 py-1 rounded-full text-xs font-medium transition-all duration-150"
-                          style={active
-                            ? { backgroundColor: meta.bg, color: meta.color, border: `1px solid ${meta.border}`, boxShadow: `0 0 8px ${meta.color}20` }
-                            : { backgroundColor: "var(--glass-01)", color: "var(--text-muted)", border: "1px solid var(--glass-border)" }
-                          }
-                        >
-                          {meta.label}
-                        </button>
-                      );
-                    })}
+                    {STATUS_OPTIONS.map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => onStatusChange?.(task.id, s)}
+                        style={{
+                          padding: "4px 12px",
+                          borderRadius: 99,
+                          fontSize: 11,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                          outline: "none",
+                          transition: "all 0.2s ease",
+                          background: task.status === s ? STATUS_BG[s]    : "var(--glass-01)",
+                          color:      task.status === s ? STATUS_COLORS[s] : "var(--text-muted)",
+                          border:     `1px solid ${task.status === s ? STATUS_COLORS[s] + "40" : "var(--glass-border)"}`,
+                        }}
+                      >
+                        {STATUS_LABELS[s]}
+                      </button>
+                    ))}
                   </div>
-                </div>
+                </motion.div>
+
+                {/* Приоритет */}
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  <SectionHeader label="Priority" />
+                  <div className="flex flex-wrap gap-2">
+                    {PRIORITY_OPTIONS.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => onPriorityChange?.(task.id, p)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+                        style={{
+                          cursor: "pointer",
+                          outline: "none",
+                          transition: "all 0.2s ease",
+                          background:  task.priority === p ? PRIORITY_COLORS[p] + "20" : "var(--glass-01)",
+                          color:       task.priority === p ? PRIORITY_COLORS[p]        : "var(--text-muted)",
+                          border:      `1px solid ${task.priority === p ? PRIORITY_COLORS[p] + "40" : "var(--glass-border)"}`,
+                          boxShadow:   task.priority === p ? `0 0 12px ${PRIORITY_COLORS[p]}20` : "none",
+                        }}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ background: PRIORITY_COLORS[p] }}
+                        />
+                        {p.charAt(0).toUpperCase() + p.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+
+                {/* Описание */}
+                {task.description && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <SectionHeader label="Description" />
+                    <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                      {task.description}
+                    </p>
+                  </motion.div>
+                )}
+
+                {/* Подзадачи — SubtaskView из shared/types */}
+                {task.subtasks && task.subtasks.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <SectionHeader
+                      label={`Subtasks (${task.subtasks.filter((s) => s.done).length}/${task.subtasks.length})`}
+                    />
+                    <div className="flex flex-col gap-1.5">
+                      {task.subtasks.map((sub) => (
+                        <div
+                          key={sub.id}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
+                          style={{
+                            background: "var(--glass-01)",
+                            border: "1px solid var(--glass-border)",
+                          }}
+                        >
+                          <div
+                            className="w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0"
+                            style={{
+                              background: sub.done ? "var(--color-done)" : "var(--glass-02)",
+                              border: `1px solid ${sub.done ? "var(--color-done)" : "var(--glass-border)"}`,
+                            }}
+                          >
+                            {sub.done && (
+                              <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                                <path d="M1 3l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </div>
+                          <span
+                            className="text-xs flex-1"
+                            style={{
+                              color:          sub.done ? "var(--text-muted)" : "var(--text-secondary)",
+                              textDecoration: sub.done ? "line-through" : "none",
+                            }}
+                          >
+                            {sub.title}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Теги */}
+                {task.tags && task.tags.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.21, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <SectionHeader label="Tags" />
+                    <div className="flex flex-wrap gap-1.5">
+                      {task.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="text-xs px-2 py-0.5 rounded-full"
+                          style={{
+                            background: epicColor + "18",
+                            color: epicColor,
+                            border: `1px solid ${epicColor}30`,
+                          }}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Метаданные */}
+                <motion.div
+                  className="flex flex-wrap gap-x-5 gap-y-2"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.24 }}
+                >
+                  {/* Исполнители */}
+                  {task.assigneeNames && task.assigneeNames.length > 0 && (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        {task.assigneeNames.length === 1 ? "Assignee" : "Assignees"}
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {task.assigneeNames.map((name) => (
+                          <div key={name} className="flex items-center gap-1">
+                            <span
+                              className="w-5 h-5 rounded-full flex items-center justify-center font-semibold"
+                              style={{ background: epicColor + "30", color: epicColor, fontSize: 9 }}
+                            >
+                              {name[0].toUpperCase()}
+                            </span>
+                            <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                              {name}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {task.dueDate && (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>Due date</span>
+                      <span className="text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
+                        {task.dueDate}
+                      </span>
+                    </div>
+                  )}
+
+                  {task.createdAt && (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>Created</span>
+                      <span className="text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
+                        {new Date(task.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* Комментарии */}
+                {task.comments && task.comments.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.27, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <SectionHeader label="Comments" />
+                    <div className="flex flex-col gap-2">
+                      {task.comments.map((c, i) => (
+                        <div
+                          key={i}
+                          className="px-3 py-2.5 rounded-xl"
+                          style={{
+                            background: "var(--glass-01)",
+                            border: "1px solid var(--glass-border)",
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+                              {c.author}
+                            </span>
+                            <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                              {c.date}
+                            </span>
+                          </div>
+                          <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                            {c.text}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
               </div>
 
-              {/* Due date */}
-              <div>
-                <Label>Дедлайн</Label>
-                <DueDatePicker taskId={liveTask.id} value={liveTask.dueDate} />
+              {/* ── Footer ── */}
+              <div
+                className="flex-shrink-0 px-5 py-3 flex items-center justify-between"
+                style={{ borderTop: "1px solid var(--glass-border)" }}
+              >
+                {/* id — number в schema, показываем как строку */}
+                <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                  #{String(task.id).padStart(4, "0")}
+                </span>
+                <button
+                  onClick={onClose}
+                  className="text-xs px-3 py-1.5 rounded-lg"
+                  style={{
+                    background: "var(--glass-02)",
+                    border: "1px solid var(--glass-border)",
+                    color: "var(--text-secondary)",
+                    cursor: "pointer",
+                    outline: "none",
+                    transition: "background 0.15s ease",
+                  }}
+                >
+                  Close{" "}
+                  <kbd className="text-xs font-mono opacity-60 ml-1">Esc</kbd>
+                </button>
               </div>
-
-              {/* Assignees */}
-              <div>
-                <Label>Ответственные</Label>
-                <AssigneeManager taskId={liveTask.id} assignees={liveTask.assignees} />
-              </div>
-
-              {/* Subtasks */}
-              <div>
-                <SubtaskList taskId={liveTask.id} subtasks={liveTask.subtasks} />
-              </div>
-
-            </div>
-
-            {/* Footer */}
-            <div
-              className="shrink-0 px-6 py-3 border-t flex items-center gap-3 text-xs text-(--text-muted)"
-              style={{ borderColor: "var(--glass-border)" }}
-            >
-              <span>Создано {new Date(liveTask.createdAt).toLocaleDateString("ru-RU")}</span>
-              {liveTask.updatedAt !== liveTask.createdAt && (
-                <span>• Изменено {new Date(liveTask.updatedAt).toLocaleDateString("ru-RU")}</span>
-              )}
-            </div>
-          </motion.aside>
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>

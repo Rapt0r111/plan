@@ -15,22 +15,23 @@
 import dynamic from "next/dynamic";
 
 const CommandPalette = dynamic(
-  () => import("@/features/command-palette/CommandPalette").then((m) => ({ default: m.CommandPalette })),
+  () => import("@/features/command-palette/CommandPalette").then(m => ({ default: m.CommandPalette })),
   { ssr: false }
 );
-
 const ZenMode = dynamic(
-  () => import("@/features/zen-mode/ZenMode").then((m) => ({ default: m.ZenMode })),
+  () => import("@/features/zen-mode/ZenMode").then(m => ({ default: m.ZenMode })),
   { ssr: false }
 );
-
 const DynamicIsland = dynamic(
-  () => import("@/features/sync/DynamicIsland").then((m) => ({ default: m.DynamicIsland })),
+  () => import("@/features/sync/DynamicIsland").then(m => ({ default: m.DynamicIsland })),
   { ssr: false }
 );
-
 const SyncNotificationBridge = dynamic(
-  () => import("@/features/sync/SyncNotificationBridge").then((m) => ({ default: m.SyncNotificationBridge })),
+  () => import("@/features/sync/SyncNotificationBridge").then(m => ({ default: m.SyncNotificationBridge })),
+  { ssr: false }
+);
+const GlobalFAB = dynamic(
+  () => import("@/features/create/GlobalFAB").then(m => ({ default: m.GlobalFAB })),
   { ssr: false }
 );
 
@@ -41,6 +42,7 @@ export function GlobalClientComponents() {
       <DynamicIsland />
       <SyncNotificationBridge />
       <ZenMode />
+      <GlobalFAB />  {/* ← новый FAB */}
     </>
   );
 }

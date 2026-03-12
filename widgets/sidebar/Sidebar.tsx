@@ -12,6 +12,7 @@ import { TeamAvatars } from "@/features/team/TeamAvatars";
 import { useSyncStatus } from "@/shared/store/useTaskStore";
 import type { DbEpic } from "@/shared/types";
 import type { UserWithMeta } from "@/shared/types";
+import { motion } from "framer-motion";
 
 interface Props {
   epics: (DbEpic & { taskCount: number; doneCount: number })[];
@@ -22,10 +23,10 @@ function SyncBadge() {
   const { status, lastSyncedAt } = useSyncStatus();
 
   const config = {
-    idle:    { dot: "bg-slate-500",                  label: "LOCAL", text: "IDLE"    },
-    syncing: { dot: "bg-amber-400 animate-pulse",    label: "LOCAL", text: "SYNCING" },
-    synced:  { dot: "bg-emerald-400",                label: "LOCAL", text: "SYNCED"  },
-    error:   { dot: "bg-red-400",                    label: "LOCAL", text: "ERROR"   },
+    idle: { dot: "bg-slate-500", label: "LOCAL", text: "IDLE" },
+    syncing: { dot: "bg-amber-400 animate-pulse", label: "LOCAL", text: "SYNCING" },
+    synced: { dot: "bg-emerald-400", label: "LOCAL", text: "SYNCED" },
+    error: { dot: "bg-red-400", label: "LOCAL", text: "ERROR" },
   } as const;
 
   const { dot, label, text } = config[status];
@@ -38,10 +39,10 @@ function SyncBadge() {
         <span
           className={cn(
             "font-semibold",
-            status === "synced"  && "text-emerald-400",
+            status === "synced" && "text-emerald-400",
             status === "syncing" && "text-amber-400",
-            status === "error"   && "text-red-400",
-            status === "idle"    && "text-slate-500"
+            status === "error" && "text-red-400",
+            status === "idle" && "text-slate-500"
           )}
         >
           {text}
@@ -60,8 +61,8 @@ export function Sidebar({ epics, users }: Props) {
   const pathname = usePathname();
 
   const overallTotal = epics.reduce((s, e) => s + e.taskCount, 0);
-  const overallDone  = epics.reduce((s, e) => s + e.doneCount, 0);
-  const overallPct   = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
+  const overallDone = epics.reduce((s, e) => s + e.doneCount, 0);
+  const overallPct = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
 
   return (
     <aside
@@ -104,16 +105,32 @@ export function Sidebar({ epics, users }: Props) {
         {/* ── Primary Nav ───────────────────────────────────────────────── */}
         <nav className="px-3 pt-4 space-y-0.5">
           {([
-            { href: "/dashboard", label: "Обзор",  icon: DashboardIcon },
-            { href: "/board",     label: "Доска",  icon: BoardIcon     },
+            {
+              href: "/dashboard",
+              label: "Обзор",
+              icon: DashboardIcon,
+              badge: null,
+            },
+            {
+              href: "/board",
+              label: "Доска",
+              icon: BoardIcon,
+              badge: null,
+            },
+            {
+              href: "/settings",
+              label: "Настройки",
+              icon: SettingsIcon,
+              badge: null,
+            },
           ] as const).map(({ href, label, icon: Icon }) => {
-            const active = pathname === href;
+            const active = pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}
                 href={href}
                 className={cn(
-                  "nav-item",
+                  "nav-item group",
                   active
                     ? "bg-[var(--accent-glow)] text-[var(--accent-400)] border border-[rgba(139,92,246,0.25)] font-medium"
                     : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -121,6 +138,15 @@ export function Sidebar({ epics, users }: Props) {
               >
                 <Icon active={active} />
                 {label}
+                {href === "/settings" && (
+                  <motion.span
+                    className="ml-auto opacity-0 group-hover:opacity-60 text-[10px] font-mono"
+                    style={{ color: "var(--text-muted)" }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    ⚙
+                  </motion.span>
+                )}
               </Link>
             );
           })}
@@ -243,9 +269,22 @@ function BoardIcon({ active }: { active: boolean }) {
       className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")}
       viewBox="0 0 16 16" fill="currentColor"
     >
-      <rect x="1"  y="1" width="4" height="14" rx="1.5" fillOpacity={active ? 1   : 0.6} />
-      <rect x="6"  y="1" width="4" height="9"  rx="1.5" fillOpacity={active ? 0.8 : 0.4} />
+      <rect x="1" y="1" width="4" height="14" rx="1.5" fillOpacity={active ? 1 : 0.6} />
+      <rect x="6" y="1" width="4" height="9" rx="1.5" fillOpacity={active ? 0.8 : 0.4} />
       <rect x="11" y="1" width="4" height="11" rx="1.5" fillOpacity={active ? 0.6 : 0.3} />
+    </svg>
+  );
+}
+
+function SettingsIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")}
+      viewBox="0 0 16 16" fill="none" stroke="currentColor"
+      strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round"
+    >
+      <circle cx="8" cy="8" r="2.2" />
+      <path d="M8 1.5v1.3M8 13.2v1.3M1.5 8h1.3M13.2 8h1.3M3.4 3.4l.92.92M11.68 11.68l.92.92M3.4 12.6l.92-.92M11.68 4.32l.92-.92" />
     </svg>
   );
 }

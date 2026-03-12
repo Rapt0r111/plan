@@ -24,6 +24,7 @@ import { EpicColumn } from "@/widgets/board/EpicColumn";
 import { useBoardKeyNav } from "@/features/board/useBoardKeyNav";
 import type { FilterState } from "@/features/filters/SmartFilters";
 import type { TaskView } from "@/shared/types";
+import { BoardTaskCard } from "@/widgets/board/BoardTaskCard";
 
 const TaskSlideover = dynamic(
     () => import("@/features/task-details/TaskSlideover").then((m) => ({ default: m.TaskSlideover })),

@@ -49,6 +49,12 @@ interface TaskStore {
   _beginOp: () => () => void;
 }
 
+function omitTask(map: Record<number, TaskView>, id: number): Record<number, TaskView> {
+  const next = { ...map };
+  delete next[id];
+  return next;
+}
+
 function buildTaskIndex(epics: EpicWithTasks[]): Record<number, TaskView> {
   const index: Record<number, TaskView> = {};
   for (const epic of epics) {
@@ -174,7 +180,8 @@ export const useTaskStore = create<TaskStore>()(
         // Заменяем temp-задачу на реальную
         set((s) => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { [tempId]: _removed, ...restTasks } = s.tasks;
+          const restTasks = omitTask(s.tasks, tempId);
+
           return {
             tasks: { ...restTasks, [realId]: realTask },
             epics: s.epics.map((e) =>
@@ -189,7 +196,8 @@ export const useTaskStore = create<TaskStore>()(
         // Откат
         set((s) => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { [tempId]: _removed, ...restTasks } = s.tasks;
+          const restTasks = omitTask(s.tasks, tempId);
+
           return {
             tasks: restTasks,
             epics: s.epics.map((e) =>
@@ -247,7 +255,8 @@ export const useTaskStore = create<TaskStore>()(
 
         set((s) => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { [tempId]: _removed, ...restTasks } = s.tasks;
+          const restTasks = omitTask(s.tasks, tempId);
+
           return {
             tasks: { ...restTasks, [realId]: realTask },
             epics: s.epics.map((e) =>
@@ -262,7 +271,8 @@ export const useTaskStore = create<TaskStore>()(
       } catch {
         set((s) => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { [tempId]: _removed, ...restTasks } = s.tasks;
+          const restTasks = omitTask(s.tasks, tempId);
+
           return {
             tasks: restTasks,
             epics: s.epics.map((e) =>
@@ -434,7 +444,8 @@ export const useTaskStore = create<TaskStore>()(
 
       // Оптимистичное удаление
       set((s) => {
-        const { [taskId]: _removed, ...restTasks } = s.tasks;
+        const restTasks = omitTask(s.tasks, taskId);
+
         return {
           tasks: restTasks,
           epics: s.epics.map((e) =>

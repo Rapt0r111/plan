@@ -139,17 +139,6 @@ export function TaskCard({ task, onOpen }: Props) {
   const glareY = useTransform(mouseY, [-0.5, 0.5], ["0%", "100%"]);
   const glareBackground = useMotionTemplate`radial-gradient(circle at ${glareX} ${glareY}, rgba(255,255,255,0.05) 0%, transparent 60%)`;
 
-  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
-    const rect = cardRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    mouseX.set((e.clientX - rect.left) / rect.width - 0.5);
-    mouseY.set((e.clientY - rect.top) / rect.height - 0.5);
-  }
-
-  function handleMouseLeave() {
-    mouseX.set(0);
-    mouseY.set(0);
-  }
 
   // ── Status cycle ─────────────────────────────────────────────────────────
   function cycleStatus(e: React.MouseEvent) {
@@ -173,8 +162,7 @@ export function TaskCard({ task, onOpen }: Props) {
         background: "var(--bg-overlay)",
         border: "1px solid var(--glass-border)",
       }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
+
       onClick={() => onOpen?.(liveTask)}
       data-priority={liveTask.priority}
       className={cn(

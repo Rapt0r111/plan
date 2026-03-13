@@ -17,6 +17,7 @@ import { TaskCard } from "@/entities/task/ui/TaskCard";
 import { QuickAddTask } from "./QuickAddTask";
 import { STATUS_META, STATUS_ORDER } from "@/shared/config/task-meta";
 import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
+import { usePrefsStore } from "@/shared/store/usePrefsStore";
 
 export interface EpicColumnProps {
   epic: EpicWithTasks;
@@ -223,8 +224,9 @@ export function EpicColumn({
   focusedTaskId,
 }: EpicColumnProps) {
   const { getDragProps, getDropProps, dragState } = useBoardDnD();
+  const defaultCollapsed = usePrefsStore((s) => s.prefs.epicColumnsCollapsed);
   const [hovered, setHovered] = useState(false);
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const visibleTasks = useMemo(() => applyFilters(epic.tasks, filters), [epic.tasks, filters]);
@@ -476,10 +478,10 @@ export function EpicColumn({
                                     style={
                                       focusedTaskId === task.id
                                         ? {
-                                            borderRadius: 12,
-                                            outline: `2px solid ${epic.color}70`,
-                                            outlineOffset: 2,
-                                          }
+                                          borderRadius: 12,
+                                          outline: `2px solid ${epic.color}70`,
+                                          outlineOffset: 2,
+                                        }
                                         : {}
                                     }
                                   >

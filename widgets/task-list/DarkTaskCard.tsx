@@ -5,6 +5,10 @@
  * РЕФАКТОРИНГ DRY v2:
  *  Убраны локальные STATUS_CFG и PRIORITY_COLOR.
  *  Теперь импортируются из shared/config/task-meta — единственного источника правды.
+ *
+ * PREFS v3:
+ *  showTaskDescriptions, showAssigneeAvatars, showSubtaskProgress, showDueDates
+ *  читаются из usePrefsStore и применяются к рендеру.
  */
 import { useState, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,6 +16,7 @@ import { cn } from "@/shared/lib/utils";
 import { formatDate } from "@/shared/lib/utils";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { STATUS_META, PRIORITY_META, STATUS_CYCLE } from "@/shared/config/task-meta";
+import { usePrefsStore } from "@/shared/store/usePrefsStore";
 import type { TaskView, TaskStatus } from "@/shared/types";
 
 interface Props {
@@ -26,16 +31,23 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
   const liveTask = useTaskStore((s) => s.getTask(task.id)) ?? task;
 
-  const statusMeta = STATUS_META[liveTask.status];
+  const {
+    showTaskDescriptions,
+    showAssigneeAvatars,
+    showSubtaskProgress,
+    showDueDates,
+  } = usePrefsStore((s) => s.prefs);
+
+  const statusMeta   = STATUS_META[liveTask.status];
   const priorityColor = PRIORITY_META[liveTask.priority].color;
-  const progressPct =
+  const progressPct  =
     liveTask.subtasks.length > 0
       ? (liveTask.progress.done / liveTask.progress.total) * 100
       : 0;
 
   function cycleStatus(e: React.MouseEvent) {
     e.stopPropagation();
-    const idx = STATUS_CYCLE.indexOf(liveTask.status as TaskStatus);
+    const idx  = STATUS_CYCLE.indexOf(liveTask.status as TaskStatus);
     const next = STATUS_CYCLE[(idx === -1 ? 0 : idx + 1) % STATUS_CYCLE.length];
     updateTaskStatus(liveTask.id, next);
   }
@@ -49,7 +61,7 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
       style={{
         background: "var(--bg-overlay)",
         border: "1px solid var(--glass-border)",
-        backgroundImage: `radial-gradient(ellipse at top left, ${epicColor}08 0%, transparent 50%)`,
+        backgroundImage: `radial-gradient(ellipse at top left, ${epicColor ?? "transparent"}08 0%, transparent 50%)`,
       }}
       onClick={() => onOpen?.(liveTask)}
     >
@@ -62,7 +74,8 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
       )}
 
       <div className="px-3.5 py-3 space-y-2.5">
-        {/* Row 1: статус + дедлайн */}
+
+        {/* ── Row 1: статус + дедлайн ─────────────────────────────── */}
         <div className="flex items-center justify-between gap-2">
           <button
             onClick={cycleStatus}
@@ -75,18 +88,19 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
             />
             {statusMeta.label}
           </button>
-          {liveTask.dueDate && (
+
+          {showDueDates && liveTask.dueDate && (
             <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
               {formatDate(liveTask.dueDate)}
             </span>
           )}
         </div>
 
-        {/* Row 2: заголовок */}
+        {/* ── Row 2: заголовок ─────────────────────────────────────── */}
         <p
           className={cn(
             "text-sm font-medium leading-snug",
-            liveTask.status === "done" ? "line-through" : ""
+            liveTask.status === "done" && "line-through"
           )}
           style={{
             color: liveTask.status === "done" ? "var(--text-muted)" : "var(--text-primary)",
@@ -95,8 +109,8 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
           {liveTask.title}
         </p>
 
-        {/* Row 3: описание */}
-        {liveTask.description && (
+        {/* ── Row 3: описание ──────────────────────────────────────── */}
+        {showTaskDescriptions && liveTask.description && (
           <p
             className="text-xs line-clamp-2 leading-relaxed"
             style={{ color: "var(--text-muted)" }}
@@ -105,20 +119,22 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
           </p>
         )}
 
-        {/* Row 4: ответственные + прогресс-кнопка */}
+        {/* ── Row 4: исполнители + счётчик подзадач ────────────────── */}
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center -space-x-1.5">
-            {liveTask.assignees.slice(0, 3).map((a, i) => (
-              <div
-                key={a.id}
-                title={`${a.name} — ${a.roleMeta.label}`}
-                className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ring-1 shrink-0 ring-[var(--bg-overlay)]"
-                style={{ backgroundColor: a.roleMeta.hex, zIndex: 3 - i }}
-              >
-                {a.initials}
-              </div>
-            ))}
-            {liveTask.assignees.length > 0 && (
+
+          {/* Аватары исполнителей */}
+          {showAssigneeAvatars && liveTask.assignees.length > 0 && (
+            <div className="flex items-center -space-x-1.5 min-w-0">
+              {liveTask.assignees.slice(0, 3).map((a, i) => (
+                <div
+                  key={a.id}
+                  title={`${a.name} — ${a.roleMeta.label}`}
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ring-1 shrink-0 ring-[var(--bg-overlay)]"
+                  style={{ backgroundColor: a.roleMeta.hex, zIndex: 3 - i }}
+                >
+                  {a.initials}
+                </div>
+              ))}
               <span
                 className="pl-3 text-xs truncate max-w-[120px]"
                 style={{ color: "var(--text-muted)" }}
@@ -126,13 +142,17 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
                 {liveTask.assignees[0].roleMeta.label}
                 {liveTask.assignees.length > 1 && ` +${liveTask.assignees.length - 1}`}
               </span>
-            )}
-          </div>
+            </div>
+          )}
 
-          {liveTask.subtasks.length > 0 && (
+          {/* Кнопка раскрытия подзадач */}
+          {showSubtaskProgress && liveTask.subtasks.length > 0 && (
             <button
-              onClick={(e) => { e.stopPropagation(); setSubtasksOpen((v) => !v); }}
-              className="flex items-center gap-1 text-xs hover:opacity-80 transition-opacity shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSubtasksOpen((v) => !v);
+              }}
+              className="flex items-center gap-1 text-xs hover:opacity-80 transition-opacity shrink-0 ml-auto"
               style={{ color: "var(--text-muted)" }}
             >
               <span className="font-mono">
@@ -155,8 +175,8 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
         </div>
       </div>
 
-      {/* Прогресс-бар подзадач */}
-      {liveTask.subtasks.length > 0 && (
+      {/* ── Прогресс-бар подзадач ─────────────────────────────────── */}
+      {showSubtaskProgress && liveTask.subtasks.length > 0 && (
         <div
           className="mx-3.5 mb-2 h-0.5 rounded-full overflow-hidden"
           style={{ background: "rgba(255,255,255,0.06)" }}
@@ -173,9 +193,9 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
         </div>
       )}
 
-      {/* Раскрывающийся список подзадач */}
+      {/* ── Раскрывающийся список подзадач ───────────────────────── */}
       <AnimatePresence>
-        {subtasksOpen && liveTask.subtasks.length > 0 && (
+        {subtasksOpen && showSubtaskProgress && liveTask.subtasks.length > 0 && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -226,7 +246,9 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
                   <span
                     className={cn(
                       "text-xs leading-relaxed transition-colors duration-200",
-                      st.isCompleted ? "line-through" : "group-hover:text-[var(--text-primary)]"
+                      st.isCompleted
+                        ? "line-through"
+                        : "group-hover:text-[var(--text-primary)]"
                     )}
                     style={{
                       color: st.isCompleted ? "var(--text-muted)" : "var(--text-secondary)",

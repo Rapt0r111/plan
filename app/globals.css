@@ -52,6 +52,9 @@
   --glass-border: rgba(255, 255, 255, 0.07);
   --glass-border-active: rgba(255, 255, 255, 0.17);
 
+  --filter-bar-bg: rgba(8, 9, 18, 0.88);
+
+
   /* Chromatic split layers (aberration effect) */
   --glass-r: rgba(255, 80, 80, 0.015);
   --glass-b: rgba(80, 140, 255, 0.018);
@@ -120,6 +123,8 @@ html.light {
   --bg-surface: #ffffff;
   --bg-elevated: #f9f7f4;
   --bg-overlay: #f3f0ea;
+
+  --filter-bar-bg: rgba(255, 255, 255, 0.94);
 
   --glass-01: rgba(255, 255, 255, 0.55);
   --glass-02: rgba(255, 255, 255, 0.75);

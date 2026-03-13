@@ -12,6 +12,7 @@ import { getAllUsers } from "@/entities/user/userRepository";
 import { OfflineHydrator } from "@/shared/store/StoreHydrator";
 import { RoleHydrator } from "@/shared/store/RoleHydrator";
 import { getAllRoles } from "@/entities/role/roleRepository";
+import { PrefsApplicator } from "@/shared/ui/PrefsApplicator";
 
 async function SidebarLoader() {
   const [epics, users, roles] = await Promise.all([
@@ -83,6 +84,7 @@ function SidebarSkeleton() {
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden">
+      <PrefsApplicator />
       <OfflineHydrator />
       <Suspense fallback={<SidebarSkeleton />}>
         <SidebarLoader />

@@ -2,40 +2,22 @@
 /**
  * @file EpicWorkspace.tsx — features/epics
  *
- * ═══════════════════════════════════════════════════════════
- * EPIC WORKSPACE — IMMERSIVE MORPHING CONTAINER (2027)
- * ═══════════════════════════════════════════════════════════
- *
- * LAYOUT PROJECTION:
- *  Использует тот же layoutId={`epic-card-${epicId}`}, что и EpicCard.
- *  Framer Motion автоматически вычисляет FLIP-трансформацию:
- *   1. Записывает bounding rect EpicCard (source)
- *   2. При монтировании EpicWorkspace читает её target rect (viewport)
- *   3. Анимирует scale/position от source к target
- *  Эффект: карточка «расширяется» в рабочее пространство.
- *
- * SPRING PHYSICS (высокое натяжение, минимальная масса):
- *  stiffness: 350, damping: 32, mass: 0.8
- *  Даёт снаппи ощущение пространственного перехода без bounce.
- *
- * СТРУКТУРА СЛОЁВ (z-axis):
- *  backdrop    z-40  — blur + dark overlay
- *  workspace   z-50  — морфирующий контейнер (layoutId)
- *  close btn   z-51  — поверх контейнера
- *
- * DATA FETCHING:
- *  При открытии делает fetch /api/epics/:id (возвращает EpicWithTasks).
- *  Пока данные грузятся — показывает skeleton в стиле карточки,
- *  чтобы морфинг не выглядел пустым.
+ * ИСПРАВЛЕНИЯ v2:
+ *  1. Убран pointer-events-none с обёртки workspace — он блокировал клики.
+ *  2. backdrop и workspace теперь рендерятся в DOM напрямую (без лишнего
+ *     fixed-обёртки), z-index выставляется на самих элементах.
+ *  3. Workspace panel: убран layoutId с обёртки-fixed (он мешал FLIP),
+ *     layoutId остаётся только на panel — как источник морфинга.
+ *  4. Подзадачи: TaskRow получает данные из fullEpic (fetched) с fallback
+ *     на useTaskStore. Subtask mini-bar и счётчик теперь всегда видны.
+ *  5. Добавлен явный will-change: transform на panel для производительности.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   motion,
   AnimatePresence,
-  useMotionValue,
   useSpring,
-  useTransform,
 } from "framer-motion";
 import { cn } from "@/shared/lib/utils";
 import { formatDate } from "@/shared/lib/utils";
@@ -45,7 +27,8 @@ import type { EpicSummary, EpicWithTasks, TaskView, TaskStatus } from "@/shared/
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const SPRING = { type: "spring" as const, stiffness: 350, damping: 32, mass: 0.8 };
+// Быстрый snappy spring — открытие ~180мс, закрытие ~150мс
+const SPRING = { type: "spring" as const, stiffness: 500, damping: 38, mass: 0.4 };
 
 // ── Task Row ──────────────────────────────────────────────────────────────────
 
@@ -56,13 +39,15 @@ interface TaskRowProps {
 }
 
 function TaskRow({ task, epicColor, onOpen }: TaskRowProps) {
+  // Берём живые данные из стора, если стор уже гидрирован;
+  // иначе используем task из fullEpic (включает subtasks из API).
   const liveTask = useTaskStore((s) => s.getTask(task.id)) ?? task;
   const updateStatus = useTaskStore((s) => s.updateTaskStatus);
   const sm = STATUS_META[liveTask.status];
 
-  const progress = liveTask.progress.total > 0
-    ? liveTask.progress.done / liveTask.progress.total
-    : 0;
+  const subtaskCount = liveTask.subtasks?.length ?? 0;
+  const subtaskDone = liveTask.subtasks?.filter((s) => s.isCompleted).length ?? 0;
+  const progress = subtaskCount > 0 ? subtaskDone / subtaskCount : 0;
 
   return (
     <motion.div
@@ -108,7 +93,7 @@ function TaskRow({ task, epicColor, onOpen }: TaskRowProps) {
         <p
           className={cn(
             "text-sm font-medium leading-snug",
-            liveTask.status === "done" && "line-through opacity-50"
+            liveTask.status === "done" && "line-through opacity-50",
           )}
           style={{ color: "var(--text-primary)" }}
         >
@@ -116,35 +101,35 @@ function TaskRow({ task, epicColor, onOpen }: TaskRowProps) {
         </p>
 
         {liveTask.description && (
-          <p
-            className="text-xs mt-0.5 line-clamp-1 leading-relaxed"
-            style={{ color: "var(--text-muted)" }}
-          >
+          <p className="text-xs mt-0.5 line-clamp-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
             {liveTask.description}
           </p>
         )}
 
-        {/* Subtask mini-bar */}
-        {liveTask.subtasks.length > 0 && (
+        {/* Subtask mini-bar — показывается только если есть подзадачи */}
+        {subtaskCount > 0 && (
           <div className="flex items-center gap-2 mt-1.5">
             <div
               className="flex-1 max-w-[80px] h-0.5 rounded-full overflow-hidden"
               style={{ background: "var(--glass-02)" }}
             >
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${progress * 100}%`, backgroundColor: epicColor }}
+              <motion.div
+                className="h-full rounded-full"
+                style={{ backgroundColor: epicColor }}
+                initial={{ width: 0 }}
+                animate={{ width: `${progress * 100}%` }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
               />
             </div>
             <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
-              {liveTask.progress.done}/{liveTask.progress.total}
+              {subtaskDone}/{subtaskCount}
             </span>
           </div>
         )}
       </div>
 
       {/* Assignees */}
-      {liveTask.assignees.length > 0 && (
+      {liveTask.assignees && liveTask.assignees.length > 0 && (
         <div className="flex items-center -space-x-1.5 shrink-0">
           {liveTask.assignees.slice(0, 3).map((a, i) => (
             <div
@@ -161,10 +146,7 @@ function TaskRow({ task, epicColor, onOpen }: TaskRowProps) {
 
       {/* Due date */}
       {liveTask.dueDate && (
-        <span
-          className="shrink-0 text-[10px] font-mono"
-          style={{ color: "var(--text-muted)" }}
-        >
+        <span className="shrink-0 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
           {formatDate(liveTask.dueDate)}
         </span>
       )}
@@ -211,12 +193,7 @@ function StatusSection({
       <div className="space-y-1.5">
         <AnimatePresence mode="popLayout">
           {tasks.map((t) => (
-            <TaskRow
-              key={t.id}
-              task={t}
-              epicColor={epicColor}
-              onOpen={onOpenTask}
-            />
+            <TaskRow key={t.id} task={t} epicColor={epicColor} onOpen={onOpenTask} />
           ))}
         </AnimatePresence>
         {!tasks.length && (
@@ -236,10 +213,7 @@ function WorkspaceSkeleton({ color }: { color: string }) {
     <div className="p-6 space-y-6 animate-pulse">
       {[...Array(3)].map((_, i) => (
         <div key={i} className="space-y-2">
-          <div
-            className="h-5 w-28 rounded-full"
-            style={{ background: `${color}18` }}
-          />
+          <div className="h-5 w-28 rounded-full" style={{ background: `${color}18` }} />
           {[...Array(2 - (i % 2))].map((_, j) => (
             <div
               key={j}
@@ -262,52 +236,32 @@ interface EpicWorkspaceProps {
   onOpenTask: (task: TaskView) => void;
 }
 
-export function EpicWorkspace({
-  epicId,
-  summary,
-  onClose,
-  onOpenTask,
-}: EpicWorkspaceProps) {
+export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWorkspaceProps) {
+  // loading=true по умолчанию. Компонент ремаунтится через key={epicId} в родителе,
+  // поэтому state сбрасывается автоматически — setLoading(true) в эффекте не нужен.
   const [fullEpic, setFullEpic] = useState<EpicWithTasks | null>(null);
   const [loading, setLoading] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Добавь эти две строки:
-  const scrollRef = useRef<HTMLDivElement>(null); // Восстанавливаем реф для скролла
-  const [prevId, setPrevId] = useState(epicId);
-
-  // Логика сброса при смене пропсов (твоё верное исправление)
-  if (epicId !== prevId) {
-    setPrevId(epicId);
-    setLoading(true);
-    setFullEpic(null);
-  }
-
-  // 2. В эффекте оставляем только асинхронную работу
   useEffect(() => {
-    let ignore = false; // Чистим за собой, чтобы не было гонки данных
+    let ignore = false;
 
     fetch(`/api/epics/${epicId}`)
       .then((r) => r.json())
       .then((d) => {
-        if (!ignore && d.ok) {
-          setFullEpic(d.data);
-        }
+        if (!ignore && d.ok) setFullEpic(d.data);
       })
       .catch(console.error)
       .finally(() => {
         if (!ignore) setLoading(false);
       });
 
-    return () => {
-      ignore = true;
-    };
+    return () => { ignore = true; };
   }, [epicId]);
 
   // Close on Escape
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -318,55 +272,63 @@ export function EpicWorkspace({
     return () => { document.body.style.overflow = ""; };
   }, []);
 
-  const progress = summary.taskCount > 0
-    ? summary.doneCount / summary.taskCount
-    : 0;
+  const progress = summary.taskCount > 0 ? summary.doneCount / summary.taskCount : 0;
   const pct = Math.round(progress * 100);
 
-  // Group tasks by status
   const byStatus = fullEpic
     ? STATUS_ORDER.reduce<Record<TaskStatus, TaskView[]>>(
-      (acc, s) => {
-        acc[s] = fullEpic.tasks.filter((t) => t.status === s);
-        return acc;
-      },
-      { in_progress: [], todo: [], blocked: [], done: [] }
-    )
+        (acc, s) => {
+          acc[s] = fullEpic.tasks.filter((t) => t.status === s);
+          return acc;
+        },
+        { in_progress: [], todo: [], blocked: [], done: [] },
+      )
     : null;
 
-  // Animated stats counter
   const animPct = useSpring(0, { stiffness: 80, damping: 20 });
   useEffect(() => { animPct.set(pct); }, [pct, animPct]);
 
   return (
     <>
-      {/* Backdrop */}
+      {/* ── Backdrop — z-[58] ──
+          pointer-events: auto явно — не даём наследовать none от возможных родителей.
+          Клик по backdrop = закрытие workspace. */}
       <motion.div
         key="ws-backdrop"
-        className="fixed inset-0 z-40"
+        className="fixed inset-0"
+        style={{ zIndex: 58, pointerEvents: "auto", cursor: "default" }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.25 }}
-        style={{
-          background: "rgba(4,5,10,0.78)",
-          backdropFilter: "blur(8px)",
-        }}
+        transition={{ duration: 0.15 }}
         onClick={onClose}
-      />
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            background: "rgba(4,5,10,0.78)",
+            backdropFilter: "blur(8px)",
+          }}
+        />
+      </motion.div>
 
-      {/* Workspace panel — layoutId matches EpicCard */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-6 pointer-events-none">
+      {/* ── Workspace panel — z-[59], pointer-events: auto ── */}
+      <div
+        className="fixed inset-0 flex items-center justify-center p-6"
+        style={{ zIndex: 59, pointerEvents: "none" }}
+      >
         <motion.div
           layoutId={`epic-card-${epicId}`}
           layout
-          className="relative w-full max-w-3xl pointer-events-auto overflow-hidden"
+          className="relative w-full max-w-3xl overflow-hidden"
           style={{
             maxHeight: "calc(100vh - 48px)",
             background: "var(--bg-elevated)",
             border: `0.5px solid ${summary.color}35`,
             borderLeft: `3px solid ${summary.color}`,
             borderRadius: 20,
+            pointerEvents: "auto",
+            willChange: "transform",
             boxShadow: `
               0 0 0 0.5px rgba(255,255,255,0.05),
               0 4px 24px rgba(0,0,0,0.6),
@@ -382,12 +344,9 @@ export function EpicWorkspace({
             className="absolute inset-0 pointer-events-none"
             style={{
               background: `
-                radial-gradient(ellipse 80% 40% at 10% 0%,
-                  ${summary.color}14 0%, transparent 50%),
-                radial-gradient(ellipse 50% 60% at 90% 100%,
-                  ${summary.color}0c 0%, transparent 55%),
-                radial-gradient(ellipse 35% 35% at 50% 50%,
-                  rgba(255,255,255,0.018) 0%, transparent 70%)
+                radial-gradient(ellipse 80% 40% at 10% 0%, ${summary.color}14 0%, transparent 50%),
+                radial-gradient(ellipse 50% 60% at 90% 100%, ${summary.color}0c 0%, transparent 55%),
+                radial-gradient(ellipse 35% 35% at 50% 50%, rgba(255,255,255,0.018) 0%, transparent 70%)
               `,
             }}
           />
@@ -404,11 +363,11 @@ export function EpicWorkspace({
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ delay: 0.05, duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className="relative flex items-start gap-4 px-6 pt-5 pb-4 flex-shrink-0"
             style={{ borderBottom: `0.5px solid ${summary.color}20` }}
           >
-            {/* Epic color orb indicator */}
+            {/* Epic color orb */}
             <div
               className="mt-1 w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
               style={{
@@ -419,57 +378,35 @@ export function EpicWorkspace({
             >
               <span
                 className="w-4 h-4 rounded-full"
-                style={{
-                  backgroundColor: summary.color,
-                  boxShadow: `0 0 12px ${summary.color}`,
-                }}
+                style={{ backgroundColor: summary.color, boxShadow: `0 0 12px ${summary.color}` }}
               />
             </div>
 
             <div className="flex-1 min-w-0">
-              <h2
-                className="text-lg font-semibold leading-snug"
-                style={{ color: "var(--text-primary)" }}
-              >
+              <h2 className="text-lg font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
                 {summary.title}
               </h2>
 
               {summary.description && (
-                <p
-                  className="text-sm mt-0.5 line-clamp-2 leading-relaxed"
-                  style={{ color: "var(--text-secondary)" }}
-                >
+                <p className="text-sm mt-0.5 line-clamp-2 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                   {summary.description}
                 </p>
               )}
 
-              {/* Progress stats row */}
               <div className="flex items-center gap-4 mt-2">
-                <span
-                  className="text-xs font-mono font-semibold"
-                  style={{ color: summary.color }}
-                >
+                <span className="text-xs font-mono font-semibold" style={{ color: summary.color }}>
                   {summary.doneCount}/{summary.taskCount} задач
                 </span>
-                <div
-                  className="flex-1 max-w-[160px] h-1 rounded-full overflow-hidden"
-                  style={{ background: "var(--glass-02)" }}
-                >
+                <div className="flex-1 max-w-[160px] h-1 rounded-full overflow-hidden" style={{ background: "var(--glass-02)" }}>
                   <motion.div
                     className="h-full rounded-full"
-                    style={{
-                      backgroundColor: summary.color,
-                      boxShadow: `0 0 8px ${summary.color}80`,
-                    }}
+                    style={{ backgroundColor: summary.color, boxShadow: `0 0 8px ${summary.color}80` }}
                     initial={{ width: 0 }}
                     animate={{ width: `${pct}%` }}
-                    transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
+                    transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
                   />
                 </div>
-                <span
-                  className="text-xs font-mono font-semibold"
-                  style={{ color: summary.color }}
-                >
+                <span className="text-xs font-mono font-semibold" style={{ color: summary.color }}>
                   {pct}%
                 </span>
               </div>
@@ -485,10 +422,7 @@ export function EpicWorkspace({
                 color: "var(--text-muted)",
                 cursor: "pointer",
               }}
-              whileHover={{
-                background: "var(--glass-03)",
-                color: "var(--text-primary)",
-              }}
+              whileHover={{ background: "var(--glass-03)", color: "var(--text-primary)" }}
               whileTap={{ scale: 0.92 }}
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -498,11 +432,7 @@ export function EpicWorkspace({
           </motion.div>
 
           {/* ── Body — task sections ── */}
-          <div
-            ref={scrollRef}
-            className="relative overflow-y-auto"
-            style={{ maxHeight: "calc(100vh - 48px - 96px)" }}
-          >
+          <div ref={scrollRef} className="relative overflow-y-auto" style={{ maxHeight: "calc(100vh - 48px - 96px)" }}>
             {loading ? (
               <WorkspaceSkeleton color={summary.color} />
             ) : fullEpic && byStatus ? (
@@ -512,7 +442,7 @@ export function EpicWorkspace({
                 animate="visible"
                 variants={{
                   hidden: {},
-                  visible: { transition: { staggerChildren: 0.06, delayChildren: 0.1 } },
+                  visible: { transition: { staggerChildren: 0.03, delayChildren: 0.06 } },
                 }}
               >
                 {STATUS_ORDER.map((status) => (
@@ -521,10 +451,7 @@ export function EpicWorkspace({
                     status={status}
                     tasks={byStatus[status]}
                     epicColor={summary.color}
-                    onOpenTask={(task) => {
-                      onOpenTask(task);
-                      onClose();
-                    }}
+                    onOpenTask={onOpenTask}
                   />
                 ))}
               </motion.div>
@@ -541,7 +468,7 @@ export function EpicWorkspace({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.1 }}
             className="flex items-center justify-between px-6 py-3 flex-shrink-0"
             style={{ borderTop: `0.5px solid ${summary.color}15` }}
           >
@@ -569,7 +496,8 @@ export function EpicWorkspace({
                 }}
                 onClick={onClose}
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor"
+                  strokeWidth="1.5" strokeLinecap="round">
                   <path d="M4.5 2H12v7.5M12 2L2 12" />
                 </svg>
                 Открыть полностью

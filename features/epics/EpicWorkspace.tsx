@@ -24,6 +24,7 @@ import { formatDate } from "@/shared/lib/utils";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { STATUS_META, STATUS_ORDER } from "@/shared/config/task-meta";
 import type { EpicSummary, EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
+import { useBodyScrollLock } from "@/shared/lib/hooks/useBodyScrollLock";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -266,11 +267,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Lock body scroll
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
-  }, []);
+  useBodyScrollLock(true);
 
   const progress = summary.taskCount > 0 ? summary.doneCount / summary.taskCount : 0;
   const pct = Math.round(progress * 100);

@@ -19,15 +19,8 @@ import { useTaskStore } from "@/shared/store/useTaskStore";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/shared/config/task-meta";
 import { suggestPriority } from "@/features/ai/useAISuggestions";
 import type { TaskStatus, TaskPriority, TaskView } from "@/shared/types";
-
+import { type UserOption } from "@/shared/lib/utils";
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface UserOption {
-  id: number;
-  name: string;
-  initials: string;
-  roleMeta: { hex: string; label: string };
-}
 
 interface Props {
   epicId: number;
@@ -147,7 +140,7 @@ function SelectedStack({
           <div
             key={u.id}
             title={u.name}
-            className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold text-white ring-1 ring-[var(--bg-overlay)]"
+            className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold text-white ring-1 ring-(--bg-overlay)"
             style={{ backgroundColor: u.roleMeta.hex, zIndex: selected.length - i }}
           >
             {u.initials}

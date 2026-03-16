@@ -13,22 +13,13 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { EpicWithTasks } from "@/shared/types";
-
+import { formatDateInput, formatDateDisplay } from "@/shared/lib/utils";
 interface Props {
   initialEpics: EpicWithTasks[];
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function formatDateInput(iso: string | null | undefined): string {
-  if (!iso) return "";
-  return iso.slice(0, 10);
-}
-
-function formatDateDisplay(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
-}
 
 function deriveStatus(epic: EpicWithTasks): { label: string; color: string; bg: string } {
   const total = epic.progress.total;

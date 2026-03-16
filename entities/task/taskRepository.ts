@@ -1,10 +1,17 @@
 /**
- * @file taskRepository.ts - entities/task
+ * @file taskRepository.ts — entities/task
+ *
+ * РЕФАКТОРИНГ DAL v2:
+ *   + addTaskAssignee() — ранее inline в app/api/tasks/[id]/assignees/route.ts
+ *   + removeTaskAssignee() — ранее inline в app/api/tasks/[id]/assignees/[userId]/route.ts
+ *   Прямые db-запросы убраны из Route Handlers. Все SQL-операции теперь в DAL.
  */
 import { db } from "@/shared/db/client";
 import { tasks, subtasks, taskAssignees, users, roles } from "@/shared/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type { TaskStatus, NewTask, TaskView } from "@/shared/types";
+
+// ─── READ ─────────────────────────────────────────────────────────────────────
 
 export async function getTaskById(id: number): Promise<TaskView | null> {
   const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
@@ -54,6 +61,8 @@ export async function getTaskById(id: number): Promise<TaskView | null> {
   };
 }
 
+// ─── WRITE — Tasks ────────────────────────────────────────────────────────────
+
 export async function createTask(data: NewTask): Promise<{ id: number }> {
   const [row] = await db.insert(tasks).values(data).returning({ id: tasks.id });
   return row;
@@ -73,10 +82,45 @@ export async function updateTask(id: number, data: Partial<NewTask>): Promise<vo
     .where(eq(tasks.id, id));
 }
 
+export async function deleteTask(id: number): Promise<void> {
+  await db.delete(tasks).where(eq(tasks.id, id));
+}
+
+// ─── WRITE — Subtasks ─────────────────────────────────────────────────────────
+
 export async function toggleSubtask(subtaskId: number, isCompleted: boolean): Promise<void> {
   await db.update(subtasks).set({ isCompleted }).where(eq(subtasks.id, subtaskId));
 }
 
-export async function deleteTask(id: number): Promise<void> {
-  await db.delete(tasks).where(eq(tasks.id, id));
+// ─── WRITE — Assignees ────────────────────────────────────────────────────────
+
+/**
+ * addTaskAssignee — добавить исполнителя к задаче.
+ * onConflictDoNothing: дублирование (task_id, user_id) игнорируется — UNIQUE index.
+ *
+ * БЫЛО: inline в app/api/tasks/[id]/assignees/route.ts
+ * СТАЛО: DAL-функция, Route Handler только вызывает её
+ */
+export async function addTaskAssignee(taskId: number, userId: number): Promise<void> {
+  await db
+    .insert(taskAssignees)
+    .values({ taskId, userId })
+    .onConflictDoNothing();
+}
+
+/**
+ * removeTaskAssignee — удалить исполнителя из задачи.
+ *
+ * БЫЛО: inline в app/api/tasks/[id]/assignees/[userId]/route.ts
+ * СТАЛО: DAL-функция
+ */
+export async function removeTaskAssignee(taskId: number, userId: number): Promise<void> {
+  await db
+    .delete(taskAssignees)
+    .where(
+      and(
+        eq(taskAssignees.taskId, taskId),
+        eq(taskAssignees.userId, userId),
+      ),
+    );
 }

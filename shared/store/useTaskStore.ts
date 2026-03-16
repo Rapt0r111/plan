@@ -1,17 +1,19 @@
 /**
  * @file useTaskStore.ts — shared/store
  *
- * ОПТИМИЗАЦИИ v2:
+ * ИСПРАВЛЕНИЯ v3:
  *
- * 1. REFERENCE STABILITY — epic mutations теперь возвращают тот же объект epic,
- *    если задача не принадлежит этому эпику. Без этого Zustand пересоздавал
- *    все epic-объекты при каждой мутации, что вызывало ре-рендер
- *    useTaskStore(s => s.getEpic(id)) во ВСЕХ EpicColumn компонентах.
- *    С этой оптимизацией — только затронутый эпик получает новый объект.
+ * 1. _tempIdCounter в addTask — БАГИ:
+ *    БЫЛО: let _tempIdCounter = 0 внутри метода → сбрасывается при каждом вызове
+ *          nextTempId() всегда возвращал -1 (-(0+1) = -1)
+ *    СТАЛО: -(Date.now()) — уникальный отрицательный ID, не конфликтует с реальными
+ *    ПРИЧИНА важности: если создать две задачи подряд быстро (< 1ms) — Date.now()
+ *    может совпасть. Добавлен счётчик-суффикс для защиты от коллизий.
  *
- * 2. addTask — оптимистичное создание задачи прямо из доски.
- *    Temp ID (отрицательный timestamp) → API → замена реальным ID.
- *    Rollback при ошибке. Интегрируется с EpicColumn quick-add.
+ * 2. Reference stability (было хорошо, оставляем):
+ *    updateEpicsForTask возвращает тот же объект epic если задача не принадлежит ему.
+ *
+ * 3. Все остальные методы без изменений.
  */
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
@@ -20,6 +22,12 @@ import type { EpicWithTasks, TaskView, TaskStatus, TaskPriority } from "@/shared
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error";
 
+// Модульный счётчик для уникальных temp ID (предотвращает коллизии при быстром создании)
+let _tempIdSeq = 0;
+function nextTempId(): number {
+  return -(Date.now() * 1000 + (++_tempIdSeq % 1000));
+}
+
 interface TaskStore {
   epics: EpicWithTasks[];
   tasks: Record<number, TaskView>;
@@ -27,7 +35,6 @@ interface TaskStore {
   syncStatus: SyncStatus;
   lastSyncedAt: Date | null;
   pendingOps: number;
-
 
   getEpic: (id: number) => EpicWithTasks | undefined;
   getTask: (id: number) => TaskView | undefined;
@@ -82,7 +89,7 @@ function updateEpicsForTask(
   updater: (tasks: TaskView[]) => TaskView[],
 ): EpicWithTasks[] {
   return epics.map((epic) => {
-    if (!epic.tasks.some((t) => t.id === taskId)) return epic; // ← стабильная ссылка
+    if (!epic.tasks.some((t) => t.id === taskId)) return epic; // стабильная ссылка
     const newTasks = updater(epic.tasks);
     return {
       ...epic,
@@ -124,10 +131,9 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── addTask ──────────────────────────────────────────────────────────────
+    // ИСПРАВЛЕНО: nextTempId() теперь модульная функция, всегда уникальна
     addTask: async (epicId, title, status = "todo") => {
-      let _tempIdCounter = 0;
-      const nextTempId = () => -(++_tempIdCounter);
-      const tempId = nextTempId();
+      const tempId = nextTempId(); // ← ИСПРАВЛЕНО: было всегда -1
       const now = new Date().toISOString();
 
       const tempTask: TaskView = {
@@ -146,7 +152,6 @@ export const useTaskStore = create<TaskStore>()(
         progress: { done: 0, total: 0 },
       };
 
-      // Оптимистичное добавление
       set((s) => ({
         tasks: { ...s.tasks, [tempId]: tempTask },
         epics: s.epics.map((e) =>
@@ -163,13 +168,7 @@ export const useTaskStore = create<TaskStore>()(
         const res = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            epicId,
-            title,
-            status,
-            priority: "medium",
-            sortOrder: 9999,
-          }),
+          body: JSON.stringify({ epicId, title, status, priority: "medium", sortOrder: 9999 }),
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
@@ -177,11 +176,8 @@ export const useTaskStore = create<TaskStore>()(
         const realId: number = data.data.id;
         const realTask: TaskView = { ...tempTask, id: realId };
 
-        // Заменяем temp-задачу на реальную
         set((s) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const restTasks = omitTask(s.tasks, tempId);
-
           return {
             tasks: { ...restTasks, [realId]: realTask },
             epics: s.epics.map((e) =>
@@ -193,11 +189,8 @@ export const useTaskStore = create<TaskStore>()(
           };
         });
       } catch {
-        // Откат
         set((s) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const restTasks = omitTask(s.tasks, tempId);
-
           return {
             tasks: restTasks,
             epics: s.epics.map((e) =>
@@ -216,10 +209,8 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── createTask ────────────────────────────────────────────────────────────
-    // Thin wrapper over addTask that accepts a params object and returns the
-    // created TaskView (or null on error) — used by QuickAddTask in EpicColumn.
     createTask: async ({ epicId, title, status = "todo", priority = "medium" }) => {
-      const tempId = -(Date.now());
+      const tempId = nextTempId(); // ← ИСПРАВЛЕНО
       const now = new Date().toISOString();
 
       const tempTask: TaskView = {
@@ -254,9 +245,7 @@ export const useTaskStore = create<TaskStore>()(
         const realTask: TaskView = { ...tempTask, id: realId };
 
         set((s) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const restTasks = omitTask(s.tasks, tempId);
-
           return {
             tasks: { ...restTasks, [realId]: realTask },
             epics: s.epics.map((e) =>
@@ -270,9 +259,7 @@ export const useTaskStore = create<TaskStore>()(
         return realTask;
       } catch {
         set((s) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const restTasks = omitTask(s.tasks, tempId);
-
           return {
             tasks: restTasks,
             epics: s.epics.map((e) =>
@@ -299,7 +286,6 @@ export const useTaskStore = create<TaskStore>()(
       const prevStatus = task.status;
       const prevSubtasks = task.subtasks;
 
-      // Авто-завершение подзадач при статусе "done"
       const subtasksToUpdate: number[] = [];
       const updatedSubtasks = status === "done"
         ? task.subtasks.map((st) => {
@@ -434,18 +420,16 @@ export const useTaskStore = create<TaskStore>()(
         done();
       }
     },
-    // В useTaskStore нет deleteTask — добавить:
+
+    // ── deleteTask ────────────────────────────────────────────────────────────
     deleteTask: async (taskId: number) => {
       const task = get().tasks[taskId];
       if (!task) return;
 
-      // Сохраняем snapshot для rollback
       const epicSnapshot = get().epics.find((e) => e.id === task.epicId);
 
-      // Оптимистичное удаление
       set((s) => {
         const restTasks = omitTask(s.tasks, taskId);
-
         return {
           tasks: restTasks,
           epics: s.epics.map((e) =>
@@ -466,7 +450,6 @@ export const useTaskStore = create<TaskStore>()(
         const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
         if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
       } catch {
-        // Rollback
         if (epicSnapshot) {
           set((s) => ({
             tasks: { ...s.tasks, [taskId]: task },
@@ -478,6 +461,7 @@ export const useTaskStore = create<TaskStore>()(
         done();
       }
     },
+
     // ── reorderTasks ─────────────────────────────────────────────────────────
     reorderTasks: async (epicId, orderedIds) => {
       const prevOrder = get().epics.find((e) => e.id === epicId)?.tasks.map((t) => t.id);
@@ -515,6 +499,7 @@ export const useTaskStore = create<TaskStore>()(
         done();
       }
     },
+
     // ── updateTaskTitle ───────────────────────────────────────────────────────
     updateTaskTitle: async (taskId, title) => {
       const prev = get().tasks[taskId]?.title;
@@ -650,7 +635,6 @@ export const useTaskStore = create<TaskStore>()(
         });
       } finally { done(); }
     },
-
   }))
 );
 

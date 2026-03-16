@@ -2,43 +2,25 @@
 /**
  * @file TasksTab.tsx — app/(main)/settings
  *
- * Полный CRUD для задач.
- * - Фильтрация по эпику
- * - Inline-редактирование: заголовок, описание, дедлайн
- * - Смена статуса / приоритета через кнопки
- * - Смена эпика и исполнителя через select/dropdown
- * - Создание новой задачи с выбором эпика
- * - Удаление задачи
- * - Оптимистичные обновления + rollback
+ * РЕФАКТОРИНГ v2:
+ *   - Удалён inline AssigneeManager (без оптимистичных обновлений, с комментарием
+ *     "For simplicity we just reload; production would use optimistic state")
+ *   - Добавлен импорт AssigneeManager из shared/ui — с оптимистичными обновлениями
+ *     через Zustand store (addAssignee/removeAssignee + rollback при ошибке)
+ *   - Импортированы formatDateInput и formatDateDisplay из shared/lib/utils
+ *     вместо локальных дублей
  */
 import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/shared/lib/utils";
+import { formatDateInput, formatDateDisplay } from "@/shared/lib/utils";
 import { STATUS_META, PRIORITY_META, STATUS_ORDER, PRIORITY_ORDER } from "@/shared/config/task-meta";
+import { AssigneeManager } from "@/shared/ui/AssigneeManager"; // ← новый импорт
 import type { EpicWithTasks, TaskView, TaskStatus, TaskPriority, UserWithMeta } from "@/shared/types";
 
 interface Props {
     initialEpics: EpicWithTasks[];
     users: UserWithMeta[];
-}
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-function formatDateInput(iso: string | null | undefined): string {
-    if (!iso) return "";
-    return iso.slice(0, 10);
-}
-
-function formatDateDisplay(iso: string | null | undefined): string {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    const now = new Date();
-    const isOverdue = d < now && d.toDateString() !== now.toDateString();
-    const isToday = d.toDateString() === now.toDateString();
-    const str = d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-    if (isOverdue) return `${str} ⚠`;
-    if (isToday) return `${str} (сегодня)`;
-    return str;
 }
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
@@ -312,12 +294,18 @@ function TaskCard({
                                     </select>
                                 </div>
 
-                                {/* Assignee selector (primary) */}
+                                {/* Assignees — теперь через shared компонент с оптимистичными обновлениями */}
                                 <div className="col-span-2">
                                     <p className="text-[10px] uppercase tracking-widest font-semibold mb-1" style={{ color: "var(--text-muted)" }}>
                                         Исполнители ({task.assignees.length})
                                     </p>
-                                    <AssigneeManager taskId={task.id} assignees={task.assignees} users={users} />
+                                    {/* БЫЛО: inline AssigneeManager без оптимистичных обновлений
+                                        СТАЛО: shared AssigneeManager с store.addAssignee/removeAssignee */}
+                                    <AssigneeManager
+                                        taskId={task.id}
+                                        assignees={task.assignees}
+                                        users={users}
+                                    />
                                 </div>
                             </div>
 
@@ -353,91 +341,6 @@ function TaskCard({
                 )}
             </AnimatePresence>
         </motion.div>
-    );
-}
-
-// ─── AssigneeManager (inline in task card) ────────────────────────────────────
-
-function AssigneeManager({ taskId, assignees, users }: {
-    taskId: number;
-    assignees: TaskView["assignees"];
-    users: UserWithMeta[];
-}) {
-    const [adding, setAdding] = useState(false);
-    const assignedIds = new Set(assignees.map((a) => a.id));
-    const available = users.filter((u) => !assignedIds.has(u.id));
-
-    const add = async (user: UserWithMeta) => {
-        setAdding(false);
-        await fetch(`/api/tasks/${taskId}/assignees`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId: user.id }),
-        });
-        // Note: optimistic update handled at parent level via page reload or store
-        // For simplicity we just reload; production would use optimistic state
-    };
-
-    const remove = async (userId: number) => {
-        await fetch(`/api/tasks/${taskId}/assignees/${userId}`, { method: "DELETE" });
-    };
-
-    return (
-        <div className="space-y-1.5">
-            {/* Current assignees */}
-            {assignees.map((a) => (
-                <div key={a.id} className="flex items-center gap-2 group/a">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
-                        style={{ backgroundColor: a.roleMeta.hex }}>{a.initials}</div>
-                    <span className="text-xs flex-1 truncate" style={{ color: "var(--text-secondary)" }}>{a.name}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: `${a.roleMeta.hex}18`, color: a.roleMeta.hex }}>
-                        {a.roleMeta.short}
-                    </span>
-                    <button onClick={() => remove(a.id)}
-                        className="opacity-0 group-hover/a:opacity-100 w-4 h-4 rounded flex items-center justify-center transition-all"
-                        style={{ color: "var(--text-muted)" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "#f87171"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}>
-                        <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                            <path d="M2 2l6 6M8 2L2 8" />
-                        </svg>
-                    </button>
-                </div>
-            ))}
-
-            {/* Add button + dropdown */}
-            {available.length > 0 && (
-                <div className="relative">
-                    <button onClick={() => setAdding((v) => !v)}
-                        className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg transition-colors"
-                        style={{ color: "var(--text-muted)", border: "1px dashed var(--glass-border)" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent-400)"; e.currentTarget.style.borderColor = "rgba(139,92,246,0.4)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.borderColor = "var(--glass-border)"; }}>
-                        <span>+</span> Добавить
-                    </button>
-                    <AnimatePresence>
-                        {adding && (
-                            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                                transition={{ duration: 0.12 }}
-                                className="absolute bottom-full left-0 mb-1 z-30 rounded-xl overflow-hidden shadow-2xl"
-                                style={{ background: "var(--bg-surface)", border: "1px solid var(--glass-border)", minWidth: 180 }}>
-                                {available.map((u) => (
-                                    <button key={u.id} onClick={() => add(u)}
-                                        className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-[var(--glass-01)] transition-colors text-left">
-                                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                                            style={{ backgroundColor: u.roleMeta.hex }}>{u.initials}</div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>{u.name}</p>
-                                            <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{u.roleMeta.label}</p>
-                                        </div>
-                                    </button>
-                                ))}
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
-            )}
-        </div>
     );
 }
 
@@ -502,7 +405,6 @@ function CreateTaskForm({
                 progress: { done: 0, total: 0 },
             };
 
-            // If assignee selected, add them
             if (form.assigneeId) {
                 await fetch(`/api/tasks/${newTask.id}/assignees`, {
                     method: "POST",
@@ -525,7 +427,6 @@ function CreateTaskForm({
 
             {err && <p className="text-xs text-red-400 px-1">{err}</p>}
 
-            {/* Title */}
             <div>
                 <label className="text-xs text-(--text-muted) block mb-1">Название *</label>
                 <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
@@ -533,7 +434,6 @@ function CreateTaskForm({
                     className="w-full bg-[var(--glass-01)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-sm text-[var(--text-primary)] placeholder:text-(--text-muted) outline-none focus:border-[var(--accent-500)] transition-colors" />
             </div>
 
-            {/* Description */}
             <div>
                 <label className="text-xs text-(--text-muted) block mb-1">Описание</label>
                 <textarea value={form.description} rows={2}
@@ -543,7 +443,6 @@ function CreateTaskForm({
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-                {/* Status */}
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Статус</label>
                     <div className="flex flex-wrap gap-1">
@@ -563,7 +462,6 @@ function CreateTaskForm({
                     </div>
                 </div>
 
-                {/* Priority */}
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Приоритет</label>
                     <div className="flex flex-wrap gap-1">
@@ -583,7 +481,6 @@ function CreateTaskForm({
                     </div>
                 </div>
 
-                {/* Epic */}
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Эпик *</label>
                     <select value={form.epicId} onChange={(e) => setForm((f) => ({ ...f, epicId: Number(e.target.value) }))}
@@ -597,7 +494,6 @@ function CreateTaskForm({
                     </select>
                 </div>
 
-                {/* Assignee */}
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Исполнитель</label>
                     <select value={form.assigneeId} onChange={(e) => setForm((f) => ({ ...f, assigneeId: Number(e.target.value) }))}
@@ -612,7 +508,6 @@ function CreateTaskForm({
                     </select>
                 </div>
 
-                {/* Due date */}
                 <div className="col-span-2">
                     <label className="text-xs text-(--text-muted) block mb-1">Дедлайн</label>
                     <input type="date" value={form.dueDate}
@@ -650,27 +545,23 @@ export function TasksTab({ initialEpics, users }: Props) {
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Flatten all tasks
     const allTasks = useMemo<(TaskView & { epicColor: string; epicTitle: string })[]>(
         () => epics.flatMap((e) => e.tasks.map((t) => ({ ...t, epicColor: e.color, epicTitle: e.title }))),
         [epics],
     );
 
-    // Apply filters
     const filteredTasks = useMemo(() => allTasks.filter((t) => {
         if (filterEpic !== "all" && t.epicId !== filterEpic) return false;
         if (filterStatus !== "all" && t.status !== filterStatus) return false;
         return true;
     }), [allTasks, filterEpic, filterStatus]);
 
-    // Update a task field optimistically
     const handleUpdate = useCallback(async (
         task: TaskView,
         patch: Partial<{ title: string; description: string | null; status: TaskStatus; priority: TaskPriority; dueDate: string | null; epicId: number }>
     ) => {
         const snapshot = epics;
         setEpics((prev) => prev.map((e) => {
-            // If epicId changes, move task between epics
             if (patch.epicId && patch.epicId !== task.epicId) {
                 const updatedTask = { ...task, ...patch };
                 if (e.id === task.epicId) {
@@ -724,7 +615,6 @@ export function TasksTab({ initialEpics, users }: Props) {
         }
     }, [epics]);
 
-    // Stats
     const statuses = STATUS_ORDER.map((s) => ({
         status: s,
         count: allTasks.filter((t) => t.status === s).length,

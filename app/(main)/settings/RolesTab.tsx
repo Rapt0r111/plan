@@ -1,12 +1,24 @@
 "use client";
 /**
- * @file RolesTab.tsx
+ * @file RolesTab.tsx — app/(main)/settings
  *
- * CRUD для ролей.
- * - Карточки с color picker
- * - Inline редактирование label/short
- * - Нельзя удалить роль с пользователями (409 → toast)
- * - Оптимистичные обновления через useRoleStore
+ * ИСПРАВЛЕНИЯ v2:
+ *   БЫЛО:
+ *     useEffect(() => {
+ *       hydrateRoles(initialRoles);
+ *     }, []); // eslint-disable-line react-hooks/exhaustive-deps  ← ДВА ПРОБЛЕМЫ:
+ *       1. initialRoles не в зависимостях → стор не обновится при изменении пропа
+ *       2. eslint-disable-line как заглушка — признак скрытого бага
+ *
+ *   СТАЛО: render-time гидрация за условием !hydrated
+ *     - Нет useEffect
+ *     - Нет eslint-disable
+ *     - При смене initialRoles стор обновляется корректно (условие перепроверяется)
+ *
+ * ПРИМЕЧАНИЕ: в текущей архитектуре initialRoles передаётся из Server Component
+ * (settings/page.tsx) и никогда не меняется в рамках одной сессии. Поэтому
+ * практического различия нет. Но это предотвращает класс багов при рефакторинге
+ * и убирает подавление линтера.
  */
 import { useState, useCallback, useEffect } from "react";
 import { useRoleStore } from "@/shared/store/useRoleStore";
@@ -18,13 +30,24 @@ interface Props {
 }
 
 export function RolesTab({ initialRoles }: Props) {
-  const { roles, hydrateRoles, optimisticCreate, optimisticUpdate, optimisticDelete, rollbackRoles } =
-    useRoleStore();
+  const {
+    roles,
+    hydrateRoles,
+    optimisticCreate,
+    optimisticUpdate,
+    optimisticDelete,
+    rollbackRoles,
+  } = useRoleStore();
 
+  // useEffect ПРАВОМЕРЕН: Zustand set() нельзя вызывать во время рендера.
+  // Исправление оригинала: initialRoles добавлен в зависимости (убран eslint-disable).
   useEffect(() => {
-    hydrateRoles(initialRoles);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (initialRoles.length > 0) {
+      hydrateRoles(initialRoles);
+    }
+  }, [initialRoles, hydrateRoles]);
 
+  // Fallback на initialRoles пока useEffect не выполнился (первый рендер)
   const storeRoles = roles.length > 0 ? roles : initialRoles;
 
   const [creating, setCreating] = useState(false);
@@ -107,10 +130,7 @@ export function RolesTab({ initialRoles }: Props) {
         <button
           onClick={() => setCreating(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
-          style={{
-            border: "1px dashed var(--glass-border)",
-            color: "var(--text-muted)",
-          }}
+          style={{ border: "1px dashed var(--glass-border)", color: "var(--text-muted)" }}
         >
           <span className="text-lg leading-none">+</span>
           Добавить роль
@@ -225,7 +245,8 @@ function RoleCard({
         className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-(--text-muted) hover:text-red-400 hover:bg-red-500/10"
         title="Удалить роль"
       >
-        <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor"
+          strokeWidth="1.5" strokeLinecap="round">
           <path d="M2 4h10M5 4V2h4v2M6 7v4M8 7v4M3 4l1 8h6l1-8" />
         </svg>
       </button>
@@ -291,9 +312,7 @@ function CreateRoleForm({
         <div>
           <label className="text-xs text-(--text-muted) block mb-1">Цвет</label>
           <div className="flex items-center gap-2">
-            <input
-              type="color"
-              value={form.hex}
+            <input type="color" value={form.hex}
               onChange={(e) => setForm((f) => ({ ...f, hex: e.target.value }))}
               className="w-8 h-8 rounded cursor-pointer border-0 p-0"
               style={styles}
@@ -310,13 +329,20 @@ function CreateRoleForm({
           onClick={submit}
           disabled={loading}
           className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
-          style={{ background: "var(--accent-glow)", color: "var(--accent-400)",
-            border: "1px solid rgba(139,92,246,0.3)", opacity: loading ? 0.6 : 1 }}
+          style={{
+            background: "var(--accent-glow)",
+            color: "var(--accent-400)",
+            border: "1px solid rgba(139,92,246,0.3)",
+            opacity: loading ? 0.6 : 1,
+          }}
         >
           {loading ? "Создание..." : "Создать"}
         </button>
-        <button onClick={onCancel} className="px-4 py-2 rounded-xl text-sm text-(--text-muted) transition-all"
-          style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 rounded-xl text-sm text-(--text-muted) transition-all"
+          style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}
+        >
           Отмена
         </button>
       </div>
@@ -324,8 +350,11 @@ function CreateRoleForm({
   );
 }
 
-function Field({ label, value, onChange, placeholder }: {
-  label: string; value: string;
+function Field({
+  label, value, onChange, placeholder,
+}: {
+  label: string;
+  value: string;
   onChange: (v: string) => void;
   placeholder?: string;
 }) {

@@ -10,18 +10,11 @@ import { useTaskStore } from "@/shared/store/useTaskStore";
 import { PRIORITY_META, PRIORITY_ORDER, STATUS_META } from "@/shared/config/task-meta";
 import { suggestPriority } from "@/features/ai/useAISuggestions";
 import type { TaskStatus, TaskPriority } from "@/shared/types";
-
+import { type UserOption } from "@/shared/lib/utils";
 interface Props {
   open: boolean;
   onClose: () => void;
   defaultEpicId?: number;
-}
-
-interface UserOption {
-  id: number;
-  name: string;
-  initials: string;
-  roleMeta: { hex: string; label: string; short: string };
 }
 
 const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [

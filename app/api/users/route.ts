@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     }
 
     const user = await createUser({ name, login, roleId, initials });
-    revalidateTag(USERS_CACHE_TAG, "default");
+    revalidateTag(USERS_CACHE_TAG, "max");
     return NextResponse.json({ ok: true, data: user }, { status: 201 });
   } catch (e) {
     if (String(e).includes("UNIQUE")) {

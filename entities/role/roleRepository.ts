@@ -1,19 +1,19 @@
 /**
  * @file roleRepository.ts — entities/role
  *
- * Repository для динамических ролей.
+ * РЕФАКТОРИНГ v2 — Next.js 16:
+ *   БЫЛО: cache(unstable_cache(...)) — двойная обёртка, устаревший API
+ *   СТАЛО: директива 'use cache' + cacheTag() + cacheLife()
  *
- * CACHE STRATEGY:
- *   getAllRoles() — cache(unstable_cache), TTL 300s, tag "roles"
- *   getRoleById() — без кеша (используется в CRUD)
- *   мутации       — revalidateTag("roles") + revalidateTag("users")
+ *   getAllRoles() — 'use cache', TTL 300 секунд, tag: "roles"
+ *   Роли меняются редко — агрессивное кеширование оправдано.
  *
- * TYPE SAFETY:
- *   Все типы выводятся через Drizzle InferSelectModel / InferInsertModel.
- *   Никаких "as", никаких any.
+ *   Остальные функции (getRoleById, getRoleByKey, WRITE) — без кеша.
  */
-import { cache } from "react";
-import { unstable_cache } from "next/cache";
+
+"use cache";
+
+import { cacheTag, cacheLife } from "next/cache";
 import { db } from "@/shared/db/client";
 import { roles, users } from "@/shared/db/schema";
 import { eq, count } from "drizzle-orm";
@@ -23,27 +23,26 @@ export type DbRole = InferSelectModel<typeof roles>;
 export type NewRole = InferInsertModel<typeof roles>;
 
 export const ROLES_CACHE_TAG = "roles";
-const CACHE_TTL = 300;
 
-// ─── READ ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// READ
+// ─────────────────────────────────────────────────────────────────────────────
 
-async function _getAllRoles(): Promise<DbRole[]> {
+/**
+ * getAllRoles — кешируется агрессивно (роли меняются редко).
+ * 'use cache' автоматически дедуплицирует запросы в рамках одного SSR-прохода —
+ * React.cache() больше не нужен.
+ */
+export async function getAllRoles(): Promise<DbRole[]> {
+  "use cache";
+  cacheTag(ROLES_CACHE_TAG);
+  cacheLife({ revalidate: 300 }); // 5 минут
+
   return db
     .select()
     .from(roles)
     .orderBy(roles.sortOrder, roles.id);
 }
-
-/**
- * getAllRoles — кешируется агрессивно (роли меняются редко).
- * React.cache дедуплицирует вызовы в рамках одного SSR-прохода.
- */
-export const getAllRoles = cache(
-  unstable_cache(_getAllRoles, ["getAllRoles"], {
-    revalidate: CACHE_TTL,
-    tags: [ROLES_CACHE_TAG],
-  })
-);
 
 export async function getRoleById(id: number): Promise<DbRole | null> {
   const [role] = await db.select().from(roles).where(eq(roles.id, id));
@@ -55,7 +54,9 @@ export async function getRoleByKey(key: string): Promise<DbRole | null> {
   return role ?? null;
 }
 
-// ─── WRITE ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// WRITE — кеш не применяется, revalidateTag вызывается из Route Handler'ов
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function createRole(
   data: Omit<NewRole, "id" | "createdAt" | "updatedAt">

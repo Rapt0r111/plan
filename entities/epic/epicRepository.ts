@@ -1,9 +1,23 @@
 /**
  * @file epicRepository.ts — entities/epic
+ *
+ * РЕФАКТОРИНГ v2 — Next.js 16:
+ *   БЫЛО: cache(unstable_cache(...)) — двойная обёртка, устаревший API
+ *   СТАЛО: директива 'use cache' + cacheTag() + cacheLife()
+ *
+ *   getAllEpics()         — 'use cache', TTL 2 часа, tag: "epics"
+ *   getAllEpicsWithTasks()— 'use cache', TTL 1 минута, tag: "epics"
+ *   getEpicById()        — 'use cache', TTL 30 секунд, tag: "epics"
+ *
+ *   React.cache() убран — 'use cache' автоматически дедуплицирует запросы
+ *   в рамках одного SSR-прохода (аналог React.cache, но встроенный).
+ *
+ *   Мутации (createEpic, updateEpic, deleteEpic) — без кеша, без изменений.
  */
 
-import { cache } from "react";
-import { unstable_cache } from "next/cache";
+"use cache";
+
+import { cacheTag, cacheLife } from "next/cache";
 import { db } from "@/shared/db/client";
 import { epics, tasks, taskAssignees, users, subtasks, roles } from "@/shared/db/schema";
 import { eq, inArray, sql, count } from "drizzle-orm";
@@ -11,48 +25,8 @@ import type { DbEpic, EpicWithTasks, TaskView, UserWithMeta, SubtaskView } from 
 
 export const EPICS_CACHE_TAG = "epics";
 
-const CACHE_TTL = 60;
-const CACHE_TTL_LIGHT = 120;
-
 // ─────────────────────────────────────────────────────────────────────────────
-// getAllEpics — лёгкий список для сайдбара и карточек дашборда
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function _getAllEpics(): Promise<(DbEpic & { taskCount: number; doneCount: number })[]> {
-  const rows = await db
-    .select({
-      id: epics.id,
-      title: epics.title,
-      description: epics.description,
-      color: epics.color,
-      startDate: epics.startDate,
-      endDate: epics.endDate,
-      createdAt: epics.createdAt,
-      updatedAt: epics.updatedAt,
-      taskCount: count(tasks.id),
-      doneCount: sql<number>`
-        CAST(COUNT(CASE WHEN ${tasks.status} = 'done' THEN 1 END) AS INTEGER)
-      `.mapWith(Number),
-    })
-    .from(epics)
-    .leftJoin(tasks, eq(tasks.epicId, epics.id))
-    .groupBy(
-      epics.id, epics.title, epics.description, epics.color,
-      epics.startDate, epics.endDate, epics.createdAt, epics.updatedAt,
-    );
-
-  return rows;
-}
-
-export const getAllEpics = cache(
-  unstable_cache(_getAllEpics, ["getAllEpics"], {
-    revalidate: CACHE_TTL_LIGHT,
-    tags: [EPICS_CACHE_TAG],
-  }),
-);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
+// Helpers (не кешируются напрямую — вызываются только из кешированных функций)
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AssigneeRow = {
@@ -102,80 +76,114 @@ async function fetchAssignees(taskIds: number[]): Promise<AssigneeRow[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// getEpicById — страница одного эпика (не кешируется — нужна свежесть)
+// getAllEpics — лёгкий список для сайдбара и карточек дашборда
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getEpicById = cache(
-  unstable_cache(
-    async function getEpicById(id: number): Promise<EpicWithTasks | null> {
-      const [epic] = await db.select().from(epics).where(eq(epics.id, id));
-      if (!epic) return null;
+export async function getAllEpics(): Promise<(DbEpic & { taskCount: number; doneCount: number })[]> {
+  "use cache";
+  cacheTag(EPICS_CACHE_TAG);
+  cacheLife({ revalidate: 120 }); // 2 минуты — лёгкие данные
 
-      const taskRows = await db
-        .select()
-        .from(tasks)
-        .where(eq(tasks.epicId, id))
-        .orderBy(tasks.sortOrder);
+  const rows = await db
+    .select({
+      id: epics.id,
+      title: epics.title,
+      description: epics.description,
+      color: epics.color,
+      startDate: epics.startDate,
+      endDate: epics.endDate,
+      createdAt: epics.createdAt,
+      updatedAt: epics.updatedAt,
+      taskCount: count(tasks.id),
+      doneCount: sql<number>`
+        CAST(COUNT(CASE WHEN ${tasks.status} = 'done' THEN 1 END) AS INTEGER)
+      `.mapWith(Number),
+    })
+    .from(epics)
+    .leftJoin(tasks, eq(tasks.epicId, epics.id))
+    .groupBy(
+      epics.id, epics.title, epics.description, epics.color,
+      epics.startDate, epics.endDate, epics.createdAt, epics.updatedAt,
+    );
 
-      if (!taskRows.length) {
-        return { ...epic, tasks: [], progress: { done: 0, total: 0 } };
-      }
+  return rows;
+}
 
-      const taskIds = taskRows.map((t) => t.id);
+// ─────────────────────────────────────────────────────────────────────────────
+// getEpicById — страница одного эпика
+// ─────────────────────────────────────────────────────────────────────────────
 
-      const [allSubtasks, allAssigneeRows] = await Promise.all([
-        db
-          .select()
-          .from(subtasks)
-          .where(inArray(subtasks.taskId, taskIds))
-          .orderBy(subtasks.taskId, subtasks.sortOrder),
-        fetchAssignees(taskIds),
-      ]);
+export async function getEpicById(id: number): Promise<EpicWithTasks | null> {
+  "use cache";
+  cacheTag(EPICS_CACHE_TAG);
+  cacheLife({ revalidate: 30 }); // 30 секунд — нужна высокая свежесть
 
-      const subtasksByTask = new Map<number, SubtaskView[]>();
-      for (const st of allSubtasks) {
-        const arr = subtasksByTask.get(st.taskId) ?? [];
-        arr.push(st);
-        subtasksByTask.set(st.taskId, arr);
-      }
+  const [epic] = await db.select().from(epics).where(eq(epics.id, id));
+  if (!epic) return null;
 
-      const assigneesByTask = buildAssigneesByTask(allAssigneeRows);
+  const taskRows = await db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.epicId, id))
+    .orderBy(tasks.sortOrder);
 
-      const hydratedTasks: TaskView[] = taskRows.map((task) => {
-        const taskSubtasks = subtasksByTask.get(task.id) ?? [];
-        const assignees = assigneesByTask.get(task.id) ?? [];
-        return {
-          ...task,
-          assignees,
-          subtasks: taskSubtasks,
-          progress: {
-            done: taskSubtasks.filter((s) => s.isCompleted).length,
-            total: taskSubtasks.length,
-          },
-        };
-      });
-
-      return {
-        ...epic,
-        tasks: hydratedTasks,
-        progress: {
-          done: hydratedTasks.filter((t) => t.status === "done").length,
-          total: hydratedTasks.length,
-        },
-      };
-    },
-    ["getEpicById"], {
-    revalidate: 30,
-    tags: [EPICS_CACHE_TAG],
+  if (!taskRows.length) {
+    return { ...epic, tasks: [], progress: { done: 0, total: 0 } };
   }
-  )
-);
+
+  const taskIds = taskRows.map((t) => t.id);
+
+  const [allSubtasks, allAssigneeRows] = await Promise.all([
+    db
+      .select()
+      .from(subtasks)
+      .where(inArray(subtasks.taskId, taskIds))
+      .orderBy(subtasks.taskId, subtasks.sortOrder),
+    fetchAssignees(taskIds),
+  ]);
+
+  const subtasksByTask = new Map<number, SubtaskView[]>();
+  for (const st of allSubtasks) {
+    const arr = subtasksByTask.get(st.taskId) ?? [];
+    arr.push(st);
+    subtasksByTask.set(st.taskId, arr);
+  }
+
+  const assigneesByTask = buildAssigneesByTask(allAssigneeRows);
+
+  const hydratedTasks: TaskView[] = taskRows.map((task) => {
+    const taskSubtasks = subtasksByTask.get(task.id) ?? [];
+    const assignees = assigneesByTask.get(task.id) ?? [];
+    return {
+      ...task,
+      assignees,
+      subtasks: taskSubtasks,
+      progress: {
+        done: taskSubtasks.filter((s) => s.isCompleted).length,
+        total: taskSubtasks.length,
+      },
+    };
+  });
+
+  return {
+    ...epic,
+    tasks: hydratedTasks,
+    progress: {
+      done: hydratedTasks.filter((t) => t.status === "done").length,
+      total: hydratedTasks.length,
+    },
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // getAllEpicsWithTasks — полный граф для Zustand store
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
+export async function getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
+  "use cache";
+  cacheTag(EPICS_CACHE_TAG);
+  cacheLife({ revalidate: 60 }); // 1 минута — тяжёлый запрос
+
   const epicRows = await db
     .select({
       id: epics.id,
@@ -263,12 +271,9 @@ async function _getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
   });
 }
 
-export const getAllEpicsWithTasks = cache(
-  unstable_cache(_getAllEpicsWithTasks, ["getAllEpicsWithTasks"], {
-    revalidate: CACHE_TTL,
-    tags: [EPICS_CACHE_TAG],
-  }),
-);
+// ─────────────────────────────────────────────────────────────────────────────
+// Мутации — кеш не применяется, вызывают revalidateTag из Route Handler'ов
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function createEpic(data: {
   title: string;

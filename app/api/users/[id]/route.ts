@@ -39,7 +39,7 @@ export async function PATCH(req: Request, { params }: Params) {
     }
 
     const user = await updateUser(Number(id), patch);
-    revalidateTag(USERS_CACHE_TAG, "default");
+    revalidateTag(USERS_CACHE_TAG, "max");
     revalidateTag(EPICS_CACHE_TAG, "max"); // assignees в задачах обновятся
     return NextResponse.json({ ok: true, data: user });
   } catch (e) {
@@ -57,7 +57,7 @@ export async function DELETE(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
     await deleteUser(Number(id));
-    revalidateTag(USERS_CACHE_TAG, "default");
+    revalidateTag(USERS_CACHE_TAG, "max");
     revalidateTag(EPICS_CACHE_TAG, "max");
     return NextResponse.json({ ok: true });
   } catch (e) {

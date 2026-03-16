@@ -1,5 +1,12 @@
 /**
  * @file route.ts — app/api/roles/[id]
+ *
+ * ИСПРАВЛЕНИЕ:
+ *   БЫЛО: revalidateTag(ROLES_CACHE_TAG, "default")
+ *         "default" — несуществующий профиль кеширования в Next.js 16
+ *   СТАЛО: revalidateTag(ROLES_CACHE_TAG, "max")
+ *         "max" — stale-while-revalidate (рекомендованный профиль)
+ *
  * GET    /api/roles/:id
  * PATCH  /api/roles/:id
  * DELETE /api/roles/:id → 409 если есть пользователи
@@ -43,8 +50,9 @@ export async function PATCH(req: Request, { params }: Params) {
 
     const role = await updateRole(Number(id), parsed.data);
 
-    revalidateTag(ROLES_CACHE_TAG, "default");
-    revalidateTag(USERS_CACHE_TAG, "default"); // roleMeta в UserWithMeta обновится при ребилде
+    // ✅ ИСПРАВЛЕНО: "max" вместо "default" (несуществующего профиля)
+    revalidateTag(ROLES_CACHE_TAG, "max");
+    revalidateTag(USERS_CACHE_TAG, "max"); // roleMeta в UserWithMeta обновится
 
     return NextResponse.json({ ok: true, data: role });
   } catch (e) {
@@ -60,8 +68,9 @@ export async function DELETE(_req: Request, { params }: Params) {
     const { id } = await params;
     await deleteRole(Number(id));
 
-    revalidateTag(ROLES_CACHE_TAG, "default");
-    revalidateTag(USERS_CACHE_TAG, "default");
+    // ✅ ИСПРАВЛЕНО: "max" вместо "default"
+    revalidateTag(ROLES_CACHE_TAG, "max");
+    revalidateTag(USERS_CACHE_TAG, "max");
 
     return NextResponse.json({ ok: true });
   } catch (e) {

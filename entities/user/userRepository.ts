@@ -1,8 +1,18 @@
 /**
  * @file userRepository.ts — entities/user
+ *
+ * РЕФАКТОРИНГ v2 — Next.js 16:
+ *   БЫЛО: cache(unstable_cache(...)) — двойная обёртка, устаревший API
+ *   СТАЛО: директива 'use cache' + cacheTag() + cacheLife()
+ *
+ *   getAllUsers() — 'use cache', TTL 60 секунд, tag: "users"
+ *
+ *   Остальные функции (WRITE) кеш не используют — без изменений.
  */
-import { cache } from "react";
-import { unstable_cache } from "next/cache";
+
+"use cache";
+
+import { cacheTag, cacheLife } from "next/cache";
 import { db } from "@/shared/db/client";
 import { users, roles } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
@@ -10,7 +20,15 @@ import type { UserWithMeta, DbUser, DbRole } from "@/shared/types";
 
 export const USERS_CACHE_TAG = "users";
 
-async function _getAllUsers(): Promise<UserWithMeta[]> {
+// ─────────────────────────────────────────────────────────────────────────────
+// READ
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getAllUsers(): Promise<UserWithMeta[]> {
+  "use cache";
+  cacheTag(USERS_CACHE_TAG);
+  cacheLife({ revalidate: 60 });
+
   const rows = await db
     .select({
       id:        users.id,
@@ -46,13 +64,6 @@ async function _getAllUsers(): Promise<UserWithMeta[]> {
   }));
 }
 
-export const getAllUsers = cache(
-  unstable_cache(_getAllUsers, ["getAllUsers"], {
-    revalidate: 60,
-    tags: [USERS_CACHE_TAG],
-  })
-);
-
 export function buildUserWithMeta(
   user: { id: number; name: string; login: string; roleId: number; initials: string; createdAt: string },
   role: DbRole
@@ -60,7 +71,9 @@ export function buildUserWithMeta(
   return { ...user, roleMeta: role };
 }
 
-// ─── WRITE ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// WRITE — кеш не применяется
+// ─────────────────────────────────────────────────────────────────────────────
 
 function generateInitials(name: string): string {
   return name

@@ -1,5 +1,11 @@
 /**
  * @file route.ts — app/api/roles
+ *
+ * ИСПРАВЛЕНИЕ:
+ *   БЫЛО: revalidateTag(ROLES_CACHE_TAG, "default")
+ *         "default" — несуществующий профиль кеширования в Next.js 16
+ *   СТАЛО: revalidateTag(ROLES_CACHE_TAG, "max")
+ *
  * GET  /api/roles  → список всех ролей
  * POST /api/roles  → создание роли
  */
@@ -39,7 +45,8 @@ export async function POST(req: Request) {
 
     const role = await createRole(parsed.data);
 
-    revalidateTag(ROLES_CACHE_TAG, "default");
+    // ✅ ИСПРАВЛЕНО: "max" вместо "default" (несуществующего профиля)
+    revalidateTag(ROLES_CACHE_TAG, "max");
     // Users кеш не инвалидируем — новая роль без пользователей
 
     return NextResponse.json({ ok: true, data: role }, { status: 201 });

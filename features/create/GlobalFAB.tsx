@@ -1,8 +1,8 @@
-// features/create/GlobalFAB.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence, useSpring, useMotionValue, useTransform } from "framer-motion";
+import { motion, AnimatePresence, useSpring, useMotionValue } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { CreateEpicModal } from "./CreateEpicModal";
 import { CreateTaskModal } from "./CreateTaskModal";
 
@@ -51,7 +51,15 @@ const actions = [
   },
 ];
 
-function ActionButton({ action, index, onAction }: { action: typeof actions[0]; index: number; onAction: (id: string) => void }) {
+function ActionButton({
+  action,
+  index,
+  onAction,
+}: {
+  action: typeof actions[0];
+  index: number;
+  onAction: (id: string) => void;
+}) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -60,12 +68,7 @@ function ActionButton({ action, index, onAction }: { action: typeof actions[0]; 
       initial={{ opacity: 0, x: 40, scale: 0.7, filter: "blur(8px)" }}
       animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
       exit={{ opacity: 0, x: 30, scale: 0.75, filter: "blur(6px)" }}
-      transition={{
-        type: "spring",
-        stiffness: 420,
-        damping: 30,
-        delay: index * 0.06,
-      }}
+      transition={{ type: "spring", stiffness: 420, damping: 30, delay: index * 0.06 }}
     >
       {/* Label pill */}
       <AnimatePresence>
@@ -105,7 +108,6 @@ function ActionButton({ action, index, onAction }: { action: typeof actions[0]; 
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.88 }}
       >
-        {/* Glass background */}
         <div
           className="absolute inset-0 rounded-2xl"
           style={{
@@ -118,7 +120,6 @@ function ActionButton({ action, index, onAction }: { action: typeof actions[0]; 
             transition: "box-shadow 0.25s ease",
           }}
         />
-        {/* Shimmer line */}
         <div
           className="absolute top-0 left-0 right-0 h-px rounded-full"
           style={{ background: `linear-gradient(90deg, transparent, ${action.color}60, transparent)` }}
@@ -132,7 +133,7 @@ function ActionButton({ action, index, onAction }: { action: typeof actions[0]; 
 function PulseRings({ color }: { color: string }) {
   return (
     <div className="absolute inset-0 pointer-events-none">
-      {[0, 1].map(i => (
+      {[0, 1].map((i) => (
         <motion.div
           key={i}
           className="absolute inset-0 rounded-2xl"
@@ -146,6 +147,7 @@ function PulseRings({ color }: { color: string }) {
 }
 
 export function GlobalFAB() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [epicOpen, setEpicOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
@@ -167,7 +169,7 @@ export function GlobalFAB() {
   };
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
     const onClickOut = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
@@ -179,11 +181,15 @@ export function GlobalFAB() {
     };
   }, []);
 
+  // ✅ ИСПРАВЛЕНО: router.push вместо window.location.href
+  // Было: else window.location.href = "/settings" — полная перезагрузка,
+  //       убивала React state, Framer Motion переходы, Zustand store.
+  // Стало: router.push — soft navigation, состояние сохраняется.
   const handleAction = (id: string) => {
     setOpen(false);
     if (id === "epic") setEpicOpen(true);
     else if (id === "task") setTaskOpen(true);
-    else window.location.href = "/settings";
+    else router.push("/settings");
   };
 
   return (
@@ -239,13 +245,13 @@ export function GlobalFAB() {
 
           <motion.button
             onClick={() => {
-              setOpen(v => !v);
+              setOpen((v) => !v);
               mx.set(0);
               my.set(0);
             }}
             onMouseMove={handleMouse}
             onMouseLeave={() => { mx.set(0); my.set(0); }}
-            className="relative w-14  h-14 backdrop-blur rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+            className="relative w-14 h-14 backdrop-blur rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden"
             style={{ x: springX, y: springY }}
             whileTap={{ scale: 0.88 }}
             animate={{ rotate: open ? 45 : 0 }}
@@ -268,9 +274,7 @@ export function GlobalFAB() {
             {/* Top shimmer */}
             <div
               className="absolute top-0 left-2 right-2 h-px rounded-full"
-              style={{
-                background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)",
-              }}
+              style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)" }}
             />
             {/* Inner noise texture illusion */}
             <motion.div
@@ -283,7 +287,7 @@ export function GlobalFAB() {
             />
 
             {/* Plus / X icon */}
-            <motion.div className="relative z-10" animate={{ rotate: open ? 0 : 0 }}>
+            <div className="relative z-10">
               <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
                 <motion.line
                   x1="11" y1="4" x2="11" y2="18"
@@ -295,7 +299,7 @@ export function GlobalFAB() {
                   stroke="white" strokeWidth="2.2" strokeLinecap="round"
                 />
               </svg>
-            </motion.div>
+            </div>
           </motion.button>
         </div>
       </div>

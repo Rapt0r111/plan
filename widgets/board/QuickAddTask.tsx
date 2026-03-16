@@ -3,15 +3,8 @@
  * @file QuickAddTask.tsx — widgets/board
  *
  * Морфирующая карточка быстрого создания задачи.
- * Стили — исключительно через CSS-классы globals.css.
- * Единственный inline-style: --quick-add-accent на корне (передаёт
- * цвет эпика в дочерние CSS-классы через color-mix / linear-gradient).
- *
- * Поддерживает dark / light тему автоматически через CSS-переменные.
- *
- * NEW: AI-подсказка приоритета — эвристика по тексту задачи без API.
- *   suggestPriority() вызывается на каждый onChange и если приоритет
- *   ещё не трогали (=== "medium") — автовыставляет + показывает hint.
+ * MULTI-ASSIGNEE: assigneeIds: number[] вместо assigneeId: number | null.
+ * При сохранении добавляет всех выбранных исполнителей параллельно.
  */
 
 import {
@@ -65,11 +58,11 @@ function PriorityChip({
       style={
         active
           ? {
-            background: `${meta.color}22`,
-            color: meta.color,
-            borderColor: `${meta.color}44`,
-            boxShadow: `0 0 8px ${meta.color}28`,
-          }
+              background: `${meta.color}22`,
+              color: meta.color,
+              borderColor: `${meta.color}44`,
+              boxShadow: `0 0 8px ${meta.color}28`,
+            }
           : undefined
       }
     >
@@ -82,7 +75,7 @@ function PriorityChip({
   );
 }
 
-// ─── AssigneeChip ─────────────────────────────────────────────────────────────
+// ─── AssigneeChip — теперь с индикатором мультивыбора ────────────────────────
 
 function AssigneeChip({
   user,
@@ -100,17 +93,73 @@ function AssigneeChip({
       whileHover={{ scale: 1.12 }}
       whileTap={{ scale: 0.9 }}
       title={`${user.name} — ${user.roleMeta.label}`}
-      className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white outline-none transition-all duration-150"
+      className="relative w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white outline-none transition-all duration-150"
       style={{
         backgroundColor: user.roleMeta.hex,
         boxShadow: selected
-          ? `0 0 0 2px var(--bg-overlay), 0 0 0 3.5px ${user.roleMeta.hex}`
+          ? `0 0 0 2px var(--bg-overlay), 0 0 0 3.5px ${user.roleMeta.hex}, 0 0 10px ${user.roleMeta.hex}55`
           : "0 0 0 1.5px rgba(0,0,0,0.25)",
-        opacity: selected ? 1 : 0.5,
+        opacity: selected ? 1 : 0.45,
       }}
     >
       {user.initials}
+      {/* Tiny checkmark overlay when selected */}
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ duration: 0.12, type: "spring", stiffness: 500 }}
+            className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full flex items-center justify-center"
+            style={{ background: user.roleMeta.hex, border: "1px solid var(--bg-overlay)" }}
+          >
+            <svg className="w-1.5 h-1.5" viewBox="0 0 6 6" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M1 3l1.5 1.5 2.5-2.5" />
+            </svg>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.button>
+  );
+}
+
+// ─── Selected avatars stack (shown above chip row when >0 selected) ───────────
+
+function SelectedStack({
+  users,
+  selectedIds,
+}: {
+  users: UserOption[];
+  selectedIds: number[];
+}) {
+  if (!selectedIds.length) return null;
+  const selected = users.filter(u => selectedIds.includes(u.id));
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      className="flex items-center gap-1 overflow-hidden"
+    >
+      <div className="flex -space-x-1">
+        {selected.map((u, i) => (
+          <div
+            key={u.id}
+            title={u.name}
+            className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold text-white ring-1 ring-[var(--bg-overlay)]"
+            style={{ backgroundColor: u.roleMeta.hex, zIndex: selected.length - i }}
+          >
+            {u.initials}
+          </div>
+        ))}
+      </div>
+      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+        {selected.length === 1
+          ? selected[0].name.split(" ")[0]
+          : `${selected.length} исполнителя`}
+      </span>
+    </motion.div>
   );
 }
 
@@ -147,12 +196,11 @@ export function QuickAddTask({
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("medium");
-  const [assigneeId, setAssigneeId] = useState<number | null>(null);
+  // MULTI: массив вместо единственного id
+  const [assigneeIds, setAssigneeIds] = useState<number[]>([]);
   const [metaVisible, setMetaVisible] = useState(false);
   const [saving, setSaving] = useState(false);
-  // null = нет подсказки; строка = AI что-то предложил
   const [suggestedPriority, setSuggestedPriority] = useState<TaskPriority | null>(null);
-  // флаг: пользователь сам кликал на chip — не перезаписываем AI-подсказкой
   const priorityTouchedRef = useRef(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -161,6 +209,13 @@ export function QuickAddTask({
   const { users, fetchUsers } = useUsers();
 
   const accentHex = epicColor ?? "#8b5cf6";
+
+  // ── Toggle a single assignee ─────────────────────────────────────────────
+  const toggleAssignee = useCallback((id: number) => {
+    setAssigneeIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  }, []);
 
   // ── Open / Close ────────────────────────────────────────────────────────
   const handleOpen = useCallback(() => {
@@ -177,32 +232,28 @@ export function QuickAddTask({
     setMetaVisible(false);
     setSuggestedPriority(null);
     priorityTouchedRef.current = false;
+    setAssigneeIds([]);
   }, []);
 
   // ── AI-подсказка ────────────────────────────────────────────────────────
   function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setTitle(val);
-
-    // Не перезаписываем выбор пользователя
     if (priorityTouchedRef.current) return;
-
     const suggested = suggestPriority(val);
     if (suggested) {
       setPriority(suggested);
       setSuggestedPriority(suggested);
     } else {
-      // Текст стёрт / паттерн исчез — вернуть дефолт и убрать hint
       setPriority("medium");
       setSuggestedPriority(null);
     }
   }
 
-  // Обёртка для ручного выбора chip'а
   function handlePriorityClick(p: TaskPriority) {
     priorityTouchedRef.current = true;
     setPriority(p);
-    setSuggestedPriority(null); // hint больше не нужен
+    setSuggestedPriority(null);
   }
 
   // ── Save ────────────────────────────────────────────────────────────────
@@ -211,7 +262,7 @@ export function QuickAddTask({
     if (!trimmed || saving) return;
 
     setSaving(true);
-    setTitle(""); // optimistic field reset
+    setTitle("");
     inputRef.current?.focus();
 
     try {
@@ -223,39 +274,50 @@ export function QuickAddTask({
       });
 
       if (!task) {
-        setTitle(trimmed); // rollback
+        setTitle(trimmed);
         return;
       }
 
-      if (assigneeId !== null) {
-        const user = users.find((u) => u.id === assigneeId);
+      // Add all selected assignees in parallel
+      if (assigneeIds.length) {
+        const store = useTaskStore.getState();
 
-        if (user) {
-          const assignee: TaskView["assignees"][0] = {
-            id: user.id,
-            name: user.name,
-            initials: user.initials,
-            login: "",
-            roleId: 0,
-            createdAt: new Date().toISOString(),
-            roleMeta: user.roleMeta as TaskView["assignees"][0]["roleMeta"]
-          };
+        await Promise.all(
+          assigneeIds.map(async (userId) => {
+            await fetch(`/api/tasks/${task.id}/assignees`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId }),
+            });
 
-          const store = useTaskStore.getState();
-          store.addAssignee(task.id, assignee);
-        }
+            const user = users.find((u) => u.id === userId);
+            if (user) {
+              const assignee: TaskView["assignees"][0] = {
+                id: user.id,
+                name: user.name,
+                initials: user.initials,
+                login: "",
+                roleId: 0,
+                createdAt: new Date().toISOString(),
+                roleMeta: user.roleMeta as TaskView["assignees"][0]["roleMeta"],
+              };
+              store.addAssignee(task.id, assignee);
+            }
+          })
+        );
       }
 
       onCreated?.(task);
       setSuggestedPriority(null);
       priorityTouchedRef.current = false;
       setPriority("medium");
+      setAssigneeIds([]);
     } catch {
-      setTitle(trimmed); // rollback только поля при ошибке
+      setTitle(trimmed);
     } finally {
       setSaving(false);
     }
-  }, [title, saving, createTask, epicId, defaultStatus, priority, assigneeId, users, onCreated]);
+  }, [title, saving, createTask, epicId, defaultStatus, priority, assigneeIds, users, onCreated]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
@@ -350,7 +412,7 @@ export function QuickAddTask({
                 className="quick-add-input disabled:opacity-50"
               />
 
-              {/* AI hint — появляется под инпутом когда эвристика сработала */}
+              {/* AI hint */}
               <AnimatePresence>
                 {suggestedPriority && (
                   <motion.p
@@ -362,14 +424,9 @@ export function QuickAddTask({
                     className="text-[10px] flex items-center gap-1"
                     style={{ color: "var(--text-muted)" }}
                   >
-                    <span style={{ color: PRIORITY_META[suggestedPriority].color }}>
-                      ✦
-                    </span>
+                    <span style={{ color: PRIORITY_META[suggestedPriority].color }}>✦</span>
                     AI предлагает:{" "}
-                    <span
-                      className="font-semibold"
-                      style={{ color: PRIORITY_META[suggestedPriority].color }}
-                    >
+                    <span className="font-semibold" style={{ color: PRIORITY_META[suggestedPriority].color }}>
                       {PRIORITY_META[suggestedPriority].label}
                     </span>
                     <span className="opacity-50">· нажмите на chip чтобы изменить</span>
@@ -407,24 +464,32 @@ export function QuickAddTask({
                         ))}
                       </div>
 
-                      {/* Исполнители */}
+                      {/* Исполнители (мультивыбор) */}
                       {users.length > 0 && (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span
-                            className="text-[10px] font-medium shrink-0 mr-0.5"
-                            style={{ color: "var(--text-muted)" }}
-                          >
-                            Исполнитель:
-                          </span>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="text-[10px] font-medium shrink-0"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              Исполнители:
+                            </span>
+                            {/* Avatar stack preview */}
+                            <AnimatePresence>
+                              {assigneeIds.length > 0 && (
+                                <SelectedStack users={users} selectedIds={assigneeIds} />
+                              )}
+                            </AnimatePresence>
+                          </div>
+
+                          {/* Chips row */}
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {users.map((u) => (
                               <AssigneeChip
                                 key={u.id}
                                 user={u}
-                                selected={assigneeId === u.id}
-                                onClick={() =>
-                                  setAssigneeId((prev) => (prev === u.id ? null : u.id))
-                                }
+                                selected={assigneeIds.includes(u.id)}
+                                onClick={() => toggleAssignee(u.id)}
                               />
                             ))}
                           </div>
@@ -471,7 +536,6 @@ export function QuickAddTask({
                     className="quick-add-save-btn"
                     style={{ opacity: saving ? 0.72 : 1 }}
                   >
-                    {/* Shimmer при сохранении */}
                     {saving && (
                       <motion.div
                         className="absolute inset-0 pointer-events-none"

@@ -2,6 +2,7 @@
 /**
  * CreateTaskModal — создание задачи из любого места.
  * Эпик выбирается из выпадающего списка с живым поиском.
+ * MULTI-ASSIGNEE: исполнители выбираются chip-пикером с мультивыбором.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -16,12 +17,135 @@ interface Props {
   defaultEpicId?: number;
 }
 
+interface UserOption {
+  id: number;
+  name: string;
+  initials: string;
+  roleMeta: { hex: string; label: string; short: string };
+}
+
 const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: "todo", label: "К работе" },
   { value: "in_progress", label: "В работе" },
   { value: "done", label: "Готово" },
   { value: "blocked", label: "Заблокировано" },
 ];
+
+// ── Assignee chip ──────────────────────────────────────────────────────────────
+function AssigneeChip({
+  user,
+  selected,
+  onClick,
+}: {
+  user: UserOption;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      title={`${user.name} — ${user.roleMeta.label}`}
+      whileHover={{ scale: 1.1 }}
+      whileTap={{ scale: 0.9 }}
+      className="relative flex flex-col items-center gap-1 focus:outline-none"
+    >
+      {/* Avatar */}
+      <div
+        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white transition-all duration-150"
+        style={{
+          backgroundColor: user.roleMeta.hex,
+          boxShadow: selected
+            ? `0 0 0 2px var(--bg-surface), 0 0 0 3.5px ${user.roleMeta.hex}, 0 0 12px ${user.roleMeta.hex}60`
+            : "0 0 0 1.5px rgba(0,0,0,0.25)",
+          opacity: selected ? 1 : 0.45,
+          transform: selected ? "scale(1.08)" : "scale(1)",
+        }}
+      >
+        {user.initials}
+      </div>
+      {/* Check indicator */}
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ duration: 0.15, type: "spring", stiffness: 500 }}
+            className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center"
+            style={{ background: user.roleMeta.hex, border: "1.5px solid var(--bg-surface)" }}
+          >
+            <svg className="w-2 h-2" viewBox="0 0 8 8" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M1.5 4l2 2 3-3" />
+            </svg>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Name */}
+      <span
+        className="text-[9px] font-medium max-w-[48px] truncate text-center leading-tight"
+        style={{ color: selected ? "var(--text-secondary)" : "var(--text-muted)" }}
+      >
+        {user.name.split(" ")[0]}
+      </span>
+    </motion.button>
+  );
+}
+
+// ── Selected assignees preview ─────────────────────────────────────────────────
+function SelectedAssigneesBar({
+  users,
+  selectedIds,
+  onRemove,
+}: {
+  users: UserOption[];
+  selectedIds: number[];
+  onRemove: (id: number) => void;
+}) {
+  if (!selectedIds.length) return null;
+  const selected = users.filter((u) => selectedIds.includes(u.id));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      className="flex items-center gap-1.5 flex-wrap overflow-hidden"
+    >
+      {selected.map((u) => (
+        <motion.div
+          key={u.id}
+          layout
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.8 }}
+          className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
+          style={{
+            background: `${u.roleMeta.hex}18`,
+            border: `1px solid ${u.roleMeta.hex}35`,
+            color: u.roleMeta.hex,
+          }}
+        >
+          <div
+            className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0"
+            style={{ backgroundColor: u.roleMeta.hex }}
+          >
+            {u.initials}
+          </div>
+          {u.name.split(" ")[0]}
+          <button
+            onClick={() => onRemove(u.id)}
+            className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity"
+          >
+            <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M2 2l6 6M8 2L2 8" />
+            </svg>
+          </button>
+        </motion.div>
+      ))}
+    </motion.div>
+  );
+}
 
 export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
   const epics = useTaskStore(s => s.epics);
@@ -33,6 +157,9 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
   const [status, setStatus] = useState<TaskStatus>("todo");
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [dueDate, setDueDate] = useState("");
+  const [assigneeIds, setAssigneeIds] = useState<number[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [usersFetched, setUsersFetched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiSuggested, setAiSuggested] = useState<TaskPriority | null>(null);
@@ -43,16 +170,32 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
   const selectedEpic = epics.find(e => e.id === epicId);
   const accentColor = selectedEpic?.color ?? "#8b5cf6";
 
+  // Fetch users once on open
+  useEffect(() => {
+    if (!open || usersFetched) return;
+    fetch("/api/users")
+      .then(r => r.json())
+      .then(d => { if (d.data) setUsers(d.data); })
+      .catch(() => {})
+      .finally(() => setUsersFetched(true));
+  }, [open, usersFetched]);
+
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 80);
       if (defaultEpicId) setEpicId(defaultEpicId);
     } else {
       setTitle(""); setDescription(""); setStatus("todo"); setPriority("medium");
-      setDueDate(""); setError(null); setAiSuggested(null);
+      setDueDate(""); setError(null); setAiSuggested(null); setAssigneeIds([]);
       priorityTouched.current = false;
     }
   }, [open, defaultEpicId]);
+
+  const toggleAssignee = useCallback((id: number) => {
+    setAssigneeIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  }, []);
 
   const handleTitleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -73,28 +216,41 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
     setSaving(true);
     setError(null);
     try {
-      const task = await createTask({
-        epicId,
-        title: title.trim(),
-        status,
-        priority,
-      });
+      const task = await createTask({ epicId, title: title.trim(), status, priority });
       if (!task) throw new Error("Не удалось создать задачу");
 
-      if (dueDate) {
+      // Patch description / dueDate
+      if (dueDate || description.trim()) {
         await fetch(`/api/tasks/${task.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dueDate, description: description.trim() || null }),
+          body: JSON.stringify({
+            ...(dueDate && { dueDate }),
+            ...(description.trim() && { description: description.trim() }),
+          }),
         });
       }
+
+      // Add all selected assignees in parallel
+      if (assigneeIds.length) {
+        await Promise.all(
+          assigneeIds.map(userId =>
+            fetch(`/api/tasks/${task.id}/assignees`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId }),
+            })
+          )
+        );
+      }
+
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка");
     } finally {
       setSaving(false);
     }
-  }, [title, epicId, status, priority, dueDate, description, saving, createTask, onClose]);
+  }, [title, epicId, status, priority, dueDate, description, assigneeIds, saving, createTask, onClose]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Escape") onClose();
@@ -250,10 +406,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.97 }}
                       >
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: epic.color }}
-                        />
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: epic.color }} />
                         <span className="truncate">{epic.title}</span>
                       </motion.button>
                     ))}
@@ -316,10 +469,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.97 }}
                           >
-                            <span
-                              className="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ backgroundColor: meta.color }}
-                            />
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: meta.color }} />
                             {meta.label}
                           </motion.button>
                         );
@@ -366,6 +516,59 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                     />
                   </div>
                 </div>
+
+                {/* ── Assignees ── */}
+                {users.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                        Исполнители
+                      </label>
+                      {assigneeIds.length > 0 && (
+                        <span
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
+                          style={{ background: `${accentColor}18`, color: accentColor, border: `1px solid ${accentColor}30` }}
+                        >
+                          {assigneeIds.length} выбран{assigneeIds.length === 1 ? "" : assigneeIds.length < 5 ? "о" : "о"}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Selected bar */}
+                    <AnimatePresence>
+                      {assigneeIds.length > 0 && (
+                        <div className="mb-2.5">
+                          <SelectedAssigneesBar
+                            users={users}
+                            selectedIds={assigneeIds}
+                            onRemove={toggleAssignee}
+                          />
+                        </div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Chip grid */}
+                    <div
+                      className="flex flex-wrap gap-3 p-3 rounded-xl"
+                      style={{
+                        background: "var(--glass-01)",
+                        border: "1px solid var(--glass-border)",
+                      }}
+                    >
+                      {users.map(u => (
+                        <AssigneeChip
+                          key={u.id}
+                          user={u}
+                          selected={assigneeIds.includes(u.id)}
+                          onClick={() => toggleAssignee(u.id)}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-[10px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+                      Нажмите на аватар чтобы добавить или убрать исполнителя
+                    </p>
+                  </div>
+                )}
 
                 {/* Footer */}
                 <div className="flex items-center justify-between pt-1 border-t" style={{ borderColor: "var(--glass-border)" }}>

@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useKeyboardShortcuts } from "@/shared/lib/hooks/useKeyboardShortcuts";
 import { useZenSession } from "./model/useZenSession";
-import { AuroraBackground } from "./ui/AuroraBackground";
+import { AuroraBackground } from "@/shared/ui/animations/particles";
 import { ZenTaskCard } from "./ui/ZenTaskCard";
 import { ZenComplete } from "./ui/ZenComplete";
 

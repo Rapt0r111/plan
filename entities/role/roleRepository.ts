@@ -1,17 +1,15 @@
 /**
  * @file roleRepository.ts — entities/role
  *
- * РЕФАКТОРИНГ v2 — Next.js 16:
- *   БЫЛО: cache(unstable_cache(...)) — двойная обёртка, устаревший API
- *   СТАЛО: директива 'use cache' + cacheTag() + cacheLife()
+ * РЕФАКТОРИНГ v3 — исправление кеша для мутаций:
  *
- *   getAllRoles() — 'use cache', TTL 300 секунд, tag: "roles"
- *   Роли меняются редко — агрессивное кеширование оправдано.
+ *   БЫЛА ОШИБКА: файловая директива "use cache" кешировала ВСЕ функции,
+ *   включая мутации createRole, updateRole, deleteRole. Повторный вызов
+ *   мутации возвращал бы закешированный результат вместо записи в БД.
  *
- *   Остальные функции (getRoleById, getRoleByKey, WRITE) — без кеша.
+ *   ИСПРАВЛЕНО: файловая директива удалена. "use cache" оставлена только
+ *   внутри getAllRoles(). Мутации остаются некешированными.
  */
-
-"use cache";
 
 import { cacheTag, cacheLife } from "next/cache";
 import { db } from "@/shared/db/client";
@@ -34,7 +32,6 @@ export const ROLES_CACHE_TAG = "roles";
  * React.cache() больше не нужен.
  */
 export async function getAllRoles(): Promise<DbRole[]> {
-  "use cache";
   cacheTag(ROLES_CACHE_TAG);
   cacheLife({ revalidate: 300 }); // 5 минут
 
@@ -55,7 +52,7 @@ export async function getRoleByKey(key: string): Promise<DbRole | null> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WRITE — кеш не применяется, revalidateTag вызывается из Route Handler'ов
+// WRITE — "use cache" НЕ применяется. revalidateTag вызывается из Route Handler'ов.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createRole(

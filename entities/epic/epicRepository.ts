@@ -1,21 +1,16 @@
 /**
  * @file epicRepository.ts — entities/epic
  *
- * РЕФАКТОРИНГ v2 — Next.js 16:
- *   БЫЛО: cache(unstable_cache(...)) — двойная обёртка, устаревший API
- *   СТАЛО: директива 'use cache' + cacheTag() + cacheLife()
+ * РЕФАКТОРИНГ v3 — исправление кеша для мутаций:
  *
- *   getAllEpics()         — 'use cache', TTL 2 часа, tag: "epics"
- *   getAllEpicsWithTasks()— 'use cache', TTL 1 минута, tag: "epics"
- *   getEpicById()        — 'use cache', TTL 30 секунд, tag: "epics"
+ *   БЫЛА ОШИБКА: директива "use cache" на уровне файла означает, что
+ *   ВСЕ экспортируемые функции, включая мутации (createEpic, updateEpic,
+ *   deleteEpic), автоматически кешируются. Это сводит на нет смысл мутаций —
+ *   повторный вызов возвращал бы закешированный результат вместо записи в БД.
  *
- *   React.cache() убран — 'use cache' автоматически дедуплицирует запросы
- *   в рамках одного SSR-прохода (аналог React.cache, но встроенный).
- *
- *   Мутации (createEpic, updateEpic, deleteEpic) — без кеша, без изменений.
+ *   ИСПРАВЛЕНО: файловая директива удалена. "use cache" оставлена только
+ *   внутри каждой READ-функции. Мутации остаются некешированными.
  */
-
-"use cache";
 
 import { cacheTag, cacheLife } from "next/cache";
 import { db } from "@/shared/db/client";
@@ -80,7 +75,6 @@ async function fetchAssignees(taskIds: number[]): Promise<AssigneeRow[]> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getAllEpics(): Promise<(DbEpic & { taskCount: number; doneCount: number })[]> {
-  "use cache";
   cacheTag(EPICS_CACHE_TAG);
   cacheLife({ revalidate: 120 }); // 2 минуты — лёгкие данные
 
@@ -114,7 +108,6 @@ export async function getAllEpics(): Promise<(DbEpic & { taskCount: number; done
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getEpicById(id: number): Promise<EpicWithTasks | null> {
-  "use cache";
   cacheTag(EPICS_CACHE_TAG);
   cacheLife({ revalidate: 30 }); // 30 секунд — нужна высокая свежесть
 
@@ -180,7 +173,6 @@ export async function getEpicById(id: number): Promise<EpicWithTasks | null> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
-  "use cache";
   cacheTag(EPICS_CACHE_TAG);
   cacheLife({ revalidate: 60 }); // 1 минута — тяжёлый запрос
 
@@ -272,7 +264,8 @@ export async function getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Мутации — кеш не применяется, вызывают revalidateTag из Route Handler'ов
+// Мутации — "use cache" НЕ применяется.
+// revalidateTag вызывается из Route Handler'ов / Server Actions после мутации.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createEpic(data: {

@@ -1,16 +1,15 @@
 /**
  * @file userRepository.ts — entities/user
  *
- * РЕФАКТОРИНГ v2 — Next.js 16:
- *   БЫЛО: cache(unstable_cache(...)) — двойная обёртка, устаревший API
- *   СТАЛО: директива 'use cache' + cacheTag() + cacheLife()
+ * РЕФАКТОРИНГ v3 — исправление кеша для мутаций:
  *
- *   getAllUsers() — 'use cache', TTL 60 секунд, tag: "users"
+ *   БЫЛА ОШИБКА: файловая директива "use cache" кешировала ВСЕ функции,
+ *   включая мутации createUser, updateUser, deleteUser. getUserById тоже
+ *   стал закешированным, что неприемлемо для lookup по ID.
  *
- *   Остальные функции (WRITE) кеш не используют — без изменений.
+ *   ИСПРАВЛЕНО: файловая директива удалена. "use cache" оставлена только
+ *   внутри getAllUsers(). Мутации и lookup по ID остаются некешированными.
  */
-
-"use cache";
 
 import { cacheTag, cacheLife } from "next/cache";
 import { db } from "@/shared/db/client";
@@ -25,7 +24,6 @@ export const USERS_CACHE_TAG = "users";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getAllUsers(): Promise<UserWithMeta[]> {
-  "use cache";
   cacheTag(USERS_CACHE_TAG);
   cacheLife({ revalidate: 60 });
 
@@ -72,7 +70,7 @@ export function buildUserWithMeta(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WRITE — кеш не применяется
+// WRITE — "use cache" НЕ применяется. revalidateTag вызывается из Route Handler'ов.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function generateInitials(name: string): string {

@@ -1,4 +1,5 @@
 "use client";
+import { AmbientCursor } from "@/shared/ui/AmbientCursor";
 /**
  * @file GlobalClientComponents.tsx — app
  *
@@ -38,6 +39,7 @@ const GlobalFAB = dynamic(
 export function GlobalClientComponents() {
   return (
     <>
+      <AmbientCursor />
       <CommandPalette />
       <DynamicIsland />
       <SyncNotificationBridge />

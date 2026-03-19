@@ -37,6 +37,8 @@
 /* ── Root (dark default) ───────────────────────────────────────────────────── */
 :root,
 .dark {
+  --island-bg: rgba(10, 11, 20, 0.92);
+
   /* Void Layers — три микро-тона для ощущения глубины */
   --bg-base: #06070d;
   --bg-surface: #0a0b15;
@@ -117,6 +119,7 @@
 
 /* ── Light Theme ───────────────────────────────────────────────────────────── */
 html.light {
+  --island-bg: rgba(255, 255, 255, 0.96);
   --sidebar-w: 220px;
   --header-h: 56px;
   --bg-base: #ece8e0;
@@ -678,4 +681,110 @@ html.light .quick-add-card {
 
 .animate-spatial {
   animation: spatial-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── QuickAddTask component utilities ───────────────────────────────────────
+   Используются в widgets/board/QuickAddTask.tsx.
+   Без этих определений все .quick-add-* классы бесполезны.                 */
+ 
+.quick-add-priority-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 500;
+  background: var(--glass-01);
+  color: var(--text-secondary);
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+ 
+.quick-add-priority-chip:hover {
+  color: var(--text-primary);
+  background: var(--glass-02);
+}
+ 
+.quick-add-trigger-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+ 
+.quick-add-trigger:hover .quick-add-trigger-icon {
+  color: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 80%, transparent);
+}
+ 
+.quick-add-accent-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--quick-add-accent, var(--accent-500));
+  transform-origin: left;
+}
+ 
+.quick-add-kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  background: var(--glass-02);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+ 
+.quick-add-cancel-btn {
+  padding: 5px 12px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--glass-01);
+  color: var(--text-muted);
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s, color 0.15s;
+}
+ 
+.quick-add-cancel-btn:hover {
+  background: var(--glass-02);
+  color: var(--text-secondary);
+}
+ 
+.quick-add-save-btn {
+  position: relative;
+  overflow: hidden;
+  padding: 5px 14px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 20%, transparent);
+  color: var(--quick-add-accent, var(--accent-400));
+  border: 1px solid color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 40%, transparent);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+ 
+.quick-add-save-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 28%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 30%, transparent);
+}
+ 
+.quick-add-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

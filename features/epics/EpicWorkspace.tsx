@@ -2,18 +2,14 @@
 /**
  * @file EpicWorkspace.tsx — features/epics
  *
- * ИСПРАВЛЕНИЯ v2:
- *  1. Убран pointer-events-none с обёртки workspace — он блокировал клики.
- *  2. backdrop и workspace теперь рендерятся в DOM напрямую (без лишнего
- *     fixed-обёртки), z-index выставляется на самих элементах.
- *  3. Workspace panel: убран layoutId с обёртки-fixed (он мешал FLIP),
- *     layoutId остаётся только на panel — как источник морфинга.
- *  4. Подзадачи: TaskRow получает данные из fullEpic (fetched) с fallback
- *     на useTaskStore. Subtask mini-bar и счётчик теперь всегда видны.
- *  5. Добавлен явный will-change: transform на panel для производительности.
+ * ИСПРАВЛЕНИЯ v3:
+ *  1. Заменён <a href="/epics/..."> на Next.js <Link> — нативный anchor
+ *     вызывал полную перезагрузку страницы и сбрасывал состояние Zustand.
+ *  2. Остальной код без изменений.
  */
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
   motion,
   AnimatePresence,
@@ -28,7 +24,6 @@ import { useBodyScrollLock } from "@/shared/lib/hooks/useBodyScrollLock";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-// Быстрый snappy spring — открытие ~180мс, закрытие ~150мс
 const SPRING = { type: "spring" as const, stiffness: 500, damping: 38, mass: 0.4 };
 
 // ── Task Row ──────────────────────────────────────────────────────────────────
@@ -40,8 +35,6 @@ interface TaskRowProps {
 }
 
 function TaskRow({ task, epicColor, onOpen }: TaskRowProps) {
-  // Берём живые данные из стора, если стор уже гидрирован;
-  // иначе используем task из fullEpic (включает subtasks из API).
   const liveTask = useTaskStore((s) => s.getTask(task.id)) ?? task;
   const updateStatus = useTaskStore((s) => s.updateTaskStatus);
   const sm = STATUS_META[liveTask.status];
@@ -68,13 +61,11 @@ function TaskRow({ task, epicColor, onOpen }: TaskRowProps) {
       }}
       onClick={() => onOpen(liveTask)}
     >
-      {/* Priority left accent */}
       <div
         className="absolute left-0 top-3 bottom-3 w-0.5 rounded-full"
         style={{ backgroundColor: epicColor, opacity: 0.5 }}
       />
 
-      {/* Status cycle button */}
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -89,7 +80,6 @@ function TaskRow({ task, epicColor, onOpen }: TaskRowProps) {
         {sm.label}
       </button>
 
-      {/* Title + description */}
       <div className="flex-1 min-w-0">
         <p
           className={cn(
@@ -107,7 +97,6 @@ function TaskRow({ task, epicColor, onOpen }: TaskRowProps) {
           </p>
         )}
 
-        {/* Subtask mini-bar — показывается только если есть подзадачи */}
         {subtaskCount > 0 && (
           <div className="flex items-center gap-2 mt-1.5">
             <div
@@ -129,7 +118,6 @@ function TaskRow({ task, epicColor, onOpen }: TaskRowProps) {
         )}
       </div>
 
-      {/* Assignees */}
       {liveTask.assignees && liveTask.assignees.length > 0 && (
         <div className="flex items-center -space-x-1.5 shrink-0">
           {liveTask.assignees.slice(0, 3).map((a, i) => (
@@ -145,7 +133,6 @@ function TaskRow({ task, epicColor, onOpen }: TaskRowProps) {
         </div>
       )}
 
-      {/* Due date */}
       {liveTask.dueDate && (
         <span className="shrink-0 text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
           {formatDate(liveTask.dueDate)}
@@ -238,8 +225,6 @@ interface EpicWorkspaceProps {
 }
 
 export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWorkspaceProps) {
-  // loading=true по умолчанию. Компонент ремаунтится через key={epicId} в родителе,
-  // поэтому state сбрасывается автоматически — setLoading(true) в эффекте не нужен.
   const [fullEpic, setFullEpic] = useState<EpicWithTasks | null>(null);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -260,7 +245,6 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
     return () => { ignore = true; };
   }, [epicId]);
 
-  // Close on Escape
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -287,9 +271,6 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
 
   return (
     <>
-      {/* ── Backdrop — z-[58] ──
-          pointer-events: auto явно — не даём наследовать none от возможных родителей.
-          Клик по backdrop = закрытие workspace. */}
       <motion.div
         key="ws-backdrop"
         className="fixed inset-0"
@@ -309,7 +290,6 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
         />
       </motion.div>
 
-      {/* ── Workspace panel — z-[59], pointer-events: auto ── */}
       <div
         className="fixed inset-0 flex items-center justify-center p-6"
         style={{ zIndex: 59, pointerEvents: "none" }}
@@ -336,7 +316,6 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
           }}
           transition={SPRING}
         >
-          {/* Mesh gradient bg */}
           <div
             className="absolute inset-0 pointer-events-none"
             style={{
@@ -348,7 +327,6 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
             }}
           />
 
-          {/* Top shimmer */}
           <div
             className="absolute top-0 left-0 right-0 h-px pointer-events-none"
             style={{
@@ -364,7 +342,6 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
             className="relative flex items-start gap-4 px-6 pt-5 pb-4 flex-shrink-0"
             style={{ borderBottom: `0.5px solid ${summary.color}20` }}
           >
-            {/* Epic color orb */}
             <div
               className="mt-1 w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
               style={{
@@ -409,7 +386,6 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
               </div>
             </div>
 
-            {/* Close */}
             <motion.button
               onClick={onClose}
               className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center"
@@ -428,7 +404,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
             </motion.button>
           </motion.div>
 
-          {/* ── Body — task sections ── */}
+          {/* ── Body ── */}
           <div ref={scrollRef} className="relative overflow-y-auto" style={{ maxHeight: "calc(100vh - 48px - 96px)" }}>
             {loading ? (
               <WorkspaceSkeleton color={summary.color} />
@@ -483,7 +459,12 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
             </div>
 
             <div className="flex items-center gap-2">
-              <a
+              {/*
+               * ИСПРАВЛЕНО v3: <a href> → <Link> для client-side навигации.
+               * Нативный anchor вызывал полную перезагрузку страницы и сбрасывал
+               * состояние Zustand store, прерывая все активные анимации.
+               */}
+              <Link
                 href={`/epics/${epicId}`}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                 style={{
@@ -498,7 +479,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
                   <path d="M4.5 2H12v7.5M12 2L2 12" />
                 </svg>
                 Открыть полностью
-              </a>
+              </Link>
 
               <button
                 onClick={onClose}

@@ -1,7 +1,27 @@
-// app/api/users/route.ts
+/**
+ * @file route.ts — app/api/users
+ *
+ * ИСПРАВЛЕНИЕ: серия ручных if-проверок заменена на Zod-схему.
+ *   БЫЛО: if (!name?.trim()), if (!login?.trim()), if (typeof roleId !== "number")
+ *         Не проверяло: длину строк, диапазон roleId, формат initials.
+ *         typeof roleId !== "number" не ловило NaN (typeof NaN === "number").
+ *   СТАЛО: CreateUserSchema — полная валидация всех полей.
+ *          initials: optional + transform(toUpperCase + slice(0,2)).
+ *          roleId: z.number().int().positive() — NaN и 0 → 422.
+ */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
+import { z } from "zod";
 import { getAllUsers, createUser, USERS_CACHE_TAG } from "@/entities/user/userRepository";
+
+const CreateUserSchema = z.object({
+  name:     z.string().min(1).max(200),
+  login:    z.string().min(1).max(64),
+  roleId:   z.number().int().positive(),
+  initials: z.string().min(1).max(2)
+              .transform((v) => v.toUpperCase())
+              .optional(),
+});
 
 export async function GET() {
   try {
@@ -15,20 +35,18 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, login, roleId, initials } = body;
+    const parsed = CreateUserSchema.safeParse(body);
 
-    if (!name?.trim()) {
-      return NextResponse.json({ ok: false, error: "name is required" }, { status: 422 });
-    }
-    if (!login?.trim()) {
-      return NextResponse.json({ ok: false, error: "login is required" }, { status: 422 });
-    }
-    if (!roleId || typeof roleId !== "number") {
-      return NextResponse.json({ ok: false, error: "roleId is required" }, { status: 422 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { ok: false, error: parsed.error.flatten() },
+        { status: 422 },
+      );
     }
 
-    const user = await createUser({ name, login, roleId, initials });
+    const user = await createUser(parsed.data);
     revalidateTag(USERS_CACHE_TAG, "max");
+
     return NextResponse.json({ ok: true, data: user }, { status: 201 });
   } catch (e) {
     if (String(e).includes("UNIQUE")) {

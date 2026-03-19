@@ -1,15 +1,45 @@
-// app/api/epics/[id]/route.ts — полная версия
+/**
+ * @file route.ts — app/api/epics/[id]
+ *
+ * ИСПРАВЛЕНИЕ: добавлена Zod-валидация для PATCH.
+ *   БЫЛО: body -> updateEpic(Number(id), body) — без проверки.
+ *         Принимал любые поля, включая несуществующие колонки в БД.
+ *   СТАЛО: PatchEpicSchema — whitelist допустимых полей.
+ *          color: regex /^#[0-9a-fA-F]{6}$/ — отклоняет невалидные hex.
+ *          startDate/endDate: z.string().datetime() — ISO-8601 строго.
+ */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { getEpicById, updateEpic, deleteEpic, EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
+import { z } from "zod";
+import {
+  getEpicById,
+  updateEpic,
+  deleteEpic,
+  EPICS_CACHE_TAG,
+} from "@/entities/epic/epicRepository";
+
+const PatchEpicSchema = z.object({
+  title:       z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  color:       z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  startDate:   z.string().datetime().nullable().optional(),
+  endDate:     z.string().datetime().nullable().optional(),
+});
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
-    const epic = await getEpicById(Number(id));
+    const epicId = Number(id);
+
+    if (!Number.isInteger(epicId) || epicId <= 0) {
+      return NextResponse.json({ ok: false, error: "Invalid epic id" }, { status: 400 });
+    }
+
+    const epic = await getEpicById(epicId);
     if (!epic) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+
     return NextResponse.json({ ok: true, data: epic });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
@@ -19,11 +49,34 @@ export async function GET(_req: Request, { params }: Params) {
 export async function PATCH(req: Request, { params }: Params) {
   try {
     const { id } = await params;
+    const epicId = Number(id);
+
+    if (!Number.isInteger(epicId) || epicId <= 0) {
+      return NextResponse.json({ ok: false, error: "Invalid epic id" }, { status: 400 });
+    }
+
     const body = await req.json();
-    const epic = await updateEpic(Number(id), body);
+    const parsed = PatchEpicSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { ok: false, error: parsed.error.flatten() },
+        { status: 422 },
+      );
+    }
+
+    if (Object.keys(parsed.data).length === 0) {
+      return NextResponse.json({ ok: false, error: "Nothing to update" }, { status: 422 });
+    }
+
+    const epic = await updateEpic(epicId, parsed.data);
     revalidateTag(EPICS_CACHE_TAG, "max");
+
     return NextResponse.json({ ok: true, data: epic });
   } catch (e) {
+    if (String(e).includes("not found")) {
+      return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    }
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
@@ -31,8 +84,15 @@ export async function PATCH(req: Request, { params }: Params) {
 export async function DELETE(_req: Request, { params }: Params) {
   try {
     const { id } = await params;
-    await deleteEpic(Number(id));
+    const epicId = Number(id);
+
+    if (!Number.isInteger(epicId) || epicId <= 0) {
+      return NextResponse.json({ ok: false, error: "Invalid epic id" }, { status: 400 });
+    }
+
+    await deleteEpic(epicId);
     revalidateTag(EPICS_CACHE_TAG, "max");
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

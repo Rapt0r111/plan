@@ -1,6 +1,19 @@
+/**
+ * @file tailwind.config.ts
+ *
+ * ИСПРАВЛЕНИЕ: Tailwind 4 — CSS-first конфигурация.
+ *   БЫЛО: theme.extend.fontFamily дублировал --font-sans / --font-mono
+ *         из @theme блока в globals.css — два источника истины.
+ *         В Tailwind 4 @theme в CSS имеет приоритет, но дубль создаёт
+ *         путаницу и может вызвать неожиданное поведение при обновлениях.
+ *
+ *   СТАЛО: только content — сканирование файлов для purge.
+ *         Все токены (шрифты, радиусы, цвета) живут в globals.css @theme.
+ *         plugins: [] тоже убран — пустой массив не нужен явно.
+ */
 import type { Config } from "tailwindcss";
 
-const config: Config = {
+export default {
   content: [
     "./app/**/*.{ts,tsx}",
     "./widgets/**/*.{ts,tsx}",
@@ -8,15 +21,4 @@ const config: Config = {
     "./entities/**/*.{ts,tsx}",
     "./shared/**/*.{ts,tsx}",
   ],
-  theme: {
-    extend: {
-      fontFamily: {
-        sans: ["DM Sans", "sans-serif"],
-        mono: ["DM Mono", "monospace"],
-      },
-    },
-  },
-  plugins: [],
-};
-
-export default config;
+} satisfies Config;

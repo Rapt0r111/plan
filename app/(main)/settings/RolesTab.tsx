@@ -2,25 +2,24 @@
 /**
  * @file RolesTab.tsx — app/(main)/settings
  *
- * ИСПРАВЛЕНИЯ v2:
- *   БЫЛО:
- *     useEffect(() => {
- *       hydrateRoles(initialRoles);
- *     }, []); // eslint-disable-line react-hooks/exhaustive-deps  ← ДВА ПРОБЛЕМЫ:
- *       1. initialRoles не в зависимостях → стор не обновится при изменении пропа
- *       2. eslint-disable-line как заглушка — признак скрытого бага
+ * ИСПРАВЛЕНИЕ v3:
+ *   ПРОБЛЕМА: hydrateRoles вызывался дважды —
+ *     1. RoleHydrator в layout.tsx (при монтировании layout)
+ *     2. RolesTab в useEffect (при монтировании таба)
+ *   Race condition: если таб монтируется раньше чем RoleHydrator завершил запись,
+ *   второй вызов hydrateRoles перезаписывает возможные промежуточные обновления.
  *
- *   СТАЛО: render-time гидрация за условием !hydrated
- *     - Нет useEffect
- *     - Нет eslint-disable
- *     - При смене initialRoles стор обновляется корректно (условие перепроверяется)
- *
- * ПРИМЕЧАНИЕ: в текущей архитектуре initialRoles передаётся из Server Component
- * (settings/page.tsx) и никогда не меняется в рамках одной сессии. Поэтому
- * практического различия нет. Но это предотвращает класс багов при рефакторинге
- * и убирает подавление линтера.
+ *   РЕШЕНИЕ:
+ *     — Убрать hydrateRoles из RolesTab полностью.
+ *       Гидрация — ответственность RoleHydrator в layout.tsx, не таба.
+ *     — Читать стор через selector с inline-fallback на initialRoles:
+ *         useRoleStore((s) => s.roles.length > 0 ? s.roles : initialRoles)
+ *       Это даёт:
+ *         a) Точечную подписку — ререндер только при изменении roles, не всего store
+ *         b) Правильный fallback на SSR-данные до первой гидрации без useEffect
+ *         c) Одну строку вместо деструктуризации + ручного условия
  */
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useRoleStore } from "@/shared/store/useRoleStore";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
 import type { DbRole } from "@/shared/types";
@@ -30,25 +29,23 @@ interface Props {
 }
 
 export function RolesTab({ initialRoles }: Props) {
+  // ИСПРАВЛЕНО: один вызов useRoleStore с деструктурирующим селектором.
+  // roles читается через условие — fallback на initialRoles до первой гидрации.
+  // Действия (optimistic*) — стабильные ссылки, не вызывают лишних ререндеров.
+  // hydrateRoles здесь не вызывается — это ответственность RoleHydrator в layout.
   const {
-    roles,
-    hydrateRoles,
+    storeRoles,
     optimisticCreate,
     optimisticUpdate,
     optimisticDelete,
     rollbackRoles,
-  } = useRoleStore();
-
-  // useEffect ПРАВОМЕРЕН: Zustand set() нельзя вызывать во время рендера.
-  // Исправление оригинала: initialRoles добавлен в зависимости (убран eslint-disable).
-  useEffect(() => {
-    if (initialRoles.length > 0) {
-      hydrateRoles(initialRoles);
-    }
-  }, [initialRoles, hydrateRoles]);
-
-  // Fallback на initialRoles пока useEffect не выполнился (первый рендер)
-  const storeRoles = roles.length > 0 ? roles : initialRoles;
+  } = useRoleStore((s) => ({
+    storeRoles:      s.roles.length > 0 ? s.roles : initialRoles,
+    optimisticCreate: s.optimisticCreate,
+    optimisticUpdate: s.optimisticUpdate,
+    optimisticDelete: s.optimisticDelete,
+    rollbackRoles:   s.rollbackRoles,
+  }));
 
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -1,18 +1,21 @@
 /**
  * @file epicRepository.ts — entities/epic
  *
- * РЕФАКТОРИНГ v3 — исправление кеша для мутаций:
+ * ИСПРАВЛЕНИЕ v4 — удалены cacheTag() / cacheLife():
  *
- *   БЫЛА ОШИБКА: директива "use cache" на уровне файла означает, что
- *   ВСЕ экспортируемые функции, включая мутации (createEpic, updateEpic,
- *   deleteEpic), автоматически кешируются. Это сводит на нет смысл мутаций —
- *   повторный вызов возвращал бы закешированный результат вместо записи в БД.
+ *   ПРОБЛЕМА: cacheTag() и cacheLife() из "next/cache" требуют
+ *   experimental.dynamicIO: true в next.config.ts.
+ *   Без этого флага — runtime error при любом запросе.
  *
- *   ИСПРАВЛЕНО: файловая директива удалена. "use cache" оставлена только
- *   внутри каждой READ-функции. Мутации остаются некешированными.
+ *   РЕШЕНИЕ: убраны вызовы cacheTag/cacheLife из всех READ-функций.
+ *   Для локального SQLite кеширование на уровне Next.js избыточно —
+ *   round-trip к БД < 1ms. revalidateTag в Route Handler'ах оставлен
+ *   (безвредный no-op без соответствующего cache).
+ *
+ *   Если потребуется кеш — добавить experimental.dynamicIO: true
+ *   в next.config.ts и вернуть cacheTag/cacheLife.
  */
 
-import { cacheTag, cacheLife } from "next/cache";
 import { db } from "@/shared/db/client";
 import { epics, tasks, taskAssignees, users, subtasks, roles } from "@/shared/db/schema";
 import { eq, inArray, sql, count } from "drizzle-orm";
@@ -21,7 +24,7 @@ import type { DbEpic, EpicWithTasks, TaskView, UserWithMeta, SubtaskView } from 
 export const EPICS_CACHE_TAG = "epics";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers (не кешируются напрямую — вызываются только из кешированных функций)
+// Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AssigneeRow = {
@@ -71,13 +74,10 @@ async function fetchAssignees(taskIds: number[]): Promise<AssigneeRow[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// getAllEpics — лёгкий список для сайдбара и карточек дашборда
+// getAllEpics
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getAllEpics(): Promise<(DbEpic & { taskCount: number; doneCount: number })[]> {
-  cacheTag(EPICS_CACHE_TAG);
-  cacheLife({ revalidate: 120 }); // 2 минуты — лёгкие данные
-
   const rows = await db
     .select({
       id: epics.id,
@@ -104,13 +104,10 @@ export async function getAllEpics(): Promise<(DbEpic & { taskCount: number; done
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// getEpicById — страница одного эпика
+// getEpicById
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getEpicById(id: number): Promise<EpicWithTasks | null> {
-  cacheTag(EPICS_CACHE_TAG);
-  cacheLife({ revalidate: 30 }); // 30 секунд — нужна высокая свежесть
-
   const [epic] = await db.select().from(epics).where(eq(epics.id, id));
   if (!epic) return null;
 
@@ -169,13 +166,10 @@ export async function getEpicById(id: number): Promise<EpicWithTasks | null> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// getAllEpicsWithTasks — полный граф для Zustand store
+// getAllEpicsWithTasks
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
-  cacheTag(EPICS_CACHE_TAG);
-  cacheLife({ revalidate: 60 }); // 1 минута — тяжёлый запрос
-
   const epicRows = await db
     .select({
       id: epics.id,
@@ -264,8 +258,7 @@ export async function getAllEpicsWithTasks(): Promise<EpicWithTasks[]> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Мутации — "use cache" НЕ применяется.
-// revalidateTag вызывается из Route Handler'ов / Server Actions после мутации.
+// Мутации
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createEpic(data: {

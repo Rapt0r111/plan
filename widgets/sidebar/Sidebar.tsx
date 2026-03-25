@@ -20,7 +20,24 @@ interface Props {
 }
 
 function SyncBadge() {
-  const { status, lastSyncedAt } = useSyncStatus();
+  const { status, lastSyncedAt, offlineQueueSize } = useSyncStatus();
+  // useSyncStatus теперь возвращает offlineQueueSize (обновлён в useTaskStore)
+
+  // Если есть очередь офлайн-операций — показываем особый статус
+  if (offlineQueueSize > 0) {
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    return (
+      <div className="flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-yellow-400 animate-pulse" />
+        <span className="text-xs font-mono text-(--text-muted)">
+          {isOffline ? "OFFLINE" : "SYNC"}:{" "}
+          <span className="font-semibold text-yellow-400">
+            {offlineQueueSize} в очереди
+          </span>
+        </span>
+      </div>
+    );
+  }
 
   const config = {
     idle: { dot: "bg-slate-500", label: "LOCAL", text: "IDLE" },
@@ -33,17 +50,15 @@ function SyncBadge() {
 
   return (
     <div className="flex items-center gap-2">
-      <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", dot)} />
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
       <span className="text-xs font-mono text-(--text-muted)">
         {label}:{" "}
         <span
-          className={cn(
-            "font-semibold",
-            status === "synced" && "text-emerald-400",
-            status === "syncing" && "text-amber-400",
-            status === "error" && "text-red-400",
-            status === "idle" && "text-slate-500"
-          )}
+          className={`font-semibold ${status === "synced" ? "text-emerald-400" :
+              status === "syncing" ? "text-amber-400" :
+                status === "error" ? "text-red-400" :
+                  "text-slate-500"
+            }`}
         >
           {text}
         </span>

@@ -1,17 +1,11 @@
 /**
  * @file userRepository.ts — entities/user
  *
- * РЕФАКТОРИНГ v3 — исправление кеша для мутаций:
- *
- *   БЫЛА ОШИБКА: файловая директива "use cache" кешировала ВСЕ функции,
- *   включая мутации createUser, updateUser, deleteUser. getUserById тоже
- *   стал закешированным, что неприемлемо для lookup по ID.
- *
- *   ИСПРАВЛЕНО: файловая директива удалена. "use cache" оставлена только
- *   внутри getAllUsers(). Мутации и lookup по ID остаются некешированными.
+ * ИСПРАВЛЕНИЕ v4 — удалены cacheTag() / cacheLife():
+ *   Вызовы cacheTag/cacheLife требуют experimental.dynamicIO: true.
+ *   Для локального SQLite этот уровень кеширования не нужен.
  */
 
-import { cacheTag, cacheLife } from "next/cache";
 import { db } from "@/shared/db/client";
 import { users, roles } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
@@ -24,9 +18,6 @@ export const USERS_CACHE_TAG = "users";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getAllUsers(): Promise<UserWithMeta[]> {
-  cacheTag(USERS_CACHE_TAG);
-  cacheLife({ revalidate: 60 });
-
   const rows = await db
     .select({
       id:        users.id,
@@ -70,7 +61,7 @@ export function buildUserWithMeta(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WRITE — "use cache" НЕ применяется. revalidateTag вызывается из Route Handler'ов.
+// WRITE
 // ─────────────────────────────────────────────────────────────────────────────
 
 function generateInitials(name: string): string {

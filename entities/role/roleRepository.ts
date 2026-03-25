@@ -1,17 +1,11 @@
 /**
  * @file roleRepository.ts — entities/role
  *
- * РЕФАКТОРИНГ v3 — исправление кеша для мутаций:
- *
- *   БЫЛА ОШИБКА: файловая директива "use cache" кешировала ВСЕ функции,
- *   включая мутации createRole, updateRole, deleteRole. Повторный вызов
- *   мутации возвращал бы закешированный результат вместо записи в БД.
- *
- *   ИСПРАВЛЕНО: файловая директива удалена. "use cache" оставлена только
- *   внутри getAllRoles(). Мутации остаются некешированными.
+ * ИСПРАВЛЕНИЕ v4 — удалены cacheTag() / cacheLife():
+ *   Вызовы cacheTag/cacheLife требуют experimental.dynamicIO: true.
+ *   Для локального SQLite этот уровень кеширования не нужен.
  */
 
-import { cacheTag, cacheLife } from "next/cache";
 import { db } from "@/shared/db/client";
 import { roles, users } from "@/shared/db/schema";
 import { eq, count } from "drizzle-orm";
@@ -26,15 +20,7 @@ export const ROLES_CACHE_TAG = "roles";
 // READ
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * getAllRoles — кешируется агрессивно (роли меняются редко).
- * 'use cache' автоматически дедуплицирует запросы в рамках одного SSR-прохода —
- * React.cache() больше не нужен.
- */
 export async function getAllRoles(): Promise<DbRole[]> {
-  cacheTag(ROLES_CACHE_TAG);
-  cacheLife({ revalidate: 300 }); // 5 минут
-
   return db
     .select()
     .from(roles)
@@ -52,7 +38,7 @@ export async function getRoleByKey(key: string): Promise<DbRole | null> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WRITE — "use cache" НЕ применяется. revalidateTag вызывается из Route Handler'ов.
+// WRITE
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createRole(
@@ -80,7 +66,6 @@ export async function updateRole(
 
 /**
  * deleteRole — защита: нельзя удалить роль, к которой привязаны пользователи.
- * Выбрасывает ошибку с кодом ROLE_HAS_USERS → API вернёт 409.
  */
 export async function deleteRole(id: number): Promise<void> {
   const [{ userCount }] = await db

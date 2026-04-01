@@ -1,0 +1,68 @@
+# ═══════════════════════════════════════════════════════════════
+# docker-compose.yml — TaskFlow
+# Modern Docker Compose (no version field — obsolete since v2.27)
+# Port: 38701 (safe range 38700–38799)
+# ═══════════════════════════════════════════════════════════════
+
+services:
+
+  taskflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    image: taskflow:latest
+    container_name: taskflow_app
+    restart: unless-stopped
+
+    ports:
+      # Host port 38701 → container port 3000
+      - "38701:3000"
+
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # DB lives in the volume — entrypoint creates symlink to ./local.db
+      DATABASE_URL: /app/data/taskflow.db
+      # Set to "false" to skip seeding after first run
+      SEED_ON_FIRST_RUN: "true"
+
+    volumes:
+      # Named volume — SQLite database persists across container restarts/upgrades
+      - taskflow_data:/app/data
+
+    networks:
+      - taskflow_net
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
+
+    # Resource limits — sensible defaults for a local server
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  taskflow_data:
+    name: taskflow_data
+    driver: local
+
+networks:
+  taskflow_net:
+    name: taskflow_net
+    driver: bridge

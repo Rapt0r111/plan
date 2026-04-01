@@ -1,0 +1,75 @@
+# ═══════════════════════════════════════════════════════════════
+# .dockerignore — TaskFlow
+# Excludes files not needed in Docker build context
+# ═══════════════════════════════════════════════════════════════
+
+# Node / Bun modules (copied from deps stage)
+node_modules/
+.pnp
+.pnp.*
+.yarn/
+
+# Next.js build output (rebuilt inside container)
+.next/
+out/
+build/
+
+# Database files — NEVER bake into image; use volumes
+*.db
+*.db-shm
+*.db-wal
+local.db
+drizzle/*.db
+
+# Environment files — use Docker secrets / compose env vars
+.env
+.env.*
+!.env.example
+
+# Development / test artifacts
+coverage/
+tests/e2e/
+playwright-report/
+test-results/
+
+# Git
+.git/
+.gitignore
+
+# Docker files themselves (not needed in build context)
+Dockerfile*
+docker-compose*.yml
+docker-entrypoint.sh
+.dockerignore
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# TypeScript build info
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel
+.vercel/
+
+# Python scripts (not needed at runtime)
+*.py
+__pycache__/
+
+# Misc scripts
+fix-seed-roles.mjs
+состав.txt
+next.txt

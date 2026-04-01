@@ -2,30 +2,17 @@
 /**
  * @file SyncOrchestrator.tsx — shared/store
  *
- * Монтируется ОДИН РАЗ в app/(main)/layout.tsx.
- * Нет DOM-вывода — только side-effects.
+ * ИСПРАВЛЕНИЯ v3:
  *
- * ОТВЕТСТВЕННОСТИ:
+ * БАГ #5 ИСПРАВЛЕН: уведомление о dropped-операциях (4xx при replay)
+ *   БЫЛО: replayOfflineQueue возвращал только successCount.
+ *         Если задача была удалена другим пользователем пока текущий был офлайн,
+ *         его изменение молча выбрасывалось — никакого уведомления.
+ *   СТАЛО: возвращает { successCount, droppedCount }.
+ *         При droppedCount > 0 показываем отдельное предупреждение через DynamicIsland.
  *
- * 1. При монтировании — читает IDB и восстанавливает offlineQueueSize
- *    (на случай если пользователь работал офлайн в прошлой сессии
- *    и очередь не была отправлена).
- *
- * 2. При событии "online" — запускает replayOfflineQueue():
- *    - Итерирует PendingOp из IDB по порядку createdAt
- *    - Каждую успешную операцию удаляет из IDB, уменьшает offlineQueueSize
- *    - При ошибке 4xx — удаляет устаревшую операцию
- *    - При ошибке 5xx / network — прерывает, оставляет в очереди
- *    - Вызывает router.refresh() — перегружает серверные данные
- *    - Показывает DynamicIsland-уведомление о результате
- *
- * 3. При событии "offline" — обновляет счётчик (на случай новых операций
- *    которые были добавлены в очередь в прошлой сессии).
- *
- * ПОЧЕМУ НЕ useEffect в SyncNotificationBridge:
- *   Bridge уже занят мониторингом syncStatus.
- *   Смешивать online/offline логику туда создаёт god-component.
- *   SyncOrchestrator — единственная точка ответственности за replay.
+ * Также: различаем случай "частичного успеха" (successCount > 0 && droppedCount > 0)
+ * от "полного успеха" (successCount > 0 && droppedCount === 0).
  */
 
 import { useEffect, useRef } from "react";
@@ -34,12 +21,11 @@ import { useTaskStore } from "./useTaskStore";
 import { useNotificationStore } from "@/features/sync/useNotificationStore";
 
 export function SyncOrchestrator() {
-  const router             = useRouter();
+  const router              = useRouter();
   const refreshOfflineQueue = useTaskStore((s) => s.refreshOfflineQueue);
   const replayOfflineQueue  = useTaskStore((s) => s.replayOfflineQueue);
-  const push               = useNotificationStore((s) => s.push);
+  const push                = useNotificationStore((s) => s.push);
 
-  // Флаг чтобы не запускать два replay одновременно
   const replayingRef = useRef(false);
 
   useEffect(() => {
@@ -52,20 +38,33 @@ export function SyncOrchestrator() {
       replayingRef.current = true;
 
       try {
-        const successCount = await replayOfflineQueue();
+        const { successCount, droppedCount } = await replayOfflineQueue();
 
         if (successCount > 0) {
-          // Перезагружаем серверные данные (invalidate Next.js cache)
+          // Перезагружаем серверные данные
           router.refresh();
 
-          // Уведомление через DynamicIsland
+          // Уведомление об успешной синхронизации
           push({
             kind:  "sync",
             title: `Синхронизировано: ${successCount} ${pluralizeOps(successCount)}`,
-            body:  "Офлайн-изменения успешно отправлены на сервер",
-            icon:  "✓",
+            body:  droppedCount > 0
+              ? `${droppedCount} ${pluralizeOps(droppedCount)} устарели и были отброшены`
+              : "Офлайн-изменения успешно отправлены на сервер",
+            icon:  droppedCount > 0 ? "⚠" : "✓",
+          });
+        } else if (droppedCount > 0) {
+          // БАГ #5: всё упало с 4xx или превысило MAX_OP_RETRIES — нет ни одного успеха
+          router.refresh(); // обновляем данные с сервера чтобы отразить актуальное состояние
+          push({
+            kind:  "error",
+            title: "Изменения устарели",
+            body:  `${droppedCount} ${pluralizeOps(droppedCount)} не удалось синхронизировать — данные обновлены с сервера`,
+            icon:  "⚠",
           });
         }
+        // Если successCount === 0 && droppedCount === 0 — очередь была пуста или
+        // все операции всё ещё ждут повторов (5xx) — ничего не показываем
       } finally {
         replayingRef.current = false;
       }
@@ -73,7 +72,6 @@ export function SyncOrchestrator() {
 
     // ── 3. Обработчик потери сети ─────────────────────────────────────────
     const onOffline = () => {
-      // Обновляем счётчик — вдруг другая вкладка добавила в очередь
       refreshOfflineQueue();
     };
 

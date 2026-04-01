@@ -5,7 +5,6 @@
  * Server Actions для CRUD эпиков.
  * Вызываются из EpicsTab через useTransition — никакого fetch на клиенте.
  *
- * revalidateTag("max") — stale-while-revalidate, рекомендованный профиль Next.js 16.
  */
 import { revalidateTag } from "next/cache";
 import {
@@ -32,7 +31,7 @@ export async function createEpicAction(data: {
   endDate:     string | null;
 }): Promise<DbEpic> {
   const epic = await createEpic(data);
-  revalidateTag(EPICS_CACHE_TAG, "max");
+  revalidateTag(EPICS_CACHE_TAG, "max"); 
   return epic;
 }
 

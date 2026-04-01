@@ -5,19 +5,17 @@
  *   "epics"       — снапшот EpicWithTasks[] для cold-start без сети
  *   "pending_ops" — очередь HTTP-запросов, ожидающих отправки
  *
- * ИСПРАВЛЕНИЯ v2:
- *   БЫЛО: IDBObjectStore.put() не awaited → данные не записывались
- *         при быстром закрытии вкладки или навигации.
- *   СТАЛО: promisifyRequest() оборачивает каждый IDBRequest в Promise,
- *          транзакция завершается корректно.
- *
- * НОВОЕ: PendingOp — структура для офлайн-очереди мутаций.
- *   Хранит HTTP-метод, URL и тело запроса. При восстановлении сети
- *   SyncOrchestrator итерирует очередь и повторяет запросы.
+ * ИСПРАВЛЕНИЯ v3:
+ *   БАГ #2 ИСПРАВЛЕН: _db.addEventListener("close", ...) — событие "close"
+ *     не существует в спецификации IDBDatabase. Правильное событие — "versionchange",
+ *     которое срабатывает когда другая вкладка хочет обновить схему БД.
+ *     Без этого fix синглтон _db никогда не сбрасывался при неожиданном
+ *     закрытии БД, что приводило к ошибкам "database connection is closing"
+ *     при следующих операциях.
  */
 
 const DB_NAME    = "plan-cache";
-const DB_VERSION = 2;           // +1 — добавляем хранилище pending_ops
+const DB_VERSION = 2;
 const EPICS_STORE = "epics";
 const QUEUE_STORE = "pending_ops";
 
@@ -34,12 +32,10 @@ async function openDB(): Promise<IDBDatabase> {
     req.onupgradeneeded = (e) => {
       const db = (e.target as IDBOpenDBRequest).result;
 
-      // v1 store (уже существует у пользователей)
       if (!db.objectStoreNames.contains(EPICS_STORE)) {
         db.createObjectStore(EPICS_STORE);
       }
 
-      // v2 store (новый)
       if (!db.objectStoreNames.contains(QUEUE_STORE)) {
         const qs = db.createObjectStore(QUEUE_STORE, { keyPath: "id" });
         qs.createIndex("createdAt", "createdAt", { unique: false });
@@ -48,13 +44,22 @@ async function openDB(): Promise<IDBDatabase> {
 
     req.onsuccess = () => {
       _db = req.result;
-      // При неожиданном закрытии базы (напр. другая вкладка удаляет БД)
-      _db.addEventListener("close", () => { _db = null; });
+
+      // ИСПРАВЛЕНО: "close" → "versionchange"
+      // IDBDatabase не имеет события "close" в спецификации W3C.
+      // "versionchange" срабатывает когда другая вкладка вызывает
+      // indexedDB.open() с новой версией — нужно закрыть соединение
+      // чтобы не блокировать апгрейд.
+      _db.addEventListener("versionchange", () => {
+        _db?.close();
+        _db = null;
+      });
+
       resolve(_db);
     };
 
     req.onerror   = () => reject(req.error);
-    req.onblocked = () => reject(new Error("IDB blocked"));
+    req.onblocked = () => reject(new Error("IDB blocked — close other tabs and retry"));
   });
 }
 
@@ -68,19 +73,13 @@ function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
 
 // ── Epics snapshot ────────────────────────────────────────────────────────────
 
-/**
- * cacheEpics — сохраняет снапшот эпиков в IDB.
- *
- * БЫЛО: tx.objectStore().put() не awaited — запись могла не успеть.
- * СТАЛО: promisifyRequest гарантирует завершение транзакции.
- */
 export async function cacheEpics(epics: unknown): Promise<void> {
   try {
     const db  = await openDB();
     const tx  = db.transaction(EPICS_STORE, "readwrite");
     await promisifyRequest(tx.objectStore(EPICS_STORE).put(JSON.stringify(epics), "all"));
   } catch {
-    // silent — кеш необязателен, не прерываем основной поток
+    // silent — кеш необязателен
   }
 }
 
@@ -99,24 +98,14 @@ export async function getCachedEpics(): Promise<unknown | null> {
 
 // ── Pending ops queue ─────────────────────────────────────────────────────────
 
-/**
- * PendingOp — HTTP-запрос, который не удалось отправить из-за отсутствия сети.
- *
- * Храним только READ/PATCH/DELETE-мутации для существующих записей.
- * Создание задач (POST /api/tasks) не ставится в очередь — требует
- * сложного маппинга temp ID → real ID (см. SyncOrchestrator).
- */
+export const MAX_OP_RETRIES = 5; // НОВОЕ: максимум попыток для 5xx ошибок
+
 export interface PendingOp {
-  /** UUID — первичный ключ IDB */
   id: string;
-  /** Например: "/api/tasks/42" */
   url: string;
   method: "PATCH" | "DELETE" | "POST";
-  /** JSON-body (для PATCH/POST) */
   body?: Record<string, unknown>;
-  /** Unix ms — для сортировки по порядку создания */
   createdAt: number;
-  /** Количество неудачных попыток replay */
   retries: number;
 }
 
@@ -146,7 +135,6 @@ export async function getPendingOps(): Promise<PendingOp[]> {
     const all = await promisifyRequest<PendingOp[]>(
       tx.objectStore(QUEUE_STORE).getAll(),
     );
-    // Воспроизводим в хронологическом порядке
     return all.sort((a, b) => a.createdAt - b.createdAt);
   } catch {
     return [];
@@ -165,10 +153,10 @@ export async function removePendingOp(id: string): Promise<void> {
 
 export async function incrementOpRetries(id: string): Promise<void> {
   try {
-    const db  = await openDB();
-    const tx  = db.transaction(QUEUE_STORE, "readwrite");
+    const db    = await openDB();
+    const tx    = db.transaction(QUEUE_STORE, "readwrite");
     const store = tx.objectStore(QUEUE_STORE);
-    const op  = await promisifyRequest<PendingOp | undefined>(store.get(id));
+    const op    = await promisifyRequest<PendingOp | undefined>(store.get(id));
     if (op) {
       await promisifyRequest(store.put({ ...op, retries: op.retries + 1 }));
     }

@@ -2,35 +2,28 @@
  * @file page.tsx — app/(main)/dashboard
  *
  * ═══════════════════════════════════════════════════════════════
- * STREAMING ARCHITECTURE — v3
+ * STREAMING ARCHITECTURE — v4
  * ═══════════════════════════════════════════════════════════════
  *
- * ПРОБЛЕМА v2 (было):
- *   await getAllEpicsWithTasks() — блокировал ВЕСЬ серверный рендер.
- *   3 SQL-запроса (epics → tasks → [subtasks + assignees]) выполнялись
- *   до того, как браузер получал хоть один байт HTML.
- *   Итог: FCP = 2–3 секунды даже при горячем кеше.
+ * FIX v4 (антипаттерн #4 из code review):
+ *   БЫЛО: getAllEpics() + getAllEpicsWithTasks() — ДВА запроса для дашборда.
+ *   getAllEpicsWithTasks() уже содержит все данные из getAllEpics().
+ *   Дублирование давало лишний SQL без какой-либо выгоды.
  *
- * РЕШЕНИЕ v3 (стало):
- *   Два уровня данных:
+ *   СТАЛО:
+ *   - FAST path: getAllEpics() только для быстрых виджетов (stats, header)
+ *   - SLOW path (Suspense): getAllEpicsWithTasks() для StoreHydrator + виджетов.
+ *     EpicInteractionLayer теперь получает данные из HeavyWidgets через
+ *     store hydration + Suspense, вместо отдельного вызова на уровне страницы.
  *
- *   FAST (выше сгиба): getAllEpics() + getAllUsers() — 1+1 SQL
- *     → Stats, EpicGrid, Team рендерятся немедленно (~50–80 мс).
+ *   Почему это важно:
+ *   getAllEpicsWithTasks() возвращает тот же набор эпиков + задачи/подзадачи.
+ *   EpicSummary (для EpicInteractionLayer) вычисляется из EpicWithTasks
+ *   без дополнительного SQL — просто маппинг.
  *
- *   SLOW (ниже сгиба): getAllEpicsWithTasks() — 3 SQL, в Suspense
- *     → WorkloadBalancer + InfiniteTimeline стримятся отдельно.
- *     → React Streaming передаёт их в браузер, как только данные готовы,
- *       не блокируя первичный HTML.
- *
- * РЕЗУЛЬТАТ:
- *   FCP падает с ~2–3 с до ~80–150 мс (только быстрые запросы).
- *   TTI не меняется — тяжёлые виджеты всё равно загружаются,
- *   но пользователь видит страницу значительно раньше.
- *
- * ПОЧЕМУ Suspense работает здесь:
- *   Next.js App Router поддерживает React Streaming из коробки.
- *   <Suspense> на сервере означает: "отправь то, что готово сейчас,
- *   и допиши остальное, когда резолвится async компонент".
+ * АРХИТЕКТУРА (итоговая):
+ *   Быстро (<50ms): getAllEpics() → stats, header subtitle
+ *   Медленно (Suspense): getAllEpicsWithTasks() → store + epics grid + workload
  */
 
 import { Suspense } from "react";
@@ -38,36 +31,73 @@ import { getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
 import { Header } from "@/widgets/header/Header";
-import { EpicCard } from "@/widgets/epic-card/EpicCard";
 import { RoleBadge } from "@/features/role-badge/RoleBadge";
 import { StoreHydrator } from "@/shared/store/StoreHydrator";
 import { DashboardClientWidgets } from "./DashboardClientWidgets";
 import Link from "next/link";
 import { EpicInteractionLayer } from "./EpicInteractionLayer";
+import type { EpicSummary } from "@/shared/types";
 
 // ─── Async компонент для тяжёлых виджетов ────────────────────────────────────
-// Вынесен отдельно — обёрнут в <Suspense> в основном компоненте.
-// getAllEpicsWithTasks() не блокирует рендер страницы.
+// getAllEpicsWithTasks() включает все данные из getAllEpics() — дублирование убрано.
 async function HeavyWidgets() {
   const epicsWithTasks = await getAllEpicsWithTasks();
+
+  // Вычисляем EpicSummary из EpicWithTasks — без лишнего SQL-запроса
+  const epicSummaries: EpicSummary[] = epicsWithTasks.map((e) => ({
+    id:          e.id,
+    title:       e.title,
+    description: e.description,
+    color:       e.color,
+    startDate:   e.startDate,
+    endDate:     e.endDate,
+    createdAt:   e.createdAt,
+    updatedAt:   e.updatedAt,
+    taskCount:   e.progress.total,
+    doneCount:   e.progress.done,
+  }));
 
   return (
     <>
       <StoreHydrator epics={epicsWithTasks} />
-      {/*
-       * DashboardClientWidgets — Client Component с lazy-loaded виджетами.
-       * dynamic(ssr:false) нельзя использовать в Server Components (Next.js 16),
-       * поэтому WorkloadBalancer и InfiniteTimeline вынесены в отдельный клиентский модуль.
-       */}
+
+      {/* ── Эпики (рендерятся после загрузки задач) ── */}
+      <section>
+        <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">
+          Эпики
+        </h2>
+        <EpicInteractionLayer epics={epicSummaries} />
+      </section>
+
+      {/* ── Тяжёлые виджеты ── */}
       <DashboardClientWidgets />
     </>
   );
 }
 
-// ─── Скелетон для тяжёлых виджетов ───────────────────────────────────────────
+// ─── Скелетон ─────────────────────────────────────────────────────────────────
 function HeavyWidgetsSkeleton() {
   return (
     <>
+      {/* Epics grid skeleton */}
+      <section>
+        <div className="h-3 w-12 rounded mb-3 animate-pulse" style={{ background: "var(--glass-02)" }} />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => (
+            <div
+              key={i}
+              className="rounded-2xl overflow-hidden animate-pulse"
+              style={{
+                background: "var(--bg-elevated)",
+                border: "1px solid var(--glass-border)",
+                borderLeft: "3px solid var(--glass-03)",
+                height: 140,
+              }}
+            />
+          ))}
+        </div>
+      </section>
+
       {/* Workload skeleton */}
       <section>
         <div className="h-3 w-24 rounded mb-3 animate-pulse" style={{ background: "var(--glass-02)" }} />
@@ -93,9 +123,12 @@ function HeavyWidgetsSkeleton() {
 export default async function DashboardPage() {
   /*
    * БЫСТРЫЕ запросы — рендерим немедленно:
-   *   getAllEpics()  → 1 SQL (LEFT JOIN + GROUP BY)
+   *   getAllEpics()  → 1 SQL (только суммарные данные для stats/header)
    *   getAllUsers()  → 1 SQL
-   *   Итого: ~2 запроса параллельно, ожидаемое время < 30 мс на SQLite.
+   *   Итого: 2 запроса параллельно, ~15–30 мс на SQLite.
+   *
+   * Эпики для EpicInteractionLayer теперь приходят из HeavyWidgets
+   * чтобы избежать дублирования getAllEpics() + getAllEpicsWithTasks().
    */
   const [epics, users] = await Promise.all([
     getAllEpics(),
@@ -156,15 +189,6 @@ export default async function DashboardPage() {
           ))}
         </div>
 
-        {/* ── Эпики (рендерятся мгновенно) ──────────────────────────── */}
-        <section>
-          <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">
-            Эпики
-          </h2>
-          {/* We pass the server data into the client layer */}
-          <EpicInteractionLayer epics={epics} />
-        </section>
-
         {/* ── Команда (рендерится мгновенно) ────────────────────────── */}
         <section>
           <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">
@@ -189,7 +213,7 @@ export default async function DashboardPage() {
                 >
                   {user.initials}
                 </div>
-                <span className="text-sm font-medium text-[var(--text-primary)] flex-1">
+                <span className="text-sm font-medium text-(--text-primary) flex-1">
                   {user.name}
                 </span>
                 <RoleBadge roleMeta={user.roleMeta} size="sm" />
@@ -199,15 +223,15 @@ export default async function DashboardPage() {
         </section>
 
         {/*
-         * ── Тяжёлые виджеты (стримятся отдельно) ──────────────────────
+         * ── Тяжёлые виджеты + Эпики (стримятся вместе) ────────────────
          *
-         * <Suspense> здесь критичен:
-         *   - HeavyWidgets вызывает getAllEpicsWithTasks() (3 SQL)
-         *   - Пока он резолвится, браузер уже показывает весь контент выше
-         *   - Skeleton предотвращает layout shift при появлении виджетов
+         * FIX: EpicInteractionLayer перемещён внутрь HeavyWidgets.
+         * Теперь данные для grid эпиков вычисляются из getAllEpicsWithTasks()
+         * как EpicSummary маппинг — без отдельного SQL-запроса.
          *
-         * БЕЗ Suspense: вся страница ждёт 3 SQL-запроса (~500–1500 мс)
-         * С   Suspense: страница приходит за ~50–100 мс, виджеты — позже
+         * Порядок рендера:
+         *   1. Stats + Team → мгновенно (~30 мс)
+         *   2. Epics grid + Workload + Timeline → как только getAllEpicsWithTasks() завершится
          */}
         <Suspense fallback={<HeavyWidgetsSkeleton />}>
           <HeavyWidgets />

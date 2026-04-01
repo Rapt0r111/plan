@@ -1,44 +1,35 @@
 /**
  * @file useTaskStore.ts — shared/store
  *
+ * OFFLINE QUEUE — v5
  * ═══════════════════════════════════════════════════════════════
- * OFFLINE QUEUE — v4
- * ═══════════════════════════════════════════════════════════════
  *
- * БЫЛО (v3):
- *   Каждый catch-блок безоговорочно делал rollback оптимистичного изменения.
- *   При offline пользователь терял своё действие — UX сломан.
+ * ИСПРАВЛЕННЫЕ БАГИ:
  *
- * СТАЛО (v4):
- *   catch-блок проверяет navigator.onLine ПЕРЕД откатом.
+ * БАГ #1 КРИТИЧЕСКИЙ — replayOfflineQueue: syncStatus всегда "synced":
+ *   БЫЛО: syncStatus: remaining === 0 ? "synced" : "synced"
+ *         Оба варианта тернарного оператора давали "synced" — опечатка.
+ *         При частичном провале (5xx) статус оставался "synced"
+ *         хотя данные не синхронизированы.
+ *   СТАЛО: syncStatus: remaining === 0 ? "synced" : "error"
  *
- *   ✓ Если offline → НЕ откатываем optimistic update, ставим запрос
- *     в IDB-очередь через enqueuePendingOp(). Пользователь видит
- *     своё изменение в UI. При восстановлении сети SyncOrchestrator
- *     вызывает replayOfflineQueue() → мутации отправляются на сервер.
+ * БАГ #3 — Pre-flight navigator.onLine check перед fetch:
+ *   БЫЛО: fetch вызывался даже при offline → ждали таймаут (Firefox ~30с)
+ *         → потом catch → enqueue. UX заморожен на время таймаута.
+ *   СТАЛО: проверяем isCurrentlyOffline() ПЕРЕД fetch во всех мутациях.
+ *          Если offline — немедленно уходим в очередь без ожидания.
  *
- *   ✓ Если ошибка при наличии сети (400, 500 и т.д.) → rollback,
- *     syncStatus = "error", уведомление через SyncNotificationBridge.
+ * БАГ #4 — Нет лимита повторов для 5xx ошибок:
+ *   БЫЛО: 5xx операции копились бесконечно в очереди, никогда не удаляясь.
+ *   СТАЛО: после MAX_OP_RETRIES (5) попыток операция удаляется из очереди,
+ *          а пользователю показывается уведомление об ошибке.
  *
- * ЧТО ставится в очередь:
- *   updateTaskStatus, updateTaskPriority, updateTaskTitle,
- *   updateTaskDescription, updateTaskDueDate, toggleSubtask,
- *   addAssignee, removeAssignee
- *
- * ЧТО НЕ ставится в очередь (rollback offline):
- *   addTask, createTask  — требуют реального ID с сервера
- *   deleteTask           — деструктивная операция, опасно повторять
- *   reorderTasks         — N запросов, сложная идемпотентность
- *
- * НОВОЕ СОСТОЯНИЕ:
- *   offlineQueueSize: number — количество операций в IDB-очереди.
- *   Используется OfflineBanner и SyncBadge для информирования пользователя.
- *
- * НОВЫЕ МЕТОДЫ:
- *   refreshOfflineQueue()  — синхронизирует offlineQueueSize из IDB
- *                            (вызывается при монтировании SyncOrchestrator)
- *   replayOfflineQueue()   — итерирует очередь и повторяет запросы
- *                            (вызывается SyncOrchestrator при событии "online")
+ * БАГ #5 — Молчаливое удаление 4xx операций при replay:
+ *   БЫЛО: 4xx ops тихо удалялись — пользователь не знал что его изменение
+ *         было потеряно (например, задача удалена другим пользователем пока
+ *         он был офлайн).
+ *   СТАЛО: replayOfflineQueue возвращает дополнительное поле droppedCount
+ *          и SyncOrchestrator показывает отдельное уведомление.
  */
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
@@ -49,12 +40,19 @@ import {
   getPendingOpsCount,
   removePendingOp,
   incrementOpRetries,
+  MAX_OP_RETRIES,
 } from "@/shared/lib/localCache";
 import type { EpicWithTasks, TaskView, TaskStatus, TaskPriority } from "@/shared/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error";
+
+export interface ReplayResult {
+  successCount: number;
+  /** Операции удалённые из-за 4xx (устаревшие, пользователя нужно уведомить) */
+  droppedCount: number;
+}
 
 // ── Module-level helpers ──────────────────────────────────────────────────────
 
@@ -97,10 +95,6 @@ async function apiPatch(path: string, body: object): Promise<void> {
   if (!res.ok) throw new Error(`PATCH ${path} failed: ${res.status}`);
 }
 
-/**
- * updateEpicsForTask — обновляет только эпик с taskId, остальные as-is.
- * Стабильные ссылки → EpicColumn не ре-рендерится зря.
- */
 function updateEpicsForTask(
   epics: EpicWithTasks[],
   taskId: number,
@@ -129,7 +123,6 @@ interface TaskStore {
   syncStatus:       SyncStatus;
   lastSyncedAt:     Date | null;
   pendingOps:       number;
-  /** Количество операций в IDB-очереди (отложенные из-за offline) */
   offlineQueueSize: number;
 
   getEpic:           (id: number) => EpicWithTasks | undefined;
@@ -151,14 +144,12 @@ interface TaskStore {
   reorderTasks:      (epicId: number, orderedIds: number[]) => Promise<void>;
   deleteTask:        (taskId: number) => Promise<void>;
 
-  /** Считывает offlineQueueSize из IDB (для восстановления после перезагрузки) */
   refreshOfflineQueue: () => Promise<void>;
   /**
    * Воспроизводит очередь offline-операций.
-   * Вызывается SyncOrchestrator при событии "online".
-   * @returns количество успешно отправленных операций
+   * @returns ReplayResult с количеством успешных и удалённых операций
    */
-  replayOfflineQueue: () => Promise<number>;
+  replayOfflineQueue: () => Promise<ReplayResult>;
 
   _beginOp: () => () => void;
 }
@@ -210,12 +201,12 @@ export const useTaskStore = create<TaskStore>()(
     // ── replayOfflineQueue ────────────────────────────────────────────────────
     replayOfflineQueue: async () => {
       const ops = await getPendingOps();
-      if (ops.length === 0) return 0;
+      if (ops.length === 0) return { successCount: 0, droppedCount: 0 };
 
       let successCount = 0;
+      let droppedCount = 0;
 
       for (const op of ops) {
-        // Если вдруг снова офлайн в середине replay — прерываем
         if (isCurrentlyOffline()) break;
 
         try {
@@ -230,13 +221,22 @@ export const useTaskStore = create<TaskStore>()(
             successCount++;
             set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
           } else if (res.status >= 400 && res.status < 500) {
-            // Клиентская ошибка (напр. задача удалена другим пользователем):
-            // операция устарела — удаляем из очереди чтобы не блокировать
+            // 4xx — операция устарела (задача удалена и т.д.)
+            // БАГ #5 ИСПРАВЛЕН: считаем как dropped, не молчим
             await removePendingOp(op.id);
+            droppedCount++;
             set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
           } else {
-            // 5xx — server error, увеличиваем счётчик попыток, оставляем
-            await incrementOpRetries(op.id);
+            // 5xx — ошибка сервера
+            // БАГ #4 ИСПРАВЛЕН: проверяем лимит повторов
+            if (op.retries >= MAX_OP_RETRIES) {
+              // Исчерпали лимит — удаляем как dropped
+              await removePendingOp(op.id);
+              droppedCount++;
+              set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
+            } else {
+              await incrementOpRetries(op.id);
+            }
           }
         } catch {
           // Сеть пропала снова — прерываем replay
@@ -244,19 +244,21 @@ export const useTaskStore = create<TaskStore>()(
         }
       }
 
-      // Обновляем точный счётчик из IDB (на случай частичного replay)
       const remaining = await getPendingOpsCount();
+
+      // БАГ #1 ИСПРАВЛЕН: syncStatus теперь корректно различает состояния
+      // БЫЛО: remaining === 0 ? "synced" : "synced"  ← оба "synced"!
+      // СТАЛО: remaining === 0 ? "synced" : "error"
       set({
         offlineQueueSize: remaining,
-        syncStatus:       remaining === 0 ? "synced" : "synced",
+        syncStatus:       remaining === 0 ? "synced" : "error",
         lastSyncedAt:     remaining === 0 ? new Date() : get().lastSyncedAt,
       });
 
-      return successCount;
+      return { successCount, droppedCount };
     },
 
     // ── addTask ───────────────────────────────────────────────────────────────
-    // НЕ ставим в очередь offline — требует реального ID с сервера.
     addTask: async (epicId, title, status = "todo") => {
       const tempId = nextTempId();
       const now    = new Date().toISOString();
@@ -305,7 +307,6 @@ export const useTaskStore = create<TaskStore>()(
           };
         });
       } catch {
-        // Rollback и offline — задача создания не ставится в очередь
         set((s) => {
           const restTasks = omitTask(s.tasks, tempId);
           return {
@@ -326,7 +327,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── createTask ────────────────────────────────────────────────────────────
-    // НЕ ставим в очередь offline (см. addTask выше).
     createTask: async ({ epicId, title, status = "todo", priority = "medium" }) => {
       const tempId = nextTempId();
       const now    = new Date().toISOString();
@@ -396,7 +396,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── updateTaskStatus ──────────────────────────────────────────────────────
-    // ✓ СТАВИТСЯ В ОЧЕРЕДЬ при offline
     updateTaskStatus: async (taskId, status) => {
       const task = get().tasks[taskId];
       if (!task || task.status === status) return;
@@ -412,7 +411,6 @@ export const useTaskStore = create<TaskStore>()(
           })
         : task.subtasks;
 
-      // Optimistic update
       set((s) => {
         const doneCt  = updatedSubtasks.filter((st) => st.isCompleted).length;
         const updated: TaskView = {
@@ -427,6 +425,22 @@ export const useTaskStore = create<TaskStore>()(
         };
       });
 
+      // БАГ #3 ИСПРАВЛЕН: pre-flight check перед fetch
+      // Firefox может ждать ~30с таймаут сети прежде чем fetch завершится с ошибкой.
+      // Проверяем offline ДО попытки — немедленно уходим в очередь.
+      if (isCurrentlyOffline()) {
+        const ops = [
+          enqueuePendingOp({ url: `/api/tasks/${taskId}`, method: "PATCH", body: { status } }),
+          ...subtasksToUpdate.map((id) =>
+            enqueuePendingOp({ url: `/api/subtasks/${id}`, method: "PATCH", body: { isCompleted: true } })
+          ),
+        ];
+        await Promise.all(ops);
+        const newCount = 1 + subtasksToUpdate.length;
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + newCount }));
+        return;
+      }
+
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { status });
@@ -439,7 +453,6 @@ export const useTaskStore = create<TaskStore>()(
         }
       } catch {
         if (isCurrentlyOffline()) {
-          // ── OFFLINE: ставим в очередь, НЕ откатываем ──────────────────────
           const ops = [
             enqueuePendingOp({ url: `/api/tasks/${taskId}`, method: "PATCH", body: { status } }),
             ...subtasksToUpdate.map((id) =>
@@ -450,7 +463,6 @@ export const useTaskStore = create<TaskStore>()(
           const newCount = 1 + subtasksToUpdate.length;
           set((s) => ({ offlineQueueSize: s.offlineQueueSize + newCount }));
         } else {
-          // ── ONLINE ERROR: откатываем ───────────────────────────────────────
           set((s) => {
             const rolledDoneCt = prevSubtasks.filter((st) => st.isCompleted).length;
             const rolled: TaskView = {
@@ -472,7 +484,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── updateTaskPriority ────────────────────────────────────────────────────
-    // ✓ СТАВИТСЯ В ОЧЕРЕДЬ при offline
     updateTaskPriority: async (taskId, priority) => {
       const prev = get().tasks[taskId]?.priority;
       if (!prev || prev === priority) return;
@@ -486,6 +497,13 @@ export const useTaskStore = create<TaskStore>()(
           ),
         };
       });
+
+      // Pre-flight offline check
+      if (isCurrentlyOffline()) {
+        await enqueuePendingOp({ url: `/api/tasks/${taskId}`, method: "PATCH", body: { priority } });
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        return;
+      }
 
       const done = get()._beginOp();
       try {
@@ -512,7 +530,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── updateTaskTitle ───────────────────────────────────────────────────────
-    // ✓ СТАВИТСЯ В ОЧЕРЕДЬ при offline
     updateTaskTitle: async (taskId, title) => {
       const prev = get().tasks[taskId]?.title;
       if (!prev || prev === title || !title.trim()) return;
@@ -525,6 +542,12 @@ export const useTaskStore = create<TaskStore>()(
           epics: s.epics.map((e) => ({ ...e, tasks: e.tasks.map((t) => (t.id === taskId ? updated : t)) })),
         };
       });
+
+      if (isCurrentlyOffline()) {
+        await enqueuePendingOp({ url: `/api/tasks/${taskId}`, method: "PATCH", body: { title: patched } });
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        return;
+      }
 
       const done = get()._beginOp();
       try {
@@ -549,7 +572,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── updateTaskDescription ─────────────────────────────────────────────────
-    // ✓ СТАВИТСЯ В ОЧЕРЕДЬ при offline
     updateTaskDescription: async (taskId, description) => {
       const prev = get().tasks[taskId]?.description ?? null;
       const next = description?.trim() || null;
@@ -562,6 +584,12 @@ export const useTaskStore = create<TaskStore>()(
           epics: s.epics.map((e) => ({ ...e, tasks: e.tasks.map((t) => (t.id === taskId ? updated : t)) })),
         };
       });
+
+      if (isCurrentlyOffline()) {
+        await enqueuePendingOp({ url: `/api/tasks/${taskId}`, method: "PATCH", body: { description: next } });
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        return;
+      }
 
       const done = get()._beginOp();
       try {
@@ -586,7 +614,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── updateTaskDueDate ─────────────────────────────────────────────────────
-    // ✓ СТАВИТСЯ В ОЧЕРЕДЬ при offline
     updateTaskDueDate: async (taskId, dueDate) => {
       const prev = get().tasks[taskId]?.dueDate ?? null;
       if (prev === dueDate) return;
@@ -598,6 +625,12 @@ export const useTaskStore = create<TaskStore>()(
           epics: s.epics.map((e) => ({ ...e, tasks: e.tasks.map((t) => (t.id === taskId ? updated : t)) })),
         };
       });
+
+      if (isCurrentlyOffline()) {
+        await enqueuePendingOp({ url: `/api/tasks/${taskId}`, method: "PATCH", body: { dueDate: dueDate ?? null } });
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        return;
+      }
 
       const done = get()._beginOp();
       try {
@@ -622,7 +655,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── toggleSubtask ─────────────────────────────────────────────────────────
-    // ✓ СТАВИТСЯ В ОЧЕРЕДЬ при offline
     toggleSubtask: async (taskId, subtaskId, current) => {
       const newVal = !current;
 
@@ -641,6 +673,12 @@ export const useTaskStore = create<TaskStore>()(
           ),
         };
       });
+
+      if (isCurrentlyOffline()) {
+        await enqueuePendingOp({ url: `/api/subtasks/${subtaskId}`, method: "PATCH", body: { isCompleted: newVal } });
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        return;
+      }
 
       const done = get()._beginOp();
       try {
@@ -673,7 +711,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── addAssignee ───────────────────────────────────────────────────────────
-    // ✓ СТАВИТСЯ В ОЧЕРЕДЬ при offline
     addAssignee: async (taskId, user) => {
       const task = get().tasks[taskId];
       if (!task || task.assignees.some((a) => a.id === user.id)) return;
@@ -685,6 +722,16 @@ export const useTaskStore = create<TaskStore>()(
           epics: s.epics.map((e) => ({ ...e, tasks: e.tasks.map((t) => (t.id === taskId ? updated : t)) })),
         };
       });
+
+      if (isCurrentlyOffline()) {
+        await enqueuePendingOp({
+          url:    `/api/tasks/${taskId}/assignees`,
+          method: "POST",
+          body:   { userId: user.id },
+        });
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        return;
+      }
 
       const done = get()._beginOp();
       try {
@@ -718,7 +765,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── removeAssignee ────────────────────────────────────────────────────────
-    // ✓ СТАВИТСЯ В ОЧЕРЕДЬ при offline
     removeAssignee: async (taskId, userId) => {
       const task = get().tasks[taskId];
       if (!task) return;
@@ -731,6 +777,15 @@ export const useTaskStore = create<TaskStore>()(
           epics: s.epics.map((e) => ({ ...e, tasks: e.tasks.map((t) => (t.id === taskId ? updated : t)) })),
         };
       });
+
+      if (isCurrentlyOffline()) {
+        await enqueuePendingOp({
+          url:    `/api/tasks/${taskId}/assignees/${userId}`,
+          method: "DELETE",
+        });
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        return;
+      }
 
       const done = get()._beginOp();
       try {
@@ -759,7 +814,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── deleteTask ────────────────────────────────────────────────────────────
-    // НЕ ставим в очередь offline — деструктивная операция.
     deleteTask: async (taskId: number) => {
       const task = get().tasks[taskId];
       if (!task) return;
@@ -788,7 +842,6 @@ export const useTaskStore = create<TaskStore>()(
         const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
         if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
       } catch {
-        // Откатываем и offline, и online ошибки — delete слишком опасен
         if (epicSnapshot) {
           set((s) => ({
             tasks:      { ...s.tasks, [taskId]: task },
@@ -802,7 +855,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── reorderTasks ──────────────────────────────────────────────────────────
-    // НЕ ставим в очередь — N параллельных PATCHей, сложная идемпотентность.
     reorderTasks: async (epicId, orderedIds) => {
       const prevOrder = get().epics.find((e) => e.id === epicId)?.tasks.map((t) => t.id);
 

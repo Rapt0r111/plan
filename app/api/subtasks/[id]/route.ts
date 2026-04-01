@@ -1,18 +1,14 @@
 /**
  * @file route.ts — app/api/subtasks/[id]
  *
- * ИСПРАВЛЕНИЕ: добавлена Zod-валидация для PATCH.
- *   БЫЛО: const { isCompleted } = await req.json()
- *         isCompleted передавался в toggleSubtask() без проверки типа.
- *         Клиент мог прислать строку "true", число 1, null — всё проходило.
- *   СТАЛО: ToggleSubtaskSchema — z.boolean() гарантирует строгий boolean.
- *          Строка "true" или число 1 теперь вернут 422.
+ * РЕФАКТОРИНГ v2 — Real-time broadcast при переключении подзадачи.
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { toggleSubtask } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
+import { broadcast } from "@/shared/server/eventBus";
 
 const ToggleSubtaskSchema = z.object({
   isCompleted: z.boolean(),
@@ -42,6 +38,11 @@ export async function PATCH(
 
     await toggleSubtask(subtaskId, parsed.data.isCompleted);
     revalidateTag(EPICS_CACHE_TAG, "max");
+
+    broadcast("task:subtask:toggled", {
+      subtaskId,
+      isCompleted: parsed.data.isCompleted,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {

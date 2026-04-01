@@ -1,19 +1,19 @@
 /**
  * @file route.ts — app/api/tasks/[id]
  *
- * ИСПРАВЛЕНИЕ: добавлена Zod-валидация для PATCH.
- *   БЫЛО: body -> updateTask(Number(id), body) — без проверки.
- *         Любые поля, любые типы проходили в DAL.
- *   СТАЛО: PatchTaskSchema — whitelist полей + строгие типы.
- *          Лишние поля Zod отсекает автоматически (strip mode по умолчанию).
- *          id параметр: Number.isInteger + > 0 (защита от "abc", "-1", "1.5").
- *          Пустой patch → 422 "Nothing to update".
+ * РЕФАКТОРИНГ v2 — Real-time broadcast:
+ *   После каждой успешной мутации (PATCH/DELETE) вызываем broadcast()
+ *   чтобы все подключённые SSE-клиенты получили push-обновление.
+ *
+ *   broadcast() — fire-and-forget, не блокирует ответ клиенту.
+ *   Payload содержит минимальные данные для точечного обновления store.
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { updateTask, deleteTask } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
+import { broadcast } from "@/shared/server/eventBus";
 
 const PatchTaskSchema = z.object({
   title:       z.string().min(1).max(200).optional(),
@@ -53,6 +53,10 @@ export async function PATCH(req: Request, { params }: Params) {
     await updateTask(taskId, parsed.data);
     revalidateTag(EPICS_CACHE_TAG, "max");
 
+    // ── Real-time broadcast ────────────────────────────────────────────────
+    // Fire-and-forget: не ждём, не блокируем ответ
+    broadcast("task:updated", { taskId, patch: parsed.data });
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
@@ -70,6 +74,8 @@ export async function DELETE(_req: Request, { params }: Params) {
 
     await deleteTask(taskId);
     revalidateTag(EPICS_CACHE_TAG, "max");
+
+    broadcast("task:deleted", { taskId });
 
     return NextResponse.json({ ok: true });
   } catch (e) {

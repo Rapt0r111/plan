@@ -1,18 +1,14 @@
 /**
  * @file route.ts — app/api/tasks/[id]/assignees
  *
- * ИСПРАВЛЕНИЕ: ручная проверка заменена на Zod-схему.
- *   БЫЛО: if (!userId || typeof userId !== "number")
- *         Не ловило: NaN (typeof NaN === "number"), отрицательные числа,
- *         дробные (3.14), 0.
- *   СТАЛО: AddAssigneeSchema — z.number().int().positive()
- *          Ловит все перечисленные кейсы + гарантирует целое положительное.
+ * РЕФАКТОРИНГ v2 — Real-time broadcast при добавлении/удалении исполнителя.
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { addTaskAssignee } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
+import { broadcast } from "@/shared/server/eventBus";
 
 const AddAssigneeSchema = z.object({
   userId: z.number().int().positive(),
@@ -41,6 +37,8 @@ export async function POST(req: Request, { params }: Params) {
 
     await addTaskAssignee(taskId, parsed.data.userId);
     revalidateTag(EPICS_CACHE_TAG, "max");
+
+    broadcast("task:assignee:added", { taskId, userId: parsed.data.userId });
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (e) {

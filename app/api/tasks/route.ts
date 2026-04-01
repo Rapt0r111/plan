@@ -1,17 +1,14 @@
 /**
  * @file route.ts — app/api/tasks
  *
- * ИСПРАВЛЕНИЕ: добавлена Zod-валидация для POST.
- *   БЫЛО: body -> createTask(body) — без проверки.
- *         epicId мог быть строкой, title мог отсутствовать.
- *   СТАЛО: CreateTaskSchema — все обязательные поля проверены,
- *          defaults для status/priority/sortOrder.
+ * РЕФАКТОРИНГ v2 — Real-time broadcast после создания задачи.
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { createTask } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
+import { broadcast } from "@/shared/server/eventBus";
 
 const CreateTaskSchema = z.object({
   epicId:      z.number().int().positive(),
@@ -37,6 +34,13 @@ export async function POST(req: Request) {
 
     const { id } = await createTask(parsed.data);
     revalidateTag(EPICS_CACHE_TAG, "max");
+
+    // ── Real-time broadcast ────────────────────────────────────────────────
+    broadcast("task:created", {
+      taskId: id,
+      epicId: parsed.data.epicId,
+      title:  parsed.data.title,
+    });
 
     return NextResponse.json({ ok: true, data: { id } }, { status: 201 });
   } catch (e) {

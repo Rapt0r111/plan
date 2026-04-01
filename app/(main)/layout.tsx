@@ -1,30 +1,22 @@
-// ──────────────────────────────────────────────────────────────────────────────
-// ИЗМЕНЕНИЕ В: app/(main)/layout.tsx
-//
-// Добавить импорт:
-//
-// Добавить компонент внутри MainLayout, рядом с OfflineHydrator:
-//
-//   export default function MainLayout({ children }) {
-//     return (
-//       <div className="flex h-screen overflow-hidden">
-//         <PrefsApplicator />
-//         <OfflineHydrator />
-//         <SyncOrchestrator />   ← ДОБАВИТЬ ЗДЕСЬ
-//         <Suspense fallback={<SidebarSkeleton />}>
-//           <SidebarLoader />
-//         </Suspense>
-//         ...
-//       </div>
-//     );
-//   }
-//
-// SyncOrchestrator монтируется рядом с OfflineHydrator:
-//   - OfflineHydrator: читает epics-снапшот из IDB при пустом store
-//   - SyncOrchestrator: читает pending_ops из IDB, слушает "online"-событие
-// ──────────────────────────────────────────────────────────────────────────────
-
-// Полный layout.tsx с изменением:
+/**
+ * @file layout.tsx — app/(main)
+ *
+ * ИЗМЕНЕНИЯ v2 — Real-time:
+ *   Добавлен <RealtimeProvider /> рядом с другими "невидимыми" клиентскими
+ *   эффектами (OfflineHydrator, SyncOrchestrator, PrefsApplicator).
+ *
+ *   RealtimeProvider монтирует SSE-подписку к /api/realtime и вызывает
+ *   router.refresh() при получении push-обновления от сервера.
+ *   Это означает что все пользователи видят изменения коллег в реальном времени
+ *   без ручного обновления страницы.
+ *
+ * ПОРЯДОК МОНТИРОВАНИЯ:
+ *   PrefsApplicator      — CSS vars из localStorage (первым, до paint)
+ *   OfflineHydrator      — IndexedDB cold-start восстановление
+ *   SyncOrchestrator     — replay offline queue при online
+ *   RealtimeProvider     — SSE push-обновления от других пользователей  ← НОВОЕ
+ *   SidebarLoader        — Server Component с данными
+ */
 
 import { Suspense } from "react";
 import { Sidebar } from "@/widgets/sidebar/Sidebar";
@@ -34,7 +26,8 @@ import { OfflineHydrator } from "@/shared/store/StoreHydrator";
 import { RoleHydrator } from "@/shared/store/RoleHydrator";
 import { getAllRoles } from "@/entities/role/roleRepository";
 import { PrefsApplicator } from "@/shared/ui/PrefsApplicator";
-import { SyncOrchestrator } from "@/shared/store/SyncOrchestrator"; // ← НОВОЕ
+import { SyncOrchestrator } from "@/shared/store/SyncOrchestrator";
+import { RealtimeProvider } from "@/shared/store/RealtimeProvider"; // ← НОВОЕ
 
 async function SidebarLoader() {
   const [epics, users, roles] = await Promise.all([
@@ -86,7 +79,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     <div className="flex h-screen overflow-hidden">
       <PrefsApplicator />
       <OfflineHydrator />
-      <SyncOrchestrator /> {/* ← ДОБАВЛЕНО */}
+      <SyncOrchestrator />
+      <RealtimeProvider /> {/* ← ДОБАВЛЕНО: SSE real-time push */}
       <Suspense fallback={<SidebarSkeleton />}>
         <SidebarLoader />
       </Suspense>

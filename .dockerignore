@@ -39,7 +39,6 @@ test-results/
 # Docker files themselves (not needed in build context)
 Dockerfile*
 docker-compose*.yml
-docker-entrypoint.sh
 .dockerignore
 
 # OS artifacts

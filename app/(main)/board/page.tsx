@@ -26,7 +26,7 @@ export default async function BoardRoute() {
         title="Доска"
         subtitle={`${epics.length} эпиков · ${epics.reduce((s, e) => s + e.tasks.length, 0)} задач`}
         actions={
-          <span className="text-xs text-(--text-muted) font-mono px-2 py-1 rounded-lg bg-[var(--glass-02)] border border-[var(--glass-border)]">
+          <span className="text-xs text-(--text-muted) font-mono px-2 py-1 rounded-lg bg-(--glass-02) border border-(--glass-border)">
             Spatial Canvas
           </span>
         }

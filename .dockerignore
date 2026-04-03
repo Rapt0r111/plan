@@ -40,6 +40,7 @@ test-results/
 Dockerfile*
 docker-compose*.yml
 .dockerignore
+Caddyfile
 
 # OS artifacts
 .DS_Store

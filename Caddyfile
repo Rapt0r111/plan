@@ -1,0 +1,7 @@
+taskflow.local {
+  # Use Caddy's local CA so HTTPS works without public certificates
+  tls internal
+
+  reverse_proxy taskflow:3000
+}
+

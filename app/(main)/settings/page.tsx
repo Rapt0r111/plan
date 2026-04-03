@@ -9,6 +9,8 @@ import { getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { Header } from "@/widgets/header/Header";
 import { SettingsTabs } from "./SettingsTabs";
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   const [roles, users, epics] = await Promise.all([
     getAllRoles(),

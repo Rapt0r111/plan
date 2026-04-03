@@ -180,10 +180,8 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
 // ── Collapsed summary pills ────────────────────────────────────────────────────
 function CollapsedSummary({
   byStatus,
-  color,
 }: {
   byStatus: Record<TaskStatus, TaskView[]>;
-  color: string;
 }) {
   const entries = STATUS_ORDER
     .map((s) => ({ status: s, count: byStatus[s].length, meta: STATUS_META[s] }))
@@ -295,7 +293,7 @@ export function EpicColumn({
 
         {/* ── HEADER ──────────────────────────────────────────────── */}
         <div
-          className="relative px-4 py-4 flex-shrink-0"
+          className="relative px-4 py-4 shrink-0"
           style={{ borderBottom: collapsed ? "none" : `1px solid ${epic.color}15` }}
         >
           {/* Gloss overlay */}
@@ -421,7 +419,7 @@ export function EpicColumn({
         {/* ── COLLAPSED SUMMARY ──────────────────────────────────── */}
         <AnimatePresence>
           {collapsed && (
-            <CollapsedSummary byStatus={byStatus} color={epic.color} />
+            <CollapsedSummary byStatus={byStatus} />
           )}
         </AnimatePresence>
 

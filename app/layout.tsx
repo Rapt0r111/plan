@@ -1,6 +1,10 @@
 /**
  * @file layout.tsx — app (root)
  *
+ * ШАГ 2 — PWA:
+ *   Добавлены мета-теги и ссылка на manifest.json для PWA.
+ *   Добавлены apple-touch-icon и mobile-web-app-capable для iOS.
+ *
  * LIGHT THEME v4:
  *  - Убран className="dark" с <html> — управляется скриптом + ThemeProvider
  *  - Инлайн-скрипт в <head> устраняет FOUC (flash of unstyled content)
@@ -8,20 +12,8 @@
  *
  * HYDRATION FIX:
  *  suppressHydrationWarning добавлен к <html>.
- *  Причина: инлайн-скрипт устанавливает className="light"|"dark" ДО React,
- *  поэтому сервер рендерит <html lang="ru"> (без класса), а клиент видит
- *  класс выставленный скриптом. React пытается "починить" расхождение и
- *  удаляет класс — тема перестаёт работать.
- *  suppressHydrationWarning говорит React: «не трогай атрибуты этого элемента».
- *
- * ПОРЯДОК МОНТИРОВАНИЯ ГЛОБАЛЬНЫХ СЛОЁВ (z-index):
- *  OfflineBanner          (z-9999) — сетевой статус (самый верхний)
- *  CommandPalette         (z-50)   — поиск и навигация
- *  DynamicIsland          (z-9998) — нотификации
- *  SyncNotificationBridge (нет DOM) — Zustand → нотификации bridge
- *  ZenMode                (z-9999) — полноэкранный фокус-режим
  */
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { GlobalClientComponents } from "./GlobalClientComponents";
 import { ThemeProvider } from "@/shared/ui/ThemeProvider";
 import { OfflineBanner } from "@/shared/ui/OfflineBanner";
@@ -30,12 +22,31 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "TaskFlow",
   description: "Premium intranet task management — 2026",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "TaskFlow",
+  },
+  icons: {
+    apple: "/icons/icon-192.png",
+    icon: "/icons/icon-192.png",
+  },
+};
+
+// viewport вынесен в отдельный экспорт — требование Next.js 14+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)",  color: "#06070d" },
+    { media: "(prefers-color-scheme: light)", color: "#ece8e0" },
+  ],
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-
   return (
-    <html lang="ru" suppressHydrationWarning >
+    <html lang="ru" suppressHydrationWarning>
       <head suppressHydrationWarning>
         {/* Anti-FOUC: тема применяется до первого paint */}
         <script
@@ -53,8 +64,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
 
           {/* ── Global UI Layer ─────────────────────────────────── */}
-          {/* CommandPalette, DynamicIsland, SyncNotificationBridge, ZenMode */}
-          {/* Вынесены в Client Component — dynamic(ssr:false) нельзя в Server */}
           <GlobalClientComponents />
         </ThemeProvider>
       </body>

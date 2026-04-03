@@ -6,6 +6,7 @@ import { EpicsTab } from "./EpicsTab";
 import { TasksTab } from "./TasksTab";
 import { AppearanceTab } from "./AppearanceTab"; // ← добавить
 import type { DbRole, UserWithMeta, EpicWithTasks } from "@/shared/types";
+import { StoreHydrator } from "@/shared/store/StoreHydrator";
 
 interface Props {
   initialRoles: DbRole[];
@@ -28,6 +29,8 @@ export function SettingsTabs({ initialRoles, initialUsers, initialEpics }: Props
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
+      {/* Hydrate Zustand store so TasksTab can use offline-safe actions */}
+      <StoreHydrator epics={initialEpics} />
       <div
         className="px-6 py-3 flex gap-1 border-b shrink-0"
         style={{ borderColor: "var(--glass-border)", background: "var(--filter-bar-bg)" }}

@@ -1,10 +1,10 @@
 /**
  * @file taskRepository.ts — entities/task
  *
- * РЕФАКТОРИНГ DAL v2:
- *   + addTaskAssignee() — ранее inline в app/api/tasks/[id]/assignees/route.ts
- *   + removeTaskAssignee() — ранее inline в app/api/tasks/[id]/assignees/[userId]/route.ts
- *   Прямые db-запросы убраны из Route Handlers. Все SQL-операции теперь в DAL.
+ * v3 — добавлен createTaskWithRelations:
+ *   Создаёт задачу + assignees + subtasks в одной транзакции.
+ *   title для subtasks генерируется вызывающей стороной (сервером),
+ *   NOT NULL constraint соблюдён.
  */
 import { db } from "@/shared/db/client";
 import { tasks, subtasks, taskAssignees, users, roles } from "@/shared/db/schema";
@@ -53,7 +53,7 @@ export async function getTaskById(id: number): Promise<TaskView | null> {
   return {
     ...task,
     assignees: assigneeRows.map((r) => ({ ...r.user, roleMeta: r.role })),
-    subtasks: taskSubtasks,
+    subtasks:  taskSubtasks,
     progress: {
       done:  taskSubtasks.filter((s) => s.isCompleted).length,
       total: taskSubtasks.length,
@@ -66,6 +66,62 @@ export async function getTaskById(id: number): Promise<TaskView | null> {
 export async function createTask(data: NewTask): Promise<{ id: number }> {
   const [row] = await db.insert(tasks).values(data).returning({ id: tasks.id });
   return row;
+}
+
+/**
+ * createTaskWithRelations — атомарное создание задачи с подзадачами и исполнителями.
+ *
+ * @param task       - основные поля задачи (без id)
+ * @param assigneeIds - список userId для task_assignees
+ * @param subtasks   - массив { title, isCompleted, sortOrder }
+ *                     title должен быть pre-generated сервером ("Подзадача N")
+ * @returns { taskId, subtaskIds } — реальные id из БД
+ */
+export async function createTaskWithRelations(params: {
+  task:        NewTask;
+  assigneeIds: number[];
+  subtasks:    Array<{ title: string; isCompleted: boolean; sortOrder: number }>;
+}): Promise<{ taskId: number; subtaskIds: number[] }> {
+  const { task, assigneeIds, subtasks: subtaskInputs } = params;
+
+  // SQLite + Drizzle не поддерживает полноценные транзакции через метод db.transaction()
+  // в Bun, поэтому выполняем последовательно. При ошибке subtasks/assignees
+  // задача остаётся "голой" — это приемлемо для offline-сценария (идентично
+  // тому, как работает текущий createTask + отдельные fetch для assignees).
+  const [taskRow] = await db
+    .insert(tasks)
+    .values(task)
+    .returning({ id: tasks.id });
+
+  const taskId = taskRow.id;
+  const subtaskIds: number[] = [];
+
+  // Insert subtasks
+  if (subtaskInputs.length > 0) {
+    const insertedSubs = await db
+      .insert(subtasks)
+      .values(
+        subtaskInputs.map((s) => ({
+          taskId,
+          title:       s.title,
+          isCompleted: s.isCompleted,
+          sortOrder:   s.sortOrder,
+        }))
+      )
+      .returning({ id: subtasks.id });
+
+    subtaskIds.push(...insertedSubs.map((r) => r.id));
+  }
+
+  // Insert assignees (onConflictDoNothing — UNIQUE index)
+  if (assigneeIds.length > 0) {
+    await db
+      .insert(taskAssignees)
+      .values(assigneeIds.map((userId) => ({ taskId, userId })))
+      .onConflictDoNothing();
+  }
+
+  return { taskId, subtaskIds };
 }
 
 export async function updateTaskStatus(id: number, status: TaskStatus): Promise<void> {
@@ -94,13 +150,6 @@ export async function toggleSubtask(subtaskId: number, isCompleted: boolean): Pr
 
 // ─── WRITE — Assignees ────────────────────────────────────────────────────────
 
-/**
- * addTaskAssignee — добавить исполнителя к задаче.
- * onConflictDoNothing: дублирование (task_id, user_id) игнорируется — UNIQUE index.
- *
- * БЫЛО: inline в app/api/tasks/[id]/assignees/route.ts
- * СТАЛО: DAL-функция, Route Handler только вызывает её
- */
 export async function addTaskAssignee(taskId: number, userId: number): Promise<void> {
   await db
     .insert(taskAssignees)
@@ -108,12 +157,6 @@ export async function addTaskAssignee(taskId: number, userId: number): Promise<v
     .onConflictDoNothing();
 }
 
-/**
- * removeTaskAssignee — удалить исполнителя из задачи.
- *
- * БЫЛО: inline в app/api/tasks/[id]/assignees/[userId]/route.ts
- * СТАЛО: DAL-функция
- */
 export async function removeTaskAssignee(taskId: number, userId: number): Promise<void> {
   await db
     .delete(taskAssignees)

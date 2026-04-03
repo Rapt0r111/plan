@@ -95,7 +95,10 @@ try {
         },
         {
           // Все страницы приложения — NetworkFirst с offline-fallback
-          urlPattern: /^\/(?!api\/).*/i,
+          // В Workbox для навигаций надёжнее матчить request.mode + pathname,
+          // а не regex, начинающийся с "/" (он часто не совпадает с полным URL).
+          urlPattern: ({ request, url }: { request: Request; url: URL }) =>
+            request.mode === "navigate" && !url.pathname.startsWith("/api/"),
           handler: "NetworkFirst",
           options: {
             cacheName: "pages",

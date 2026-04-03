@@ -3,7 +3,8 @@ set -euo pipefail
 
 HOSTNAME="${1:-taskflow.local}"
 SERVER_IP="${2:-192.168.99.101}"
-ROOT_CRT_URL="https://${HOSTNAME}/pki/authorities/local/root.crt"
+# Rootless Podman typically requires mapping 8443:443
+ROOT_CRT_URL="https://${HOSTNAME}:8443/pki/authorities/local/root.crt"
 
 ROOT_CERT_PATH="/usr/local/share/ca-certificates/${HOSTNAME}.crt"
 

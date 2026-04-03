@@ -3,6 +3,8 @@
 TaskFlow PWA uses a service worker and it requires a **secure context**.
 For `https://taskflow.local/` with Caddy `tls internal`, each client must trust the local root CA.
 
+If you run Caddy under **rootless Podman** and expose it via `8443:443`, then open/install via `https://taskflow.local:8443/` (the scripts default to this).
+
 ### Windows
 1. Copy `scripts/install-taskflow-client.ps1` to the client machine.
 2. Run it as Administrator:
@@ -11,7 +13,7 @@ For `https://taskflow.local/` with Caddy `tls internal`, each client must trust 
 
 This script:
 - Adds `192.168.99.101 taskflow.local` to the client's `hosts` file (if missing)
-- Downloads `https://taskflow.local/pki/authorities/local/root.crt`
+- Downloads `https://taskflow.local:8443/pki/authorities/local/root.crt`
 - Imports it into Windows Trusted Root Certification Authorities
 
 ### Linux
@@ -21,10 +23,10 @@ This script:
 
 This script:
 - Adds `192.168.99.101 taskflow.local` to `/etc/hosts` (if missing)
-- Downloads the root CA
+- Downloads the root CA (from `https://taskflow.local:8443/`)
 - Installs it into `/usr/local/share/ca-certificates/` and runs `update-ca-certificates`
 
 ### After setup
-- Open `https://taskflow.local/` in the browser.
+- Open `https://taskflow.local/` in the browser (or `https://taskflow.local:8443/` if you used rootless-port mappings).
 - Confirm in DevTools → Application → Service Workers that the service worker is `activated`.
 

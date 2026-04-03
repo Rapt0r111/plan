@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",
@@ -19,6 +19,7 @@
     "db:reset": "rm -f local.db && bun run db:migrate && bun run db:seed"
   },
   "dependencies": {
+    "@ducanh2912/next-pwa": "^10.2.9",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.45.1",

@@ -1,37 +1,37 @@
 /**
  * @file next.config.ts
  *
- * ОПТИМИЗАЦИИ БАНДЛА:
+ * ШАГ 2 — PWA:
+ *   Добавлен @ducanh2912/next-pwa для offline-first.
  *
- * 1. optimizePackageImports — критично для framer-motion.
- *    Без этого Next.js импортирует ВСЮ библиотеку (~160kB gzip).
- *    С этим — только используемые экспорты (tree-shaking на уровне сборщика).
- *    Экономия: ~60–80kB gzip от framer-motion.
+ *   withPWA оборачивает конфиг и генерирует /public/sw.js при `next build`.
+ *   В dev-режиме PWA отключён (disable: process.env.NODE_ENV === "development")
+ *   чтобы не мешать HMR.
  *
- * 2. compress: true — gzip для статики (включён по умолчанию в prod,
- *    явно указываем для ясности).
+ *   КЕШИРУЕТСЯ:
+ *   - App shell: /_next/static/** (CSS, JS, fonts)
+ *   - /_next/image/** (оптимизированные изображения)
+ *   - /api/health (пинг)
+ *   - Все страницы (start_url: "/") через NetworkFirst
  *
- * 3. poweredByHeader: false — убираем лишний заголовок X-Powered-By.
+ *   INSTALL BANNER: браузер предложит «Установить приложение» после
+ *   второго посещения. После установки сайт открывается из кеша без сети.
  *
- * 4. reactStrictMode: true — в дев-режиме двойной рендер помогает
- *    поймать side-effects. В prod не влияет на производительность.
+ *   ТРЕБУЕТСЯ: bun add @ducanh2912/next-pwa
  *
- * 5. turbo.resolveExtensions — явный список расширений для Turbopack,
- *    ускоряет резолюцию модулей.
+ * ОРИГИНАЛЬНЫЕ ОПТИМИЗАЦИИ СОХРАНЕНЫ:
+ *   - optimizePackageImports: framer-motion, lucide-react, date-fns
+ *   - turbopack.resolveExtensions
+ *   - compress, poweredByHeader, reactStrictMode
  */
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
+const nextConfigBase: NextConfig = {
   reactStrictMode: true,
   compress: true,
   poweredByHeader: false,
 
   experimental: {
-    /**
-     * Tree-shaking тяжёлых библиотек.
-     * framer-motion: без оптимизации = 160kB gzip, с ней = ~40-60kB gzip
-     * (только motion, AnimatePresence, useMotionValue которые реально используются)
-     */
     optimizePackageImports: [
       "framer-motion",
       "lucide-react",
@@ -39,13 +39,83 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  /**
-   * Turbopack: явно указываем расширения для быстрой резолюции.
-   * Без этого Turbopack пробует все расширения подряд.
-   */
   turbopack: {
     resolveExtensions: [".tsx", ".ts", ".jsx", ".js", ".json"],
   },
 };
+
+// Оборачиваем в withPWA только если пакет доступен
+// (чтобы не сломать dev-окружение где пакет ещё не установлен)
+let nextConfig: NextConfig;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const withPWA = require("@ducanh2912/next-pwa").default({
+    dest: "public",
+    disable: process.env.NODE_ENV === "development",
+    register: true,
+    skipWaiting: true,
+    sw: "/sw.js",
+    // Workbox runtime caching
+    workboxOptions: {
+      // Стратегия для страниц: NetworkFirst → offline fallback из кеша
+      runtimeCaching: [
+        {
+          // App shell — статика Next.js (JS/CSS/fonts)
+          urlPattern: /^\/_next\/static\/.*/i,
+          handler: "CacheFirst",
+          options: {
+            cacheName: "next-static",
+            expiration: {
+              maxEntries: 200,
+              maxAgeSeconds: 60 * 60 * 24 * 30, // 30 дней
+            },
+          },
+        },
+        {
+          // Next.js image optimization
+          urlPattern: /^\/_next\/image\/.*/i,
+          handler: "CacheFirst",
+          options: {
+            cacheName: "next-images",
+            expiration: {
+              maxEntries: 100,
+              maxAgeSeconds: 60 * 60 * 24 * 7, // 7 дней
+            },
+          },
+        },
+        {
+          // API health check — online indicator
+          urlPattern: /^\/api\/health$/i,
+          handler: "NetworkFirst",
+          options: {
+            cacheName: "api-health",
+            networkTimeoutSeconds: 5,
+          },
+        },
+        {
+          // Все страницы приложения — NetworkFirst с offline-fallback
+          urlPattern: /^\/(?!api\/).*/i,
+          handler: "NetworkFirst",
+          options: {
+            cacheName: "pages",
+            networkTimeoutSeconds: 10,
+            expiration: {
+              maxEntries: 50,
+              maxAgeSeconds: 60 * 60 * 24, // 24 часа
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  nextConfig = withPWA(nextConfigBase);
+} catch {
+  // Fallback: если @ducanh2912/next-pwa не установлен
+  console.warn("[next.config] @ducanh2912/next-pwa не найден — PWA отключён.");
+  console.warn("[next.config] Установите: bun add @ducanh2912/next-pwa");
+  nextConfig = nextConfigBase;
+}
 
 export default nextConfig;

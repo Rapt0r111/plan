@@ -1,0 +1,38 @@
+{
+  "name": "TaskFlow",
+  "short_name": "TaskFlow",
+  "description": "Интранет управление задачами",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#06070d",
+  "theme_color": "#06070d",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "lang": "ru",
+  "shortcuts": [
+    {
+      "name": "Доска",
+      "url": "/board",
+      "description": "Открыть доску задач"
+    },
+    {
+      "name": "Обзор",
+      "url": "/dashboard",
+      "description": "Открыть дашборд"
+    }
+  ]
+}

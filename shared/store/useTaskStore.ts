@@ -1,24 +1,22 @@
 /**
  * @file useTaskStore.ts — shared/store
  *
- * v6 — офлайн: create_with_relations + rebase на 409
+ * v7 — OFFLINE FIX: subtask toggles при status=done теперь попадают в очередь
  *
- * НОВЫЕ ВОЗМОЖНОСТИ:
+ * ИСПРАВЛЕНИЕ (Шаг 1):
+ *   ПРОБЛЕМА: когда пользователь офлайн меняет task.status → "done",
+ *   subtasksToUpdate собирался корректно, но в очередь клался только
+ *   patch_task({ status: "done" }). Subtask-операции enqueue не вызывался.
+ *   При онлайн-replay сервер получал status=done, но subtasks оставались
+ *   isCompleted=false → несоответствие данных.
  *
- * 1. createTaskWithSubtasks() — создаёт задачу с подзадачами через POST create-with-relations.
- *    Офлайн: записывает queued create_with_relations с tempTaskId.
- *    Онлайн: отправляет напрямую, потом заменяет temp→real.
+ *   РЕШЕНИЕ: в обеих офлайн-ветках (isCurrentlyOffline() before beginOp
+ *   и catch-ветка) после enqueuePendingOp(patch_task) добавляем цикл
+ *   по subtasksToUpdate с legacy-операциями PATCH /api/subtasks/:id.
+ *   Порядок в очереди: сначала patch_task, потом subtask-операции —
+ *   last-write-wins для статуса задачи гарантирован.
  *
- * 2. mergeTempSubtaskChange() / mergeTempTaskChange() — «вариант A»:
- *    Мутации temp-задач (isCompleted подзадач, статус) не создают
- *    отдельных PATCH, а мержатся прямо в тело queued create_with_relations.
- *
- * 3. replayOfflineQueue — расширен для:
- *    a) replay create_with_relations → заменяет temp→real в store
- *    b) replay patch_task с rebase на 409:
- *       - 409 → GET актуальная задача → apply patch → PATCH повторно
- *
- * Все ранее исправленные баги (#1–#5) сохранены.
+ * Все ранее исправленные баги (#1–#6) сохранены.
  */
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
@@ -111,11 +109,11 @@ function updateEpicsForTask(
   });
 }
 
-/** Строит temp-подзадачи из черновиков (title не нужен для UI) */
+/** Строит temp-подзадачи из черновиков */
 function buildTempSubtasks(drafts: SubtaskDraft[]): SubtaskView[] {
   return drafts.map((d, i) => ({
     id:          nextTempId(),
-    taskId:      0, // будет заменён после синка
+    taskId:      0,
     title:       `Подзадача ${i + 1}`,
     isCompleted: d.isCompleted,
     sortOrder:   d.sortOrder ?? i,
@@ -143,10 +141,6 @@ interface TaskStore {
   // ── Core mutations ──────────────────────────────────────────────────────
   addTask:              (epicId: number, title: string, status?: TaskStatus) => Promise<void>;
   createTask:           (params: { epicId: number; title: string; status?: TaskStatus; priority?: TaskPriority }) => Promise<TaskView | null>;
-  /**
-   * createTaskWithSubtasks — новый метод v6.
-   * Поддерживает create-with-relations и офлайн-очередь.
-   */
   createTaskWithSubtasks: (params: CreateWithSubtasksParams) => Promise<TaskView | null>;
   updateTaskStatus:     (taskId: number, status: TaskStatus) => Promise<void>;
   updateTaskPriority:   (taskId: number, priority: TaskPriority) => Promise<void>;
@@ -217,7 +211,6 @@ export const useTaskStore = create<TaskStore>()(
       let successCount = 0;
       let droppedCount = 0;
 
-      // Карта tempId → realId для подмены зависимых операций
       const tempToReal = new Map<number, number>();
 
       for (const op of ops) {
@@ -249,12 +242,10 @@ export const useTaskStore = create<TaskStore>()(
 
               tempToReal.set(op.tempTaskId, realId);
 
-              // Заменяем temp→real в store
               set((s) => {
                 const tempTask = s.tasks[op.tempTaskId];
                 if (!tempTask) return s;
 
-                // Строим real subtasks (обновляем id)
                 const realSubtasks: SubtaskView[] = tempTask.subtasks.map((st, i) => ({
                   ...st,
                   id:     subtaskIds[i] ?? st.id,
@@ -313,7 +304,6 @@ export const useTaskStore = create<TaskStore>()(
             const patch = { ...op.patch };
             let expectedUpdatedAt = op.expectedUpdatedAt;
 
-            // Подмена tempId→realId в url если успела синхронизироваться
             const tempMatch = url.match(/\/api\/tasks\/(-\d+)/);
             if (tempMatch) {
               const tempId = Number(tempMatch[1]);
@@ -321,7 +311,6 @@ export const useTaskStore = create<TaskStore>()(
               if (realId) {
                 url = url.replace(`/api/tasks/${tempId}`, `/api/tasks/${realId}`);
               } else {
-                // Задача ещё не синхронизирована — пропускаем патч
                 continue;
               }
             }
@@ -333,8 +322,6 @@ export const useTaskStore = create<TaskStore>()(
               successCount++;
               set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
             } else if (res.status === 409) {
-              // ── REBASE ────────────────────────────────────────────────────
-              // 1. Получаем актуальную версию задачи
               const taskIdMatch = url.match(/\/api\/tasks\/(\d+)/);
               if (!taskIdMatch) { await removePendingOp(op.id); droppedCount++; continue; }
               const taskId = Number(taskIdMatch[1]);
@@ -345,14 +332,11 @@ export const useTaskStore = create<TaskStore>()(
               const currentData = await currentRes.json();
               const currentTask: TaskView = currentData.data;
 
-              // 2. Применяем нашу intended patch поверх актуальной задачи
-              //    (принимаем свои изменения — "мой патч побеждает")
               expectedUpdatedAt = currentTask.updatedAt;
 
               const rebaseRes = await apiPatch(url, { ...patch, expectedUpdatedAt });
 
               if (rebaseRes.ok) {
-                // Обновляем store актуальными данными + нашим патчем
                 const mergedTask = { ...currentTask, ...patch };
                 set((s) => ({
                   tasks: { ...s.tasks, [taskId]: mergedTask as TaskView },
@@ -365,7 +349,6 @@ export const useTaskStore = create<TaskStore>()(
                 successCount++;
                 set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
               } else {
-                // Rebase тоже провалился — дропаем операцию
                 await removePendingOp(op.id);
                 droppedCount++;
                 set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
@@ -388,7 +371,6 @@ export const useTaskStore = create<TaskStore>()(
 
           // ── legacy op (subtask toggle, assignee) ──────────────────────────
           if (!op.kind) {
-            // Подмена tempId→realId в url
             let url = op.url;
             const tempMatch = url.match(/\/api\/tasks\/(-\d+)/);
             if (tempMatch) {
@@ -423,7 +405,7 @@ export const useTaskStore = create<TaskStore>()(
             }
           }
         } catch {
-          break; // Сеть пропала снова
+          break;
         }
       }
 
@@ -460,7 +442,6 @@ export const useTaskStore = create<TaskStore>()(
         },
       };
 
-      // Оптимистично добавляем в store
       set((s) => ({
         tasks: { ...s.tasks, [tempId]: tempTask },
         epics: s.epics.map((e) =>
@@ -472,7 +453,6 @@ export const useTaskStore = create<TaskStore>()(
         ),
       }));
 
-      // ── OFFLINE ────────────────────────────────────────────────────────────
       if (isCurrentlyOffline()) {
         const queuedCreate: Omit<PendingOp & { kind: "create_with_relations" }, "id" | "createdAt" | "retries"> = {
           kind:        "create_with_relations",
@@ -487,7 +467,6 @@ export const useTaskStore = create<TaskStore>()(
         return tempTask;
       }
 
-      // ── ONLINE ─────────────────────────────────────────────────────────────
       const done = get()._beginOp();
       try {
         const res  = await fetch("/api/tasks", {
@@ -506,7 +485,6 @@ export const useTaskStore = create<TaskStore>()(
         const realId:    number   = data.data.id;
         const subtaskIds: number[] = data.data.subtaskIds ?? [];
 
-        // Строим real subtasks с серверными id
         const realSubs: SubtaskView[] = tempSubs.map((st, i) => ({
           ...st,
           id:     subtaskIds[i] ?? st.id,
@@ -538,7 +516,6 @@ export const useTaskStore = create<TaskStore>()(
 
         return realTask;
       } catch {
-        // Откат temp-задачи
         set((s) => {
           const restTasks = omitTask(s.tasks, tempId);
           return {
@@ -734,15 +711,40 @@ export const useTaskStore = create<TaskStore>()(
             op.kind === "create_with_relations" && op.tempTaskId === taskId
         );
         if (createOp) {
-          await updatePendingOp({ ...createOp, status });
+          // В merge-ветке важно обновить ещё и состояния подзадач.
+          // Иначе UI может показать done для подзадач, но на сервер уйдут старые values из queued create.
+          const mergedSubtasks: SubtaskDraft[] = updatedSubtasks.map((st) => ({
+            isCompleted: st.isCompleted,
+            sortOrder:   st.sortOrder,
+          }));
+          await updatePendingOp({ ...createOp, status, subtasks: mergedSubtasks });
         }
         return;
       }
 
+      // ── ИСПРАВЛЕНИЕ (Шаг 1): офлайн-ветка ─────────────────────────────────
+      // БЫЛО: enqueue только patch_task
+      // СТАЛО: enqueue patch_task + subtask-операции для всех subtasksToUpdate
       if (isCurrentlyOffline()) {
-        const patchOp = { kind: "patch_task" as const, url: `/api/tasks/${taskId}`, patch: { status }, expectedUpdatedAt: task.updatedAt };
-        await enqueuePendingOp(patchOp);
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        // 1. Статус задачи
+        await enqueuePendingOp({
+          kind:               "patch_task",
+          url:                `/api/tasks/${taskId}`,
+          patch:              { status },
+          expectedUpdatedAt:  task.updatedAt,
+        });
+        // 2. isCompleted=true для каждой подзадачи которую нужно закрыть
+        for (const subtaskId of subtasksToUpdate) {
+          await enqueuePendingOp({
+            kind:    undefined,
+            url:     `/api/subtasks/${subtaskId}`,
+            method:  "PATCH",
+            body:    { isCompleted: true },
+          });
+        }
+        set((s) => ({
+          offlineQueueSize: s.offlineQueueSize + 1 + subtasksToUpdate.length,
+        }));
         return;
       }
 
@@ -756,14 +758,26 @@ export const useTaskStore = create<TaskStore>()(
           );
         }
       } catch {
+        // ── ИСПРАВЛЕНИЕ (Шаг 1): catch-ветка ──────────────────────────────
+        // Та же логика: если сеть пропала, оба типа операций идут в очередь
         if (isCurrentlyOffline()) {
           await enqueuePendingOp({
-            kind: "patch_task" as const,
-            url: `/api/tasks/${taskId}`,
-            patch: { status },
-            expectedUpdatedAt: task.updatedAt,
+            kind:               "patch_task",
+            url:                `/api/tasks/${taskId}`,
+            patch:              { status },
+            expectedUpdatedAt:  task.updatedAt,
           });
-          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+          for (const subtaskId of subtasksToUpdate) {
+            await enqueuePendingOp({
+              kind:   undefined,
+              url:    `/api/subtasks/${subtaskId}`,
+              method: "PATCH",
+              body:   { isCompleted: true },
+            });
+          }
+          set((s) => ({
+            offlineQueueSize: s.offlineQueueSize + 1 + subtasksToUpdate.length,
+          }));
         } else {
           set((s) => {
             const rolled: TaskView = {
@@ -798,7 +812,6 @@ export const useTaskStore = create<TaskStore>()(
         };
       });
 
-      // Temp-задача: мержим в queued create
       if (taskId < 0) {
         const ops = await getPendingOps();
         const createOp = ops.find(
@@ -806,7 +819,6 @@ export const useTaskStore = create<TaskStore>()(
             op.kind === "create_with_relations" && op.tempTaskId === taskId
         );
         if (createOp) {
-          // Находим индекс subtask по tempId и обновляем isCompleted
           const task = get().tasks[taskId];
           const subtaskIndex = task?.subtasks.findIndex((s) => s.id === subtaskId) ?? -1;
           if (subtaskIndex >= 0 && createOp.subtasks[subtaskIndex] !== undefined) {

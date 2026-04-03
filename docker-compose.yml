@@ -57,9 +57,33 @@ services:
         max-size: "50m"
         max-file: "5"
 
+  caddy:
+    image: caddy:2
+    container_name: taskflow_caddy
+    restart: unless-stopped
+    depends_on:
+      - taskflow
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - taskflow_net
+
 volumes:
   taskflow_data:
     name: taskflow_data
+    driver: local
+
+  caddy_data:
+    name: caddy_data
+    driver: local
+
+  caddy_config:
+    name: caddy_config
     driver: local
 
 networks:

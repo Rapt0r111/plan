@@ -4,9 +4,9 @@
 # ═══════════════════════════════════════════════════════════════
 
 # ── Stage 1: Dependencies ─────────────────────────────────────
-# Use fully-qualified image name for Bun so Podman/Rootless Docker
-# can resolve it without additional registries.conf tweaks.
-FROM docker.io/oven/bun:1.1-alpine AS deps
+# Use a recent Bun image that understands lockfileVersion=1
+# and fully-qualified name so Podman can resolve it.
+FROM docker.io/oven/bun:1.3.11-alpine AS deps
 
 LABEL stage="deps"
 
@@ -20,7 +20,7 @@ RUN bun install --frozen-lockfile
 
 
 # ── Stage 2: Builder ──────────────────────────────────────────
-FROM docker.io/oven/bun:1.1-alpine AS builder
+FROM docker.io/oven/bun:1.3.11-alpine AS builder
 
 LABEL stage="builder"
 
@@ -45,7 +45,7 @@ RUN bun --bun run build
 
 
 # ── Stage 3: Production runner ────────────────────────────────
-FROM docker.io/oven/bun:1.1-alpine AS runner
+FROM docker.io/oven/bun:1.3.11-alpine AS runner
 
 LABEL maintainer="TaskFlow" \
       version="2.0" \

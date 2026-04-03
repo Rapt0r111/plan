@@ -1,7 +1,9 @@
 Param(
   [string]$HostName = "taskflow.local",
   [string]$ServerIP = "192.168.99.101",
-  [string]$RootCrtUrl = "https://taskflow.local/pki/authorities/local/root.crt"
+  # Rootless Podman usually forces Caddy off 443/80 => use 8443:443 mapping.
+  # If you run Caddy with real 443 on the host, pass a different -RootCrtUrl.
+  [string]$RootCrtUrl = "https://taskflow.local:8443/pki/authorities/local/root.crt"
 )
 
 function Ensure-Admin {

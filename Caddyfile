@@ -2,7 +2,7 @@ taskflow.local {
   tls internal
 
   # Отдаём root.crt Caddy как статический файл
-  handle_path /caddy-root.crt {
+  handle /caddy-root.crt {
     root * /data/caddy/pki/authorities/local
     file_server
   }

@@ -4,6 +4,7 @@ taskflow.local {
   # Отдаём root.crt Caddy как статический файл
   handle /caddy-root.crt {
     root * /data/caddy/pki/authorities/local
+    rewrite * /root.crt
     file_server
   }
 

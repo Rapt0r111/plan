@@ -67,7 +67,6 @@ services:
       # Rootless Podman часто запрещает проброс привилегированных портов 80/443.
       # Поэтому пробрасываем на хост высокие порты.
       # HTTPS будет по: https://taskflow.local:8443
-      - "8080:80"
       - "8443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

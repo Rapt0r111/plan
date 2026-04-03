@@ -83,6 +83,10 @@ COPY --from=builder --chown=taskflow:taskflow /app/tsconfig.json ./tsconfig.json
 COPY --chown=taskflow:taskflow docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
+# Ensure working directory (/app) is writable by the non-root user.
+# This is needed because the entrypoint creates `/app/local.db` symlink.
+RUN chown -R taskflow:taskflow /app
+
 # Switch to non-root user
 USER taskflow
 

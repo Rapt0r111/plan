@@ -1,22 +1,26 @@
 /**
  * @file useTaskStore.ts — shared/store
  *
- * v7 — OFFLINE FIX: subtask toggles при status=done теперь попадают в очередь
+ * v8 — OFFLINE FIX: сетевые ошибки теперь обрабатываются так же, как офлайн
  *
- * ИСПРАВЛЕНИЕ (Шаг 1):
- *   ПРОБЛЕМА: когда пользователь офлайн меняет task.status → "done",
- *   subtasksToUpdate собирался корректно, но в очередь клался только
- *   patch_task({ status: "done" }). Subtask-операции enqueue не вызывался.
- *   При онлайн-replay сервер получал status=done, но subtasks оставались
- *   isCompleted=false → несоответствие данных.
+ * ПРОБЛЕМА v7 (оба бага):
  *
- *   РЕШЕНИЕ: в обеих офлайн-ветках (isCurrentlyOffline() before beginOp
- *   и catch-ветка) после enqueuePendingOp(patch_task) добавляем цикл
- *   по subtasksToUpdate с legacy-операциями PATCH /api/subtasks/:id.
- *   Порядок в очереди: сначала patch_task, потом subtask-операции —
- *   last-write-wins для статуса задачи гарантирован.
+ *   БАГ #1 — "Пишет sync при загрузке":
+ *     _beginOp() ставит syncStatus: "syncing", пока fetch висит (до таймаута).
+ *     Если WiFi есть, но сервер недоступен — fetch висит долго, сайдбар
+ *     показывает "LOCAL: SYNCING" всё это время.
  *
- * Все ранее исправленные баги (#1–#6) сохранены.
+ *   БАГ #2 — "Не получается создать задачи":
+ *     createTask / createTaskWithSubtasks проверяли только navigator.onLine.
+ *     Если WiFi подключён (navigator.onLine = true), но сервер недоступен,
+ *     fetch() бросал TypeError — задача откатывалась и исчезала из UI.
+ *
+ * РЕШЕНИЕ:
+ *   Добавлена функция isNetworkError(err) — определяет сетевые ошибки (TypeError).
+ *   В catch-блоках createTask и createTaskWithSubtasks:
+ *     если isNetworkError(err) || isCurrentlyOffline() →
+ *       ставим задачу в очередь IndexedDB + возвращаем tempTask (не откатываем).
+ *   Это работает и при navigator.onLine=false, и при недоступном сервере.
  */
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
@@ -65,6 +69,22 @@ function nextTempId(): number {
 
 function isCurrentlyOffline(): boolean {
   return typeof navigator !== "undefined" && !navigator.onLine;
+}
+
+/**
+ * isNetworkError — определяет, является ли ошибка сетевой (сервер недоступен).
+ *
+ * fetch() бросает TypeError когда:
+ *   - Нет сетевого соединения (navigator.onLine = false)
+ *   - Сервер недоступен (WiFi есть, но хост не отвечает)
+ *   - DNS не резолвится
+ *   - Соединение сброшено
+ *
+ * Это позволяет обрабатывать "сервер недоступен" так же, как "полный офлайн",
+ * даже когда navigator.onLine = true (WiFi подключён, но сервер лежит).
+ */
+function isNetworkError(err: unknown): boolean {
+  return err instanceof TypeError;
 }
 
 function omitTask(map: Record<number, TaskView>, id: number): Record<number, TaskView> {
@@ -453,6 +473,7 @@ export const useTaskStore = create<TaskStore>()(
         ),
       }));
 
+      // Проверяем офлайн ДО fetch
       if (isCurrentlyOffline()) {
         const queuedCreate: Omit<PendingOp & { kind: "create_with_relations" }, "id" | "createdAt" | "retries"> = {
           kind:        "create_with_relations",
@@ -515,7 +536,23 @@ export const useTaskStore = create<TaskStore>()(
         });
 
         return realTask;
-      } catch {
+      } catch (err) {
+        // ИСПРАВЛЕНО v8: сетевая ошибка (сервер недоступен) = ставим в очередь.
+        // Раньше: задача откатывалась и исчезала из UI.
+        // Теперь: задача остаётся в store + ставится в IndexedDB очередь.
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind:        "create_with_relations",
+            tempTaskId:  tempId,
+            epicId, title, status, priority, description, dueDate,
+            sortOrder:   sortOrder ?? 9999,
+            assigneeIds,
+            subtasks:    subtaskDrafts,
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+          return tempTask; // Не откатываем — задача остаётся в UI
+        }
+        // Не сетевая ошибка (например, ошибка валидации от сервера) — откатываем
         set((s) => {
           const restTasks = omitTask(s.tasks, tempId);
           return {
@@ -559,6 +596,22 @@ export const useTaskStore = create<TaskStore>()(
         ),
       }));
 
+      if (isCurrentlyOffline()) {
+        await enqueuePendingOp({
+          kind: "create_with_relations",
+          tempTaskId: tempId,
+          epicId, title, status,
+          priority: "medium",
+          description: null,
+          dueDate: null,
+          sortOrder: 9999,
+          assigneeIds: [],
+          subtasks: [],
+        });
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        return;
+      }
+
       const done = get()._beginOp();
       try {
         const res  = await fetch("/api/tasks", {
@@ -584,7 +637,23 @@ export const useTaskStore = create<TaskStore>()(
             ),
           };
         });
-      } catch {
+      } catch (err) {
+        // Сетевая ошибка → очередь
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind: "create_with_relations",
+            tempTaskId: tempId,
+            epicId, title, status,
+            priority: "medium",
+            description: null,
+            dueDate: null,
+            sortOrder: 9999,
+            assigneeIds: [],
+            subtasks: [],
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+          return;
+        }
         set((s) => {
           const restTasks = omitTask(s.tasks, tempId);
           return {
@@ -626,6 +695,22 @@ export const useTaskStore = create<TaskStore>()(
         ),
       }));
 
+      // Проверяем офлайн ДО fetch
+      if (isCurrentlyOffline()) {
+        await enqueuePendingOp({
+          kind: "create_with_relations",
+          tempTaskId: tempId,
+          epicId, title, status, priority,
+          description: null,
+          dueDate: null,
+          sortOrder: 9999,
+          assigneeIds: [],
+          subtasks: [],
+        });
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        return tempTask;
+      }
+
       const done = get()._beginOp();
       try {
         const res  = await fetch("/api/tasks", {
@@ -652,7 +737,24 @@ export const useTaskStore = create<TaskStore>()(
           };
         });
         return realTask;
-      } catch {
+      } catch (err) {
+        // ИСПРАВЛЕНО v8: сетевая ошибка → ставим в очередь, не откатываем.
+        // До этого: задача исчезала из UI при недоступном сервере.
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind: "create_with_relations",
+            tempTaskId: tempId,
+            epicId, title, status, priority,
+            description: null,
+            dueDate: null,
+            sortOrder: 9999,
+            assigneeIds: [],
+            subtasks: [],
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+          return tempTask; // Задача остаётся в UI
+        }
+        // Ошибка валидации — откатываем
         set((s) => {
           const restTasks = omitTask(s.tasks, tempId);
           return {
@@ -711,8 +813,6 @@ export const useTaskStore = create<TaskStore>()(
             op.kind === "create_with_relations" && op.tempTaskId === taskId
         );
         if (createOp) {
-          // В merge-ветке важно обновить ещё и состояния подзадач.
-          // Иначе UI может показать done для подзадач, но на сервер уйдут старые values из queued create.
           const mergedSubtasks: SubtaskDraft[] = updatedSubtasks.map((st) => ({
             isCompleted: st.isCompleted,
             sortOrder:   st.sortOrder,
@@ -722,18 +822,13 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
-      // ── ИСПРАВЛЕНИЕ (Шаг 1): офлайн-ветка ─────────────────────────────────
-      // БЫЛО: enqueue только patch_task
-      // СТАЛО: enqueue patch_task + subtask-операции для всех subtasksToUpdate
       if (isCurrentlyOffline()) {
-        // 1. Статус задачи
         await enqueuePendingOp({
           kind:               "patch_task",
           url:                `/api/tasks/${taskId}`,
           patch:              { status },
           expectedUpdatedAt:  task.updatedAt,
         });
-        // 2. isCompleted=true для каждой подзадачи которую нужно закрыть
         for (const subtaskId of subtasksToUpdate) {
           await enqueuePendingOp({
             kind:    undefined,
@@ -758,8 +853,6 @@ export const useTaskStore = create<TaskStore>()(
           );
         }
       } catch {
-        // ── ИСПРАВЛЕНИЕ (Шаг 1): catch-ветка ──────────────────────────────
-        // Та же логика: если сеть пропала, оба типа операций идут в очередь
         if (isCurrentlyOffline()) {
           await enqueuePendingOp({
             kind:               "patch_task",

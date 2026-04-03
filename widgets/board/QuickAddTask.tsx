@@ -2,9 +2,15 @@
 /**
  * @file QuickAddTask.tsx — widgets/board
  *
- * Морфирующая карточка быстрого создания задачи.
- * MULTI-ASSIGNEE: assigneeIds: number[] вместо assigneeId: number | null.
- * При сохранении добавляет всех выбранных исполнителей параллельно.
+ * v3 — subtask presets 1–5 с isCompleted checkboxes:
+ *
+ *   • Переключатель количества подзадач: чипы 1, 2, 3, 4, 5 (дефолт 3)
+ *   • Под чипами — ряд чекбоксов isCompleted для каждой подзадачи
+ *   • title подзадач не редактируется (генерируется сервером: "Подзадача N")
+ *   • При сохранении: createTaskWithSubtasks(subtasks: [{isCompleted}])
+ *   • Офлайн: попадает в queued create_with_relations
+ *
+ * Multi-assignee и AI-приоритет сохранены из v2.
  */
 
 import {
@@ -20,26 +26,26 @@ import { PRIORITY_META, PRIORITY_ORDER } from "@/shared/config/task-meta";
 import { suggestPriority } from "@/features/ai/useAISuggestions";
 import type { TaskStatus, TaskPriority, TaskView } from "@/shared/types";
 import { type UserOption } from "@/shared/lib/utils";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  epicId: number;
+  epicId:        number;
   defaultStatus?: TaskStatus;
-  epicColor?: string;
-  onCreated?: (task: TaskView) => void;
+  epicColor?:    string;
+  onCreated?:    (task: TaskView) => void;
 }
 
-// ─── PriorityChip ─────────────────────────────────────────────────────────────
+// Количество подзадач: 1–5, дефолт 3
+const SUBTASK_PRESETS = [1, 2, 3, 4, 5] as const;
+type SubtaskCount = (typeof SUBTASK_PRESETS)[number];
+const DEFAULT_SUBTASK_COUNT: SubtaskCount = 3;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function PriorityChip({
-  priority,
-  active,
-  onClick,
-}: {
-  priority: TaskPriority;
-  active: boolean;
-  onClick: () => void;
-}) {
+  priority, active, onClick,
+}: { priority: TaskPriority; active: boolean; onClick: () => void }) {
   const meta = PRIORITY_META[priority];
   return (
     <motion.button
@@ -48,16 +54,12 @@ function PriorityChip({
       whileHover={{ scale: 1.07 }}
       whileTap={{ scale: 0.94 }}
       className="quick-add-priority-chip"
-      style={
-        active
-          ? {
-              background: `${meta.color}22`,
-              color: meta.color,
-              borderColor: `${meta.color}44`,
-              boxShadow: `0 0 8px ${meta.color}28`,
-            }
-          : undefined
-      }
+      style={active ? {
+        background:  `${meta.color}22`,
+        color:       meta.color,
+        borderColor: `${meta.color}44`,
+        boxShadow:   `0 0 8px ${meta.color}28`,
+      } : undefined}
     >
       <span
         className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -68,17 +70,9 @@ function PriorityChip({
   );
 }
 
-// ─── AssigneeChip — теперь с индикатором мультивыбора ────────────────────────
-
 function AssigneeChip({
-  user,
-  selected,
-  onClick,
-}: {
-  user: UserOption;
-  selected: boolean;
-  onClick: () => void;
-}) {
+  user, selected, onClick,
+}: { user: UserOption; selected: boolean; onClick: () => void }) {
   return (
     <motion.button
       type="button"
@@ -86,7 +80,7 @@ function AssigneeChip({
       whileHover={{ scale: 1.12 }}
       whileTap={{ scale: 0.9 }}
       title={`${user.name} — ${user.roleMeta.label}`}
-      className="relative w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white outline-none transition-all duration-150"
+      className="relative w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white outline-none"
       style={{
         backgroundColor: user.roleMeta.hex,
         boxShadow: selected
@@ -96,7 +90,6 @@ function AssigneeChip({
       }}
     >
       {user.initials}
-      {/* Tiny checkmark overlay when selected */}
       <AnimatePresence>
         {selected && (
           <motion.div
@@ -117,42 +110,140 @@ function AssigneeChip({
   );
 }
 
-// ─── Selected avatars stack (shown above chip row when >0 selected) ───────────
-
-function SelectedStack({
-  users,
-  selectedIds,
+/**
+ * SubtaskPresets — блок выбора количества подзадач и их isCompleted-статусов.
+ *
+ * Логика:
+ *   - Чипы 1–5 определяют сколько подзадач создаётся.
+ *   - Под чипами — N чекбоксов, каждый управляет isCompleted своей подзадачи.
+ *   - При уменьшении count — лишние isCompleted обрезаются.
+ *   - title не редактируется (UI показывает placeholder "Подзадача N").
+ */
+function SubtaskPresets({
+  count,
+  onCountChange,
+  subtaskStates,
+  onSubtaskToggle,
+  epicColor,
 }: {
-  users: UserOption[];
-  selectedIds: number[];
+  count:           SubtaskCount;
+  onCountChange:   (n: SubtaskCount) => void;
+  subtaskStates:   boolean[];
+  onSubtaskToggle: (index: number) => void;
+  epicColor:       string;
 }) {
-  if (!selectedIds.length) return null;
-  const selected = users.filter(u => selectedIds.includes(u.id));
   return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: "auto" }}
-      exit={{ opacity: 0, height: 0 }}
-      className="flex items-center gap-1 overflow-hidden"
-    >
-      <div className="flex -space-x-1">
-        {selected.map((u, i) => (
-          <div
-            key={u.id}
-            title={u.name}
-            className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold text-white ring-1 ring-(--bg-overlay)"
-            style={{ backgroundColor: u.roleMeta.hex, zIndex: selected.length - i }}
+    <div className="space-y-2">
+      {/* Количество подзадач */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-medium shrink-0" style={{ color: "var(--text-muted)" }}>
+          Подзадачи:
+        </span>
+        <div className="flex items-center gap-1">
+          {SUBTASK_PRESETS.map((n) => (
+            <motion.button
+              key={n}
+              type="button"
+              onClick={() => onCountChange(n)}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold transition-all"
+              style={
+                count === n
+                  ? {
+                      background:  `${epicColor}22`,
+                      color:       epicColor,
+                      border:      `1px solid ${epicColor}44`,
+                      boxShadow:   `0 0 8px ${epicColor}28`,
+                    }
+                  : {
+                      background:  "var(--glass-01)",
+                      color:       "var(--text-muted)",
+                      border:      "1px solid var(--glass-border)",
+                    }
+              }
+            >
+              {n}
+            </motion.button>
+          ))}
+        </div>
+      </div>
+
+      {/* Чекбоксы isCompleted */}
+      <div className="space-y-1">
+        {Array.from({ length: count }, (_, i) => (
+          <motion.label
+            key={i}
+            initial={{ opacity: 0, x: -6 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: i * 0.03 }}
+            className="flex items-center gap-2 cursor-pointer group"
+            onClick={() => onSubtaskToggle(i)}
           >
-            {u.initials}
-          </div>
+            {/* Checkbox */}
+            <div
+              className="w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 border transition-all duration-150"
+              style={
+                subtaskStates[i]
+                  ? {
+                      background:  epicColor,
+                      borderColor: epicColor,
+                      boxShadow:   `0 0 6px ${epicColor}55`,
+                    }
+                  : {
+                      background:  "transparent",
+                      borderColor: "var(--glass-border-active)",
+                    }
+              }
+            >
+              <AnimatePresence>
+                {subtaskStates[i] && (
+                  <motion.svg
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    transition={{ duration: 0.1, type: "spring", stiffness: 600 }}
+                    className="w-2 h-2 text-white"
+                    viewBox="0 0 8 8"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M1 4l2 2 4-4" />
+                  </motion.svg>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Placeholder title (не редактируется) */}
+            <span
+              className="text-xs transition-all duration-150"
+              style={{
+                color:          subtaskStates[i] ? "var(--text-muted)" : "var(--text-secondary)",
+                textDecoration: subtaskStates[i] ? "line-through" : "none",
+              }}
+            >
+              Подзадача {i + 1}
+            </span>
+
+            {/* Статус-значок */}
+            {subtaskStates[i] && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-[9px] font-medium px-1.5 py-0.5 rounded-full"
+                style={{ background: `${epicColor}18`, color: epicColor }}
+              >
+                готово
+              </motion.span>
+            )}
+          </motion.label>
         ))}
       </div>
-      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-        {selected.length === 1
-          ? selected[0].name.split(" ")[0]
-          : `${selected.length} исполнителя`}
-      </span>
-    </motion.div>
+    </div>
   );
 }
 
@@ -165,7 +256,7 @@ function useUsers() {
   const fetchUsers = useCallback(async () => {
     if (fetched) return;
     try {
-      const res = await fetch("/api/users");
+      const res  = await fetch("/api/users");
       if (res.ok) {
         const json = await res.json();
         setUsers(json.data ?? []);
@@ -180,43 +271,52 @@ function useUsers() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export function QuickAddTask({
-  epicId,
-  defaultStatus = "todo",
-  epicColor,
-  onCreated,
-}: Props) {
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [priority, setPriority] = useState<TaskPriority>("medium");
-  // MULTI: массив вместо единственного id
+export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCreated }: Props) {
+  const [open, setOpen]               = useState(false);
+  const [title, setTitle]             = useState("");
+  const [priority, setPriority]       = useState<TaskPriority>("medium");
   const [assigneeIds, setAssigneeIds] = useState<number[]>([]);
   const [metaVisible, setMetaVisible] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]           = useState(false);
   const [suggestedPriority, setSuggestedPriority] = useState<TaskPriority | null>(null);
   const priorityTouchedRef = useRef(false);
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  // Subtask presets state
+  const [subtaskCount, setSubtaskCount] = useState<SubtaskCount>(DEFAULT_SUBTASK_COUNT);
+  const [subtaskEnabled, setSubtaskEnabled] = useState(false); // показывать ли блок подзадач
+  const [subtaskStates, setSubtaskStates]   = useState<boolean[]>(
+    Array(DEFAULT_SUBTASK_COUNT).fill(false)
+  );
+
+  const inputRef     = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const createTask = useTaskStore((s) => s.createTask);
+  const createTaskWithSubtasks = useTaskStore((s) => s.createTaskWithSubtasks);
   const { users, fetchUsers } = useUsers();
 
   const accentHex = epicColor ?? "#8b5cf6";
 
-  // ── Toggle a single assignee ─────────────────────────────────────────────
-  const toggleAssignee = useCallback((id: number) => {
-    setAssigneeIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
+  // ── Subtask count change — обрезаем / расширяем массив isCompleted ────────
+  const handleSubtaskCountChange = useCallback((n: SubtaskCount) => {
+    setSubtaskCount(n);
+    setSubtaskStates((prev) => {
+      if (n > prev.length) return [...prev, ...Array(n - prev.length).fill(false)];
+      return prev.slice(0, n);
+    });
   }, []);
 
-  // ── Open / Close ────────────────────────────────────────────────────────
+  const handleSubtaskToggle = useCallback((index: number) => {
+    setSubtaskStates((prev) => prev.map((v, i) => i === index ? !v : v));
+  }, []);
+
+  const toggleAssignee = useCallback((id: number) => {
+    setAssigneeIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }, []);
+
+  // ── Open / Close ──────────────────────────────────────────────────────────
   const handleOpen = useCallback(() => {
     setOpen(true);
     fetchUsers();
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => inputRef.current?.focus()),
-    );
+    requestAnimationFrame(() => requestAnimationFrame(() => inputRef.current?.focus()));
   }, [fetchUsers]);
 
   const handleClose = useCallback(() => {
@@ -226,21 +326,19 @@ export function QuickAddTask({
     setSuggestedPriority(null);
     priorityTouchedRef.current = false;
     setAssigneeIds([]);
+    setSubtaskEnabled(false);
+    setSubtaskCount(DEFAULT_SUBTASK_COUNT);
+    setSubtaskStates(Array(DEFAULT_SUBTASK_COUNT).fill(false));
   }, []);
 
-  // ── AI-подсказка ────────────────────────────────────────────────────────
+  // ── AI-подсказка приоритета ───────────────────────────────────────────────
   function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setTitle(val);
     if (priorityTouchedRef.current) return;
     const suggested = suggestPriority(val);
-    if (suggested) {
-      setPriority(suggested);
-      setSuggestedPriority(suggested);
-    } else {
-      setPriority("medium");
-      setSuggestedPriority(null);
-    }
+    if (suggested) { setPriority(suggested); setSuggestedPriority(suggested); }
+    else            { setPriority("medium");  setSuggestedPriority(null);     }
   }
 
   function handlePriorityClick(p: TaskPriority) {
@@ -249,7 +347,7 @@ export function QuickAddTask({
     setSuggestedPriority(null);
   }
 
-  // ── Save ────────────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     const trimmed = title.trim();
     if (!trimmed || saving) return;
@@ -259,68 +357,48 @@ export function QuickAddTask({
     inputRef.current?.focus();
 
     try {
-      const task = await createTask({
+      const subtasks = subtaskEnabled
+        ? subtaskStates.slice(0, subtaskCount).map((isCompleted, i) => ({
+            isCompleted,
+            sortOrder: i,
+          }))
+        : [];
+
+      const task = await createTaskWithSubtasks({
         epicId,
-        title: trimmed,
-        status: defaultStatus,
+        title:       trimmed,
+        status:      defaultStatus,
         priority,
+        assigneeIds,
+        subtasks,
       });
 
-      if (!task) {
-        setTitle(trimmed);
-        return;
-      }
-
-      // Add all selected assignees in parallel
-      if (assigneeIds.length) {
-        const store = useTaskStore.getState();
-
-        await Promise.all(
-          assigneeIds.map(async (userId) => {
-            await fetch(`/api/tasks/${task.id}/assignees`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ userId }),
-            });
-
-            const user = users.find((u) => u.id === userId);
-            if (user) {
-              const assignee: TaskView["assignees"][0] = {
-                id: user.id,
-                name: user.name,
-                initials: user.initials,
-                login: "",
-                roleId: 0,
-                createdAt: new Date().toISOString(),
-                roleMeta: user.roleMeta as TaskView["assignees"][0]["roleMeta"],
-              };
-              store.addAssignee(task.id, assignee);
-            }
-          })
-        );
-      }
+      if (!task) { setTitle(trimmed); return; }
 
       onCreated?.(task);
       setSuggestedPriority(null);
       priorityTouchedRef.current = false;
       setPriority("medium");
       setAssigneeIds([]);
+      setSubtaskEnabled(false);
+      setSubtaskCount(DEFAULT_SUBTASK_COUNT);
+      setSubtaskStates(Array(DEFAULT_SUBTASK_COUNT).fill(false));
     } catch {
       setTitle(trimmed);
     } finally {
       setSaving(false);
     }
-  }, [title, saving, createTask, epicId, defaultStatus, priority, assigneeIds, users, onCreated]);
+  }, [
+    title, saving, createTaskWithSubtasks, epicId, defaultStatus, priority,
+    assigneeIds, subtaskEnabled, subtaskStates, subtaskCount, onCreated,
+  ]);
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") { e.preventDefault(); handleSave(); }
-      if (e.key === "Escape") { e.preventDefault(); handleClose(); }
-    },
-    [handleSave, handleClose],
-  );
+  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter")  { e.preventDefault(); handleSave(); }
+    if (e.key === "Escape") { e.preventDefault(); handleClose(); }
+  }, [handleSave, handleClose]);
 
-  // ── Click outside ───────────────────────────────────────────────────────
+  // ── Click outside ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -332,7 +410,7 @@ export function QuickAddTask({
     return () => document.removeEventListener("mousedown", handler);
   }, [open, handleClose]);
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div
       ref={containerRef}
@@ -358,14 +436,7 @@ export function QuickAddTask({
               whileHover={{ rotate: 90 }}
               transition={{ duration: 0.18 }}
             >
-              <svg
-                className="w-2.5 h-2.5"
-                viewBox="0 0 10 10"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              >
+              <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                 <path d="M5 1v8M1 5h8" />
               </svg>
             </motion.span>
@@ -382,7 +453,6 @@ export function QuickAddTask({
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
             className="quick-add-card"
           >
-            {/* Цветная полоска */}
             <motion.div
               className="quick-add-accent-line"
               initial={{ scaleX: 0 }}
@@ -413,7 +483,7 @@ export function QuickAddTask({
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    transition={{ duration: 0.18 }}
                     className="text-[10px] flex items-center gap-1"
                     style={{ color: "var(--text-muted)" }}
                   >
@@ -422,7 +492,6 @@ export function QuickAddTask({
                     <span className="font-semibold" style={{ color: PRIORITY_META[suggestedPriority].color }}>
                       {PRIORITY_META[suggestedPriority].label}
                     </span>
-                    <span className="opacity-50">· нажмите на chip чтобы изменить</span>
                   </motion.p>
                 )}
               </AnimatePresence>
@@ -438,13 +507,10 @@ export function QuickAddTask({
                     transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                     className="overflow-hidden"
                   >
-                    <div className="pt-1 space-y-2">
-                      {/* Приоритет */}
+                    <div className="pt-1 space-y-2.5">
+                      {/* ── Приоритет ── */}
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span
-                          className="text-[10px] font-medium shrink-0 mr-0.5"
-                          style={{ color: "var(--text-muted)" }}
-                        >
+                        <span className="text-[10px] font-medium shrink-0 mr-0.5" style={{ color: "var(--text-muted)" }}>
                           Приоритет:
                         </span>
                         {PRIORITY_ORDER.map((p) => (
@@ -457,25 +523,65 @@ export function QuickAddTask({
                         ))}
                       </div>
 
-                      {/* Исполнители (мультивыбор) */}
+                      {/* ── Подзадачи toggle + presets ── */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setSubtaskEnabled((v) => !v)}
+                          className="flex items-center gap-1.5 text-[10px] font-medium transition-colors"
+                          style={{ color: subtaskEnabled ? accentHex : "var(--text-muted)" }}
+                        >
+                          <motion.div
+                            animate={{ rotate: subtaskEnabled ? 90 : 0 }}
+                            transition={{ duration: 0.15 }}
+                            className="w-3.5 h-3.5 rounded flex items-center justify-center"
+                            style={{
+                              background:  subtaskEnabled ? `${accentHex}22` : "var(--glass-01)",
+                              border:      `1px solid ${subtaskEnabled ? accentHex + "44" : "var(--glass-border)"}`,
+                            }}
+                          >
+                            <svg className="w-2 h-2" viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                              <path d="M4 1v6M1 4h6" />
+                            </svg>
+                          </motion.div>
+                          Подзадачи
+                          {subtaskEnabled && (
+                            <span
+                              className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold"
+                              style={{ background: `${accentHex}18`, color: accentHex }}
+                            >
+                              {subtaskCount}
+                            </span>
+                          )}
+                        </button>
+
+                        <AnimatePresence>
+                          {subtaskEnabled && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                              className="overflow-hidden mt-2"
+                            >
+                              <SubtaskPresets
+                                count={subtaskCount}
+                                onCountChange={handleSubtaskCountChange}
+                                subtaskStates={subtaskStates}
+                                onSubtaskToggle={handleSubtaskToggle}
+                                epicColor={accentHex}
+                              />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      {/* ── Исполнители ── */}
                       {users.length > 0 && (
                         <div className="space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="text-[10px] font-medium shrink-0"
-                              style={{ color: "var(--text-muted)" }}
-                            >
-                              Исполнители:
-                            </span>
-                            {/* Avatar stack preview */}
-                            <AnimatePresence>
-                              {assigneeIds.length > 0 && (
-                                <SelectedStack users={users} selectedIds={assigneeIds} />
-                              )}
-                            </AnimatePresence>
-                          </div>
-
-                          {/* Chips row */}
+                          <span className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
+                            Исполнители:
+                          </span>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {users.map((u) => (
                               <AssigneeChip
@@ -495,20 +601,14 @@ export function QuickAddTask({
 
               {/* Footer */}
               <div className="flex items-center justify-between pt-0.5">
-                {/* Kbd hints */}
                 <div className="flex items-center gap-1.5">
                   <kbd className="quick-add-kbd">↵</kbd>
-                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                    сохранить
-                  </span>
+                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>сохранить</span>
                   <span className="text-[10px] opacity-30" style={{ color: "var(--text-muted)" }}>·</span>
                   <kbd className="quick-add-kbd">Esc</kbd>
-                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                    отмена
-                  </span>
+                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>отмена</span>
                 </div>
 
-                {/* Кнопки */}
                 <div className="flex items-center gap-1.5">
                   <motion.button
                     type="button"
@@ -532,10 +632,7 @@ export function QuickAddTask({
                     {saving && (
                       <motion.div
                         className="absolute inset-0 pointer-events-none"
-                        style={{
-                          background:
-                            "linear-gradient(90deg, transparent 30%, var(--glass-border-active) 50%, transparent 70%)",
-                        }}
+                        style={{ background: "linear-gradient(90deg, transparent 30%, var(--glass-border-active) 50%, transparent 70%)" }}
                         animate={{ x: ["-100%", "200%"] }}
                         transition={{ duration: 0.85, repeat: Infinity, ease: "easeInOut" }}
                       />

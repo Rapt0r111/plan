@@ -34,8 +34,12 @@ COPY . .
 RUN find . -name ".env*" -not -name ".env.example" -delete
 
 # Generate Drizzle migrations (if not already committed)
+# Ensure SQLite schema exists before `next build`, because build may
+# execute server logic for API/route data collection.
+RUN bun run db:migrate
+
 # Build Next.js application
-RUN bun run build
+RUN bun --bun run build
 
 
 # ── Stage 3: Production runner ────────────────────────────────

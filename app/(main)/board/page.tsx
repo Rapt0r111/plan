@@ -11,6 +11,12 @@ import { Header } from "@/widgets/header/Header";
 import { StoreHydrator } from "@/shared/store/StoreHydrator";
 import { BoardPage } from "./BoardPage";
 
+// `/board` зависит от содержимого SQLite.
+// По умолчанию Next может попытаться его статически пререндерить во время `next build`,
+// а затем отдать "запечённые" пустые данные на runtime.
+// Принудительно делаем динамический рендер, чтобы данные брались после seed/migrations.
+export const dynamic = "force-dynamic";
+
 export default async function BoardRoute() {
   const epics = await getAllEpicsWithTasks();
 

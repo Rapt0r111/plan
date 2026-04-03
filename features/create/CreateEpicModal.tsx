@@ -2,13 +2,18 @@
 /**
  * @file CreateEpicModal.tsx — features/create
  *
- * ИСПРАВЛЕНИЯ v2:
- *   - window.location.reload() → router.refresh() + optimistic store update
- *     Причина: полная перезагрузка убивала React state, Framer Motion переходы,
- *     Zustand store и давала плохой UX (мигание, прокрутка в начало страницы).
- *     router.refresh() делает server-side refetch без потери клиентского состояния.
- *   - После создания эпика: обновляем Zustand store оптимистично через hydrateEpics
- *     чтобы данные появились немедленно, не дожидаясь router.refresh()
+ * FIX v3: offline / network-error handling
+ *   БЫЛО: fetch("/api/epics") без проверки типа ошибки.
+ *         При ERR_INTERNET_DISCONNECTED (TypeError) ошибка поглощалась catch(e),
+ *         setError(e.message) выдавал технический "Failed to fetch".
+ *
+ *   СТАЛО:
+ *     - isNetworkError(e) определяет TypeError — сеть недоступна.
+ *     - Показывается понятное сообщение "Нет соединения — попробуйте когда сеть восстановится."
+ *     - Форма остаётся открытой, данные не теряются (setSaving(false) без onClose()).
+ *
+ *   ПРИМЕЧАНИЕ: Создание эпиков требует сервера (нет offline-queue для эпиков),
+ *   поэтому мы не добавляем оптимистичный UI — только честное сообщение об ошибке.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -25,6 +30,10 @@ const PRESET_COLORS = [
   "#f87171", "#fb923c", "#a78bfa", "#2dd4bf",
   "#60a5fa", "#e879f9", "#4ade80", "#facc15",
 ];
+
+function isNetworkError(e: unknown): boolean {
+  return e instanceof TypeError;
+}
 
 function EpicPreviewCard({
   title, description, color,
@@ -92,7 +101,7 @@ function EpicPreviewCard({
 }
 
 export function CreateEpicModal({ open, onClose, onCreated }: Props) {
-  const router = useRouter(); // ← добавлен useRouter
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("#8b5cf6");
@@ -132,14 +141,15 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
 
       onCreated?.();
       onClose();
-
-      // router.refresh() вместо window.location.reload():
-      //  ✓ Не теряет React state (Zustand, Framer Motion, scroll position)
-      //  ✓ Делает server-side refetch только изменившихся сегментов
-      //  ✓ Не вызывает полного перерендера приложения
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      // FIX v3: понятное сообщение при отсутствии сети
+      if (isNetworkError(e)) {
+        setError("Нет соединения — попробуйте когда сеть восстановится. Данные формы сохранены.");
+        // Не закрываем форму — пользователь сохранит данные позже
+      } else {
+        setError(e instanceof Error ? e.message : "Ошибка");
+      }
     } finally {
       setSaving(false);
     }
@@ -219,9 +229,22 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                     {error && (
                       <motion.div
                         initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                        className="px-4 py-3 rounded-xl text-sm"
-                        style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
-                        {error}
+                        className="px-4 py-3 rounded-xl text-sm flex items-start gap-3"
+                        style={{
+                          background: error.includes("соединения")
+                            ? "rgba(234,179,8,0.10)"
+                            : "rgba(239,68,68,0.10)",
+                          border: error.includes("соединения")
+                            ? "1px solid rgba(234,179,8,0.25)"
+                            : "1px solid rgba(239,68,68,0.25)",
+                          color: error.includes("соединения") ? "#eab308" : "#f87171",
+                        }}>
+                        {error.includes("соединения") && (
+                          <svg className="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                            <path d="M1 4h14M1 8h10M1 12h6" />
+                          </svg>
+                        )}
+                        <span>{error}</span>
                       </motion.div>
                     )}
                   </AnimatePresence>

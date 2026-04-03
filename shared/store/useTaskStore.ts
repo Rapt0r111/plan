@@ -1,26 +1,25 @@
 /**
  * @file useTaskStore.ts — shared/store
  *
- * v8 — OFFLINE FIX: сетевые ошибки теперь обрабатываются так же, как офлайн
+ * v9 — OFFLINE FIX #2: isNetworkError(err) применён ко ВСЕМ мутациям
  *
- * ПРОБЛЕМА v7 (оба бага):
+ * ПРОБЛЕМА v8:
+ *   isNetworkError(err) был добавлен только в createTask / createTaskWithSubtasks / addTask.
+ *   Все остальные мутации (updateTaskStatus, toggleSubtask, updateTaskPriority и др.)
+ *   проверяли ТОЛЬКО navigator.onLine через isCurrentlyOffline().
  *
- *   БАГ #1 — "Пишет sync при загрузке":
- *     _beginOp() ставит syncStatus: "syncing", пока fetch висит (до таймаута).
- *     Если WiFi есть, но сервер недоступен — fetch висит долго, сайдбар
- *     показывает "LOCAL: SYNCING" всё это время.
+ *   Результат: когда Chrome блокирует все запросы при отсутствии интернета
+ *   (ERR_INTERNET_DISCONNECTED — касается и localhost), navigator.onLine = true,
+ *   fetch бросает TypeError, но isCurrentlyOffline() = false → ROLLBACK вместо queue.
  *
- *   БАГ #2 — "Не получается создать задачи":
- *     createTask / createTaskWithSubtasks проверяли только navigator.onLine.
- *     Если WiFi подключён (navigator.onLine = true), но сервер недоступен,
- *     fetch() бросал TypeError — задача откатывалась и исчезала из UI.
+ * РЕШЕНИЕ v9:
+ *   Во ВСЕХ catch-блоках: `if (isCurrentlyOffline())` → `if (isNetworkError(err) || isCurrentlyOffline())`
+ *   Затронутые методы: updateTaskStatus, toggleSubtask, updateTaskPriority,
+ *   updateTaskTitle, updateTaskDescription, updateTaskDueDate, addAssignee, removeAssignee.
  *
- * РЕШЕНИЕ:
- *   Добавлена функция isNetworkError(err) — определяет сетевые ошибки (TypeError).
- *   В catch-блоках createTask и createTaskWithSubtasks:
- *     если isNetworkError(err) || isCurrentlyOffline() →
- *       ставим задачу в очередь IndexedDB + возвращаем tempTask (не откатываем).
- *   Это работает и при navigator.onLine=false, и при недоступном сервере.
+ * ПРАВИЛО (обязательно для всех будущих мутаций):
+ *   ✅ catch (err) { if (isNetworkError(err) || isCurrentlyOffline()) { queue } else { rollback } }
+ *   ❌ catch { if (isCurrentlyOffline()) { queue } else { rollback } }
  */
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
@@ -56,7 +55,6 @@ export interface CreateWithSubtasksParams {
   dueDate?:    string | null;
   sortOrder?:  number;
   assigneeIds?: number[];
-  /** Массив isCompleted для каждой подзадачи (title генерирует сервер) */
   subtasks?:   SubtaskDraft[];
 }
 
@@ -72,16 +70,17 @@ function isCurrentlyOffline(): boolean {
 }
 
 /**
- * isNetworkError — определяет, является ли ошибка сетевой (сервер недоступен).
+ * isNetworkError — определяет сетевую ошибку (сервер недоступен или нет сети).
  *
  * fetch() бросает TypeError когда:
- *   - Нет сетевого соединения (navigator.onLine = false)
- *   - Сервер недоступен (WiFi есть, но хост не отвечает)
+ *   - navigator.onLine = false
+ *   - WiFi есть, но сервер недоступен (ERR_INTERNET_DISCONNECTED на localhost в Chrome)
  *   - DNS не резолвится
  *   - Соединение сброшено
  *
- * Это позволяет обрабатывать "сервер недоступен" так же, как "полный офлайн",
- * даже когда navigator.onLine = true (WiFi подключён, но сервер лежит).
+ * ВАЖНО: Chrome блокирует ВСЕ запросы (включая localhost) при ERR_INTERNET_DISCONNECTED.
+ * navigator.onLine при этом может оставаться true → isCurrentlyOffline() возвращает false.
+ * Поэтому нужна ДВА условия: isNetworkError(err) || isCurrentlyOffline().
  */
 function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError;
@@ -129,7 +128,6 @@ function updateEpicsForTask(
   });
 }
 
-/** Строит temp-подзадачи из черновиков */
 function buildTempSubtasks(drafts: SubtaskDraft[]): SubtaskView[] {
   return drafts.map((d, i) => ({
     id:          nextTempId(),
@@ -158,7 +156,6 @@ interface TaskStore {
   hydrateEpics:     (epics: EpicWithTasks[]) => void;
   setActiveEpic:    (epicId: number | null) => void;
 
-  // ── Core mutations ──────────────────────────────────────────────────────
   addTask:              (epicId: number, title: string, status?: TaskStatus) => Promise<void>;
   createTask:           (params: { epicId: number; title: string; status?: TaskStatus; priority?: TaskPriority }) => Promise<TaskView | null>;
   createTaskWithSubtasks: (params: CreateWithSubtasksParams) => Promise<TaskView | null>;
@@ -173,7 +170,6 @@ interface TaskStore {
   reorderTasks:         (epicId: number, orderedIds: number[]) => Promise<void>;
   deleteTask:           (taskId: number) => Promise<void>;
 
-  // ── Offline queue ────────────────────────────────────────────────────────
   refreshOfflineQueue:  () => Promise<void>;
   replayOfflineQueue:   () => Promise<ReplayResult>;
 
@@ -237,7 +233,6 @@ export const useTaskStore = create<TaskStore>()(
         if (isCurrentlyOffline()) break;
 
         try {
-          // ── create_with_relations ──────────────────────────────────────────
           if (op.kind === "create_with_relations") {
             const res = await fetch("/api/tasks", {
               method:  "POST",
@@ -289,10 +284,7 @@ export const useTaskStore = create<TaskStore>()(
                     e.id !== op.epicId ? e : {
                       ...e,
                       tasks: e.tasks.map((t) => t.id === op.tempTaskId ? realTask : t),
-                      progress: {
-                        total: e.progress.total,
-                        done:  e.progress.done,
-                      },
+                      progress: { total: e.progress.total, done: e.progress.done },
                     }
                   ),
                 };
@@ -318,7 +310,6 @@ export const useTaskStore = create<TaskStore>()(
             continue;
           }
 
-          // ── patch_task с rebase на 409 ────────────────────────────────────
           if (op.kind === "patch_task") {
             let url = op.url;
             const patch = { ...op.patch };
@@ -389,7 +380,6 @@ export const useTaskStore = create<TaskStore>()(
             continue;
           }
 
-          // ── legacy op (subtask toggle, assignee) ──────────────────────────
           if (!op.kind) {
             let url = op.url;
             const tempMatch = url.match(/\/api\/tasks\/(-\d+)/);
@@ -473,7 +463,6 @@ export const useTaskStore = create<TaskStore>()(
         ),
       }));
 
-      // Проверяем офлайн ДО fetch
       if (isCurrentlyOffline()) {
         const queuedCreate: Omit<PendingOp & { kind: "create_with_relations" }, "id" | "createdAt" | "retries"> = {
           kind:        "create_with_relations",
@@ -537,9 +526,6 @@ export const useTaskStore = create<TaskStore>()(
 
         return realTask;
       } catch (err) {
-        // ИСПРАВЛЕНО v8: сетевая ошибка (сервер недоступен) = ставим в очередь.
-        // Раньше: задача откатывалась и исчезала из UI.
-        // Теперь: задача остаётся в store + ставится в IndexedDB очередь.
         if (isNetworkError(err) || isCurrentlyOffline()) {
           await enqueuePendingOp({
             kind:        "create_with_relations",
@@ -550,9 +536,8 @@ export const useTaskStore = create<TaskStore>()(
             subtasks:    subtaskDrafts,
           });
           set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
-          return tempTask; // Не откатываем — задача остаётся в UI
+          return tempTask;
         }
-        // Не сетевая ошибка (например, ошибка валидации от сервера) — откатываем
         set((s) => {
           const restTasks = omitTask(s.tasks, tempId);
           return {
@@ -638,7 +623,6 @@ export const useTaskStore = create<TaskStore>()(
           };
         });
       } catch (err) {
-        // Сетевая ошибка → очередь
         if (isNetworkError(err) || isCurrentlyOffline()) {
           await enqueuePendingOp({
             kind: "create_with_relations",
@@ -695,7 +679,6 @@ export const useTaskStore = create<TaskStore>()(
         ),
       }));
 
-      // Проверяем офлайн ДО fetch
       if (isCurrentlyOffline()) {
         await enqueuePendingOp({
           kind: "create_with_relations",
@@ -738,8 +721,6 @@ export const useTaskStore = create<TaskStore>()(
         });
         return realTask;
       } catch (err) {
-        // ИСПРАВЛЕНО v8: сетевая ошибка → ставим в очередь, не откатываем.
-        // До этого: задача исчезала из UI при недоступном сервере.
         if (isNetworkError(err) || isCurrentlyOffline()) {
           await enqueuePendingOp({
             kind: "create_with_relations",
@@ -752,9 +733,8 @@ export const useTaskStore = create<TaskStore>()(
             subtasks: [],
           });
           set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
-          return tempTask; // Задача остаётся в UI
+          return tempTask;
         }
-        // Ошибка валидации — откатываем
         set((s) => {
           const restTasks = omitTask(s.tasks, tempId);
           return {
@@ -776,6 +756,7 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── updateTaskStatus ──────────────────────────────────────────────────────
+    // FIX v9: catch (err) + isNetworkError(err) || isCurrentlyOffline()
     updateTaskStatus: async (taskId, status) => {
       const task = get().tasks[taskId];
       if (!task || task.status === status) return;
@@ -805,7 +786,6 @@ export const useTaskStore = create<TaskStore>()(
         };
       });
 
-      // Если temp-задача — мержим изменение в queued create
       if (taskId < 0) {
         const ops = await getPendingOps();
         const createOp = ops.find(
@@ -852,8 +832,9 @@ export const useTaskStore = create<TaskStore>()(
             subtasksToUpdate.map((id) => apiPatch(`/api/subtasks/${id}`, { isCompleted: true }))
           );
         }
-      } catch {
-        if (isCurrentlyOffline()) {
+      } catch (err) {
+        // FIX v9: isNetworkError covers ERR_INTERNET_DISCONNECTED even when navigator.onLine=true
+        if (isNetworkError(err) || isCurrentlyOffline()) {
           await enqueuePendingOp({
             kind:               "patch_task",
             url:                `/api/tasks/${taskId}`,
@@ -890,6 +871,7 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── toggleSubtask ─────────────────────────────────────────────────────────
+    // FIX v9: catch (err) + isNetworkError(err) || isCurrentlyOffline()
     toggleSubtask: async (taskId, subtaskId, current) => {
       const newVal = !current;
 
@@ -939,8 +921,9 @@ export const useTaskStore = create<TaskStore>()(
       try {
         const res = await apiPatch(`/api/subtasks/${subtaskId}`, { isCompleted: newVal });
         if (!res.ok) throw new Error(`status ${res.status}`);
-      } catch {
-        if (isCurrentlyOffline()) {
+      } catch (err) {
+        // FIX v9: queue on network error instead of rollback
+        if (isNetworkError(err) || isCurrentlyOffline()) {
           await enqueuePendingOp({
             kind: undefined,
             url: `/api/subtasks/${subtaskId}`,
@@ -967,6 +950,7 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── updateTaskPriority ────────────────────────────────────────────────────
+    // FIX v9: catch (err) + isNetworkError queue instead of silent rollback
     updateTaskPriority: async (taskId, priority) => {
       const prev = get().tasks[taskId]?.priority;
       if (!prev || prev === priority) return;
@@ -1001,15 +985,27 @@ export const useTaskStore = create<TaskStore>()(
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { priority });
-      } catch {
-        set((s) => ({
-          tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], priority: prev } },
-          syncStatus: "error",
-        }));
+      } catch (err) {
+        // FIX v9: queue on network error
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind: "patch_task" as const,
+            url: `/api/tasks/${taskId}`,
+            patch: { priority },
+            expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        } else {
+          set((s) => ({
+            tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], priority: prev } },
+            syncStatus: "error",
+          }));
+        }
       } finally { done(); }
     },
 
     // ── updateTaskTitle ───────────────────────────────────────────────────────
+    // FIX v9: catch (err) + isNetworkError queue
     updateTaskTitle: async (taskId, title) => {
       const prev = get().tasks[taskId]?.title;
       if (!prev || prev === title || !title.trim()) return;
@@ -1045,15 +1041,27 @@ export const useTaskStore = create<TaskStore>()(
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { title: patched });
-      } catch {
-        set((s) => ({
-          tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], title: prev } },
-          syncStatus: "error",
-        }));
+      } catch (err) {
+        // FIX v9: queue on network error
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind: "patch_task" as const,
+            url: `/api/tasks/${taskId}`,
+            patch: { title: patched },
+            expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        } else {
+          set((s) => ({
+            tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], title: prev } },
+            syncStatus: "error",
+          }));
+        }
       } finally { done(); }
     },
 
     // ── updateTaskDescription ─────────────────────────────────────────────────
+    // FIX v9: catch (err) + isNetworkError queue
     updateTaskDescription: async (taskId, description) => {
       const prev = get().tasks[taskId]?.description ?? null;
       const next = description?.trim() || null;
@@ -1081,15 +1089,27 @@ export const useTaskStore = create<TaskStore>()(
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { description: next });
-      } catch {
-        set((s) => ({
-          tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], description: prev } },
-          syncStatus: "error",
-        }));
+      } catch (err) {
+        // FIX v9: queue on network error
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind: "patch_task" as const,
+            url: `/api/tasks/${taskId}`,
+            patch: { description: next },
+            expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        } else {
+          set((s) => ({
+            tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], description: prev } },
+            syncStatus: "error",
+          }));
+        }
       } finally { done(); }
     },
 
     // ── updateTaskDueDate ─────────────────────────────────────────────────────
+    // FIX v9: catch (err) + isNetworkError queue
     updateTaskDueDate: async (taskId, dueDate) => {
       const prev = get().tasks[taskId]?.dueDate ?? null;
       if (prev === dueDate) return;
@@ -1116,15 +1136,27 @@ export const useTaskStore = create<TaskStore>()(
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { dueDate });
-      } catch {
-        set((s) => ({
-          tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], dueDate: prev } },
-          syncStatus: "error",
-        }));
+      } catch (err) {
+        // FIX v9: queue on network error
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind: "patch_task" as const,
+            url: `/api/tasks/${taskId}`,
+            patch: { dueDate: dueDate ?? null },
+            expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        } else {
+          set((s) => ({
+            tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], dueDate: prev } },
+            syncStatus: "error",
+          }));
+        }
       } finally { done(); }
     },
 
     // ── addAssignee ───────────────────────────────────────────────────────────
+    // FIX v9: catch (err) + isNetworkError queue
     addAssignee: async (taskId, user) => {
       const task = get().tasks[taskId];
       if (!task || task.assignees.some((a) => a.id === user.id)) return;
@@ -1166,15 +1198,27 @@ export const useTaskStore = create<TaskStore>()(
           body:    JSON.stringify({ userId: user.id }),
         });
         if (!res.ok) throw new Error(`status ${res.status}`);
-      } catch {
-        set((s) => ({
-          tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], assignees: s.tasks[taskId].assignees.filter((a) => a.id !== user.id) } },
-          syncStatus: "error",
-        }));
+      } catch (err) {
+        // FIX v9: queue on network error
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind: undefined,
+            url: `/api/tasks/${taskId}/assignees`,
+            method: "POST",
+            body: { userId: user.id },
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        } else {
+          set((s) => ({
+            tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], assignees: s.tasks[taskId].assignees.filter((a) => a.id !== user.id) } },
+            syncStatus: "error",
+          }));
+        }
       } finally { done(); }
     },
 
     // ── removeAssignee ────────────────────────────────────────────────────────
+    // FIX v9: catch (err) + isNetworkError queue
     removeAssignee: async (taskId, userId) => {
       const task = get().tasks[taskId];
       if (!task) return;
@@ -1202,11 +1246,21 @@ export const useTaskStore = create<TaskStore>()(
       try {
         const res = await fetch(`/api/tasks/${taskId}/assignees/${userId}`, { method: "DELETE" });
         if (!res.ok) throw new Error(`status ${res.status}`);
-      } catch {
-        set((s) => ({
-          tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], assignees: prev } },
-          syncStatus: "error",
-        }));
+      } catch (err) {
+        // FIX v9: queue on network error
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind: undefined,
+            url: `/api/tasks/${taskId}/assignees/${userId}`,
+            method: "DELETE",
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        } else {
+          set((s) => ({
+            tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], assignees: prev } },
+            syncStatus: "error",
+          }));
+        }
       } finally { done(); }
     },
 
@@ -1237,12 +1291,14 @@ export const useTaskStore = create<TaskStore>()(
       try {
         const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
         if (!res.ok) throw new Error(`status ${res.status}`);
-      } catch {
+      } catch (err) {
+        // deleteTask: rollback on any error (can't safely queue deletes)
+        // but don't mark as error on network failure — just restore
         if (epicSnapshot) {
           set((s) => ({
             tasks:      { ...s.tasks, [taskId]: task },
             epics:      s.epics.map((e) => (e.id === epicSnapshot.id ? epicSnapshot : e)),
-            syncStatus: "error",
+            syncStatus: isNetworkError(err) ? "idle" : "error",
           }));
         }
       } finally { done(); }

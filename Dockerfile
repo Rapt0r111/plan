@@ -4,7 +4,9 @@
 # ═══════════════════════════════════════════════════════════════
 
 # ── Stage 1: Dependencies ─────────────────────────────────────
-FROM oven/bun:1.1-alpine AS deps
+# Use a recent Bun image that understands lockfileVersion=1
+# and fully-qualified name so Podman can resolve it.
+FROM docker.io/oven/bun:1.3.11-alpine AS deps
 
 LABEL stage="deps"
 
@@ -18,7 +20,7 @@ RUN bun install --frozen-lockfile
 
 
 # ── Stage 2: Builder ──────────────────────────────────────────
-FROM oven/bun:1.1-alpine AS builder
+FROM docker.io/oven/bun:1.3.11-alpine AS builder
 
 LABEL stage="builder"
 
@@ -34,12 +36,16 @@ COPY . .
 RUN find . -name ".env*" -not -name ".env.example" -delete
 
 # Generate Drizzle migrations (if not already committed)
+# Ensure SQLite schema exists before `next build`, because build may
+# execute server logic for API/route data collection.
+RUN bun run db:migrate
+
 # Build Next.js application
-RUN bun run build
+RUN bun --bun run build
 
 
 # ── Stage 3: Production runner ────────────────────────────────
-FROM oven/bun:1.1-alpine AS runner
+FROM docker.io/oven/bun:1.3.11-alpine AS runner
 
 LABEL maintainer="TaskFlow" \
       version="2.0" \
@@ -76,6 +82,10 @@ COPY --from=builder --chown=taskflow:taskflow /app/tsconfig.json ./tsconfig.json
 # Copy entrypoint script
 COPY --chown=taskflow:taskflow docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
+
+# Ensure working directory (/app) is writable by the non-root user.
+# This is needed because the entrypoint creates `/app/local.db` symlink.
+RUN chown -R taskflow:taskflow /app
 
 # Switch to non-root user
 USER taskflow

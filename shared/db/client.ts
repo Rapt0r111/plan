@@ -57,12 +57,18 @@ const DB_PATH = resolve(process.cwd(), "local.db");
  */
 function createBunSQLiteClient() {
   const sqlite = new Database(DB_PATH, {
-    // WAL mode: concurrent reads + writes, ~10x better throughput
+    // WAL mode is enabled during migrations/seed; the client doesn't switch it.
     strict: true,
   });
 
-  // Performance pragmas
-  sqlite.run("PRAGMA journal_mode=WAL;");
+  // Performance pragmas.
+  //
+  // IMPORTANT:
+  // `PRAGMA journal_mode` requires an exclusive lock.
+  // During `next build`, multiple workers may import this module concurrently,
+  // which can trigger `SQLiteError: database is locked`.
+  // We enable WAL during migrations/seed instead.
+  sqlite.run("PRAGMA busy_timeout = 5000;");
   sqlite.run("PRAGMA synchronous=NORMAL;");
   sqlite.run("PRAGMA foreign_keys=ON;");
   sqlite.run("PRAGMA cache_size=-65536;"); // 64MB cache

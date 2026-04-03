@@ -1,20 +1,15 @@
 /**
  * @file localCache.ts — shared/lib
  *
- * v4 — расширен тип PendingOp для поддержки create_with_relations:
+ * v5 — добавлен тип create_epic для офлайн-создания эпиков.
  *
- *   kind: "create_with_relations" — офлайн-создание задачи с подзадачами
- *   kind: "patch_task"           — офлайн-патч задачи с optimistic concurrency
- *   (остальные как раньше: url/method/body)
- *
- * Вариант A merge: изменения temp-задачи (isCompleted подзадач, статус и т.д.)
- * записываются прямо внутрь queued create_with_relations, а не создают
- * отдельные PATCH-операции. Это гарантирует корректную синхронизацию
- * при последовательном потоке офлайн-изменений.
+ * ПОРЯДОК REPLAY:
+ *   create_epic → create_with_relations → patch_task → прочие
+ *   Задачи могут ссылаться на tempEpicId → эпики должны создаваться первыми.
  */
 
 const DB_NAME    = "plan-cache";
-const DB_VERSION = 3; // версия поднята из-за новых полей в pending_ops
+const DB_VERSION = 4; // +1 из-за нового типа pending_op
 const EPICS_STORE = "epics";
 const QUEUE_STORE = "pending_ops";
 
@@ -91,10 +86,6 @@ export async function getCachedEpics(): Promise<unknown | null> {
 
 export const MAX_OP_RETRIES = 5;
 
-/**
- * SubtaskDraft — черновик подзадачи в очереди create_with_relations.
- * title НЕ хранится (NOT NULL — генерируется сервером по индексу).
- */
 export interface SubtaskDraft {
   isCompleted: boolean;
   sortOrder:   number;
@@ -102,16 +93,29 @@ export interface SubtaskDraft {
 
 /**
  * PendingOp — полиморфный тип офлайн-операции.
+ * Discriminated union по полю `kind`.
  *
- * Поля discriminated по полю `kind` (или отсутствию — для обратной совместимости).
+ * ВАЖНО: create_epic должен обрабатываться ДО create_with_relations,
+ * так как задача может ссылаться на tempEpicId.
  */
 export type PendingOp =
+  | {
+      kind:        "create_epic";
+      id:          string;
+      createdAt:   number;
+      retries:     number;
+      tempEpicId:  number;
+      title:       string;
+      description: string | null;
+      color:       string;
+      startDate:   string | null;
+      endDate:     string | null;
+    }
   | {
       kind:        "create_with_relations";
       id:          string;
       createdAt:   number;
       retries:     number;
-      // Данные для POST /api/tasks
       epicId:      number;
       title:       string;
       status:      string;
@@ -121,7 +125,6 @@ export type PendingOp =
       sortOrder:   number;
       assigneeIds: number[];
       subtasks:    SubtaskDraft[];
-      // Временный id в store (отрицательный)
       tempTaskId:  number;
     }
   | {
@@ -134,7 +137,6 @@ export type PendingOp =
       expectedUpdatedAt:  string | undefined;
     }
   | {
-      // Обратная совместимость — subtask toggle, assignee add/remove
       kind?:      undefined;
       id:         string;
       url:        string;
@@ -144,42 +146,41 @@ export type PendingOp =
       retries:    number;
     };
 
-/**
- * PendingOpInput — входные данные для enqueuePendingOp (без служебных полей).
- *
- * Важно: здесь НЕ используем `Omit<PendingOp, ...>`, потому что `PendingOp` —
- * union, и `Omit` на уровне union теряет поля, которые не общие для всех веток
- * (например `url`).
- */
 export type PendingOpInput =
   | {
-    kind: "create_with_relations";
-    // Данные для POST /api/tasks
-    epicId: number;
-    title: string;
-    status: string;
-    priority: string;
-    description: string | null;
-    dueDate: string | null;
-    sortOrder: number;
-    assigneeIds: number[];
-    subtasks: SubtaskDraft[];
-    // Временный id в store (отрицательный)
-    tempTaskId: number;
-  }
+      kind: "create_epic";
+      tempEpicId:  number;
+      title:       string;
+      description: string | null;
+      color:       string;
+      startDate:   string | null;
+      endDate:     string | null;
+    }
   | {
-    kind: "patch_task";
-    url: string;
-    patch: Record<string, unknown>;
-    expectedUpdatedAt: string | undefined;
-  }
+      kind: "create_with_relations";
+      epicId:      number;
+      title:       string;
+      status:      string;
+      priority:    string;
+      description: string | null;
+      dueDate:     string | null;
+      sortOrder:   number;
+      assigneeIds: number[];
+      subtasks:    SubtaskDraft[];
+      tempTaskId:  number;
+    }
   | {
-    // Обратная совместимость — subtask toggle, assignee add/remove
-    kind?: undefined;
-    url: string;
-    method: "PATCH" | "DELETE" | "POST";
-    body?: Record<string, unknown>;
-  };
+      kind: "patch_task";
+      url:                string;
+      patch:              Record<string, unknown>;
+      expectedUpdatedAt:  string | undefined;
+    }
+  | {
+      kind?: undefined;
+      url:    string;
+      method: "PATCH" | "DELETE" | "POST";
+      body?:  Record<string, unknown>;
+    };
 
 export async function enqueuePendingOp(
   op: PendingOpInput,
@@ -200,9 +201,6 @@ export async function enqueuePendingOp(
   return full;
 }
 
-/**
- * updatePendingOp — обновить существующую запись в очереди (merge в create_with_relations).
- */
 export async function updatePendingOp(op: PendingOp): Promise<void> {
   try {
     const db = await openDB();

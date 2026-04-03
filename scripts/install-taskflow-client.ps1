@@ -3,7 +3,7 @@ Param(
   [string]$ServerIP = "192.168.99.101",
   # Rootless Podman usually forces Caddy off 443/80 => use 8443:443 mapping.
   # If you run Caddy with real 443 on the host, pass a different -RootCrtUrl.
-  [string]$RootCrtUrl = "https://taskflow.local:8443/pki/authorities/local/root.crt"
+  [string]$RootCrtUrl = "https://taskflow.local:8443/caddy-root.crt"
 )
 
 function Ensure-Admin {
@@ -51,9 +51,18 @@ function Install-RootCA {
   $oldCallback = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
   try {
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    Write-Host "Downloading root CA from: $RootCrtUrl"
     Invoke-WebRequest -Uri $RootCrtUrl -OutFile $tmp -UseBasicParsing
   } finally {
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $oldCallback
+  }
+
+  if (-not (Test-Path $tmp)) {
+    throw "Download failed: file not created ($tmp). Check that Caddy is running and port is reachable."
+  }
+  $fi = Get-Item $tmp
+  if ($fi.Length -lt 256) {
+    throw "Download failed: root.crt is too small ($($fi.Length) bytes). Check network/firewall and URL."
   }
 
   # Install into Windows trusted root store

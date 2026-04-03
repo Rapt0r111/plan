@@ -1,7 +1,11 @@
 taskflow.local {
-  # Use Caddy's local CA so HTTPS works without public certificates
   tls internal
+
+  # Отдаём root.crt Caddy как статический файл
+  handle_path /caddy-root.crt {
+    root * /data/caddy/pki/authorities/local
+    file_server
+  }
 
   reverse_proxy taskflow:3000
 }
-

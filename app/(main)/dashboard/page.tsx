@@ -38,6 +38,9 @@ import Link from "next/link";
 import { EpicInteractionLayer } from "./EpicInteractionLayer";
 import type { EpicSummary } from "@/shared/types";
 
+export const dynamic = "force-dynamic";
+
+
 // ─── Async компонент для тяжёлых виджетов ────────────────────────────────────
 // getAllEpicsWithTasks() включает все данные из getAllEpics() — дублирование убрано.
 async function HeavyWidgets() {

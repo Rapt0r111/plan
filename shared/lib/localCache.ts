@@ -1,21 +1,20 @@
 /**
  * @file localCache.ts — shared/lib
  *
- * IndexedDB-обёртка с двумя хранилищами:
- *   "epics"       — снапшот EpicWithTasks[] для cold-start без сети
- *   "pending_ops" — очередь HTTP-запросов, ожидающих отправки
+ * v4 — расширен тип PendingOp для поддержки create_with_relations:
  *
- * ИСПРАВЛЕНИЯ v3:
- *   БАГ #2 ИСПРАВЛЕН: _db.addEventListener("close", ...) — событие "close"
- *     не существует в спецификации IDBDatabase. Правильное событие — "versionchange",
- *     которое срабатывает когда другая вкладка хочет обновить схему БД.
- *     Без этого fix синглтон _db никогда не сбрасывался при неожиданном
- *     закрытии БД, что приводило к ошибкам "database connection is closing"
- *     при следующих операциях.
+ *   kind: "create_with_relations" — офлайн-создание задачи с подзадачами
+ *   kind: "patch_task"           — офлайн-патч задачи с optimistic concurrency
+ *   (остальные как раньше: url/method/body)
+ *
+ * Вариант A merge: изменения temp-задачи (isCompleted подзадач, статус и т.д.)
+ * записываются прямо внутрь queued create_with_relations, а не создают
+ * отдельные PATCH-операции. Это гарантирует корректную синхронизацию
+ * при последовательном потоке офлайн-изменений.
  */
 
 const DB_NAME    = "plan-cache";
-const DB_VERSION = 2;
+const DB_VERSION = 3; // версия поднята из-за новых полей в pending_ops
 const EPICS_STORE = "epics";
 const QUEUE_STORE = "pending_ops";
 
@@ -45,11 +44,6 @@ async function openDB(): Promise<IDBDatabase> {
     req.onsuccess = () => {
       _db = req.result;
 
-      // ИСПРАВЛЕНО: "close" → "versionchange"
-      // IDBDatabase не имеет события "close" в спецификации W3C.
-      // "versionchange" срабатывает когда другая вкладка вызывает
-      // indexedDB.open() с новой версией — нужно закрыть соединение
-      // чтобы не блокировать апгрейд.
       _db.addEventListener("versionchange", () => {
         _db?.close();
         _db = null;
@@ -63,7 +57,6 @@ async function openDB(): Promise<IDBDatabase> {
   });
 }
 
-/** Превращает IDBRequest в промис, чтобы можно было await. */
 function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -78,9 +71,7 @@ export async function cacheEpics(epics: unknown): Promise<void> {
     const db  = await openDB();
     const tx  = db.transaction(EPICS_STORE, "readwrite");
     await promisifyRequest(tx.objectStore(EPICS_STORE).put(JSON.stringify(epics), "all"));
-  } catch {
-    // silent — кеш необязателен
-  }
+  } catch { /* silent */ }
 }
 
 export async function getCachedEpics(): Promise<unknown | null> {
@@ -98,34 +89,126 @@ export async function getCachedEpics(): Promise<unknown | null> {
 
 // ── Pending ops queue ─────────────────────────────────────────────────────────
 
-export const MAX_OP_RETRIES = 5; // НОВОЕ: максимум попыток для 5xx ошибок
+export const MAX_OP_RETRIES = 5;
 
-export interface PendingOp {
-  id: string;
-  url: string;
-  method: "PATCH" | "DELETE" | "POST";
-  body?: Record<string, unknown>;
-  createdAt: number;
-  retries: number;
+/**
+ * SubtaskDraft — черновик подзадачи в очереди create_with_relations.
+ * title НЕ хранится (NOT NULL — генерируется сервером по индексу).
+ */
+export interface SubtaskDraft {
+  isCompleted: boolean;
+  sortOrder:   number;
 }
 
+/**
+ * PendingOp — полиморфный тип офлайн-операции.
+ *
+ * Поля discriminated по полю `kind` (или отсутствию — для обратной совместимости).
+ */
+export type PendingOp =
+  | {
+      kind:        "create_with_relations";
+      id:          string;
+      createdAt:   number;
+      retries:     number;
+      // Данные для POST /api/tasks
+      epicId:      number;
+      title:       string;
+      status:      string;
+      priority:    string;
+      description: string | null;
+      dueDate:     string | null;
+      sortOrder:   number;
+      assigneeIds: number[];
+      subtasks:    SubtaskDraft[];
+      // Временный id в store (отрицательный)
+      tempTaskId:  number;
+    }
+  | {
+      kind:               "patch_task";
+      id:                 string;
+      createdAt:          number;
+      retries:            number;
+      url:                string;
+      patch:              Record<string, unknown>;
+      expectedUpdatedAt:  string | undefined;
+    }
+  | {
+      // Обратная совместимость — subtask toggle, assignee add/remove
+      kind?:      undefined;
+      id:         string;
+      url:        string;
+      method:     "PATCH" | "DELETE" | "POST";
+      body?:      Record<string, unknown>;
+      createdAt:  number;
+      retries:    number;
+    };
+
+/**
+ * PendingOpInput — входные данные для enqueuePendingOp (без служебных полей).
+ *
+ * Важно: здесь НЕ используем `Omit<PendingOp, ...>`, потому что `PendingOp` —
+ * union, и `Omit` на уровне union теряет поля, которые не общие для всех веток
+ * (например `url`).
+ */
+export type PendingOpInput =
+  | {
+    kind: "create_with_relations";
+    // Данные для POST /api/tasks
+    epicId: number;
+    title: string;
+    status: string;
+    priority: string;
+    description: string | null;
+    dueDate: string | null;
+    sortOrder: number;
+    assigneeIds: number[];
+    subtasks: SubtaskDraft[];
+    // Временный id в store (отрицательный)
+    tempTaskId: number;
+  }
+  | {
+    kind: "patch_task";
+    url: string;
+    patch: Record<string, unknown>;
+    expectedUpdatedAt: string | undefined;
+  }
+  | {
+    // Обратная совместимость — subtask toggle, assignee add/remove
+    kind?: undefined;
+    url: string;
+    method: "PATCH" | "DELETE" | "POST";
+    body?: Record<string, unknown>;
+  };
+
 export async function enqueuePendingOp(
-  op: Omit<PendingOp, "id" | "createdAt" | "retries">,
+  op: PendingOpInput,
 ): Promise<PendingOp> {
-  const full: PendingOp = {
+  const full = {
     ...op,
     id:        crypto.randomUUID(),
     createdAt: Date.now(),
     retries:   0,
-  };
+  } as PendingOp;
+
   try {
     const db = await openDB();
     const tx = db.transaction(QUEUE_STORE, "readwrite");
     await promisifyRequest(tx.objectStore(QUEUE_STORE).put(full));
-  } catch {
-    // silent
-  }
+  } catch { /* silent */ }
+
   return full;
+}
+
+/**
+ * updatePendingOp — обновить существующую запись в очереди (merge в create_with_relations).
+ */
+export async function updatePendingOp(op: PendingOp): Promise<void> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(QUEUE_STORE, "readwrite");
+    await promisifyRequest(tx.objectStore(QUEUE_STORE).put(op));
+  } catch { /* silent */ }
 }
 
 export async function getPendingOps(): Promise<PendingOp[]> {
@@ -146,9 +229,7 @@ export async function removePendingOp(id: string): Promise<void> {
     const db = await openDB();
     const tx = db.transaction(QUEUE_STORE, "readwrite");
     await promisifyRequest(tx.objectStore(QUEUE_STORE).delete(id));
-  } catch {
-    // silent
-  }
+  } catch { /* silent */ }
 }
 
 export async function incrementOpRetries(id: string): Promise<void> {
@@ -160,9 +241,7 @@ export async function incrementOpRetries(id: string): Promise<void> {
     if (op) {
       await promisifyRequest(store.put({ ...op, retries: op.retries + 1 }));
     }
-  } catch {
-    // silent
-  }
+  } catch { /* silent */ }
 }
 
 export async function getPendingOpsCount(): Promise<number> {
@@ -180,7 +259,5 @@ export async function clearPendingOps(): Promise<void> {
     const db = await openDB();
     const tx = db.transaction(QUEUE_STORE, "readwrite");
     await promisifyRequest(tx.objectStore(QUEUE_STORE).clear());
-  } catch {
-    // silent
-  }
+  } catch { /* silent */ }
 }

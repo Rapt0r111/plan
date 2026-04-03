@@ -2,22 +2,22 @@
 /**
  * @file CreateEpicModal.tsx — features/create
  *
- * FIX v3: offline / network-error handling
- *   БЫЛО: fetch("/api/epics") без проверки типа ошибки.
- *         При ERR_INTERNET_DISCONNECTED (TypeError) ошибка поглощалась catch(e),
- *         setError(e.message) выдавал технический "Failed to fetch".
+ * v4 — Офлайн-first через useTaskStore.createEpic()
  *
- *   СТАЛО:
- *     - isNetworkError(e) определяет TypeError — сеть недоступна.
- *     - Показывается понятное сообщение "Нет соединения — попробуйте когда сеть восстановится."
- *     - Форма остаётся открытой, данные не теряются (setSaving(false) без onClose()).
+ * БЫЛО: прямой fetch("/api/epics") без оффлайн-поддержки.
+ *       При ERR_INTERNET_DISCONNECTED форма показывала ошибку и данные терялись.
  *
- *   ПРИМЕЧАНИЕ: Создание эпиков требует сервера (нет offline-queue для эпиков),
- *   поэтому мы не добавляем оптимистичный UI — только честное сообщение об ошибке.
+ * СТАЛО: store.createEpic() — тот же контракт что и createTask:
+ *   - Оптимистичный update: эпик виден сразу, без ожидания сервера
+ *   - Если offline → в IndexedDB-очередь, эпик отображается как temp
+ *   - Если сетевая ошибка → в очередь (не rollback!)
+ *   - При onLine → SyncOrchestrator вызывает replayOfflineQueue → реальный ID
+ *
+ * router.refresh() убран — не нужен, store сам обновляет UI оптимистично.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTaskStore } from "@/shared/store/useTaskStore";
 
 interface Props {
   open: boolean;
@@ -31,10 +31,6 @@ const PRESET_COLORS = [
   "#60a5fa", "#e879f9", "#4ade80", "#facc15",
 ];
 
-function isNetworkError(e: unknown): boolean {
-  return e instanceof TypeError;
-}
-
 function EpicPreviewCard({
   title, description, color,
 }: { title: string; description: string; color: string }) {
@@ -42,9 +38,9 @@ function EpicPreviewCard({
     <div
       className="rounded-2xl overflow-hidden transition-all duration-300"
       style={{
-        background: "var(--bg-elevated)",
-        border: "1px solid var(--glass-border)",
-        borderLeft: `3px solid ${color}`,
+        background:   "var(--bg-elevated)",
+        border:       "1px solid var(--glass-border)",
+        borderLeft:   `3px solid ${color}`,
         backgroundImage: `radial-gradient(ellipse at top left, ${color}12 0%, transparent 50%)`,
       }}
     >
@@ -101,59 +97,71 @@ function EpicPreviewCard({
 }
 
 export function CreateEpicModal({ open, onClose, onCreated }: Props) {
-  const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [color, setColor] = useState("#8b5cf6");
+  const createEpic = useTaskStore((s) => s.createEpic);
+
+  const [title, setTitle]         = useState("");
+  const [description, setDesc]    = useState("");
+  const [color, setColor]         = useState("#8b5cf6");
   const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [endDate, setEndDate]     = useState("");
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 80);
+      setIsOfflineMode(typeof navigator !== "undefined" && !navigator.onLine);
     } else {
-      setTitle(""); setDescription(""); setColor("#8b5cf6");
-      setStartDate(""); setEndDate(""); setError(null);
+      setTitle(""); setDesc(""); setColor("#8b5cf6");
+      setStartDate(""); setEndDate(""); setError(null); setIsOfflineMode(false);
     }
+  }, [open]);
+
+  // Следим за переключением офлайн/онлайн пока модал открыт
+  useEffect(() => {
+    if (!open) return;
+    const onOnline  = () => setIsOfflineMode(false);
+    const onOffline = () => setIsOfflineMode(true);
+    window.addEventListener("online",  onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online",  onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
   }, [open]);
 
   const handleSave = useCallback(async () => {
     if (!title.trim() || saving) return;
     setSaving(true);
     setError(null);
-    try {
-      const res = await fetch("/api/epics", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim() || null,
-          color,
-          startDate: startDate || null,
-          endDate: endDate || null,
-        }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error ?? "Ошибка создания");
 
+    try {
+      const result = await createEpic({
+        title:       title.trim(),
+        description: description.trim() || null,
+        color,
+        startDate:   startDate ? `${startDate}T00:00:00.000Z` : null,
+        endDate:     endDate   ? `${endDate}T00:00:00.000Z`   : null,
+      });
+
+      if (!result) {
+        // Серверная ошибка (не сетевая) — store вернул null и уже откатил
+        setError("Не удалось создать эпик. Проверьте данные и попробуйте снова.");
+        return;
+      }
+
+      // Успех — эпик уже в сторе (оптимистично или реальный)
       onCreated?.();
       onClose();
-      router.refresh();
     } catch (e) {
-      // FIX v3: понятное сообщение при отсутствии сети
-      if (isNetworkError(e)) {
-        setError("Нет соединения — попробуйте когда сеть восстановится. Данные формы сохранены.");
-        // Не закрываем форму — пользователь сохранит данные позже
-      } else {
-        setError(e instanceof Error ? e.message : "Ошибка");
-      }
+      // Непредвиденная ошибка
+      setError(e instanceof Error ? e.message : "Неизвестная ошибка");
     } finally {
       setSaving(false);
     }
-  }, [title, description, color, startDate, endDate, saving, onClose, onCreated, router]);
+  }, [title, description, color, startDate, endDate, saving, createEpic, onClose, onCreated]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Escape") onClose();
@@ -165,7 +173,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
       {open && (
         <>
           <motion.div
-            className="fixed inset-0 z-9500"
+            className="fixed inset-0 z-[9500]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.2 } }}
@@ -174,7 +182,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
           />
 
           <motion.div
-            className="fixed inset-0 z-9501 flex items-center justify-center p-4"
+            className="fixed inset-0 z-[9501] flex items-center justify-center p-4"
             style={{ pointerEvents: "none" }}
           >
             <motion.div
@@ -190,9 +198,9 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
               <div
                 className="flex-1 rounded-3xl overflow-hidden relative"
                 style={{
-                  background: "var(--modal-bg)",
-                  border: `1px solid ${color}30`,
-                  boxShadow: `0 0 0 1px ${color}15, 0 32px 80px rgba(0,0,0,0.7)`,
+                  background:  "var(--modal-bg)",
+                  border:      `1px solid ${color}30`,
+                  boxShadow:   `0 0 0 1px ${color}15, 0 32px 80px rgba(0,0,0,0.7)`,
                 }}
               >
                 <div className="absolute top-0 left-0 right-0 h-px"
@@ -212,16 +220,34 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                       </div>
                       <div>
                         <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Новый эпик</h2>
-                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>Группа задач объединённых общей целью</p>
+                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          {isOfflineMode
+                            ? "Офлайн — будет синхронизирован при подключении"
+                            : "Группа задач объединённых общей целью"}
+                        </p>
                       </div>
                     </div>
-                    <button onClick={onClose}
-                      className="w-7 h-7 rounded-xl flex items-center justify-center transition-all hover:opacity-70"
-                      style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)", color: "var(--text-muted)" }}>
-                      <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                        <path d="M2 2l8 8M10 2L2 10" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {/* Offline indicator */}
+                      {isOfflineMode && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium"
+                          style={{ background: "rgba(234,179,8,0.12)", border: "1px solid rgba(234,179,8,0.3)", color: "#eab308" }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+                          Офлайн
+                        </motion.div>
+                      )}
+                      <button onClick={onClose}
+                        className="w-7 h-7 rounded-xl flex items-center justify-center transition-all hover:opacity-70"
+                        style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)", color: "var(--text-muted)" }}>
+                        <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                          <path d="M2 2l8 8M10 2L2 10" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Error */}
@@ -231,20 +257,11 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                         initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                         className="px-4 py-3 rounded-xl text-sm flex items-start gap-3"
                         style={{
-                          background: error.includes("соединения")
-                            ? "rgba(234,179,8,0.10)"
-                            : "rgba(239,68,68,0.10)",
-                          border: error.includes("соединения")
-                            ? "1px solid rgba(234,179,8,0.25)"
-                            : "1px solid rgba(239,68,68,0.25)",
-                          color: error.includes("соединения") ? "#eab308" : "#f87171",
+                          background: "rgba(239,68,68,0.10)",
+                          border:     "1px solid rgba(239,68,68,0.25)",
+                          color:      "#f87171",
                         }}>
-                        {error.includes("соединения") && (
-                          <svg className="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                            <path d="M1 4h14M1 8h10M1 12h6" />
-                          </svg>
-                        )}
-                        <span>{error}</span>
+                        {error}
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -263,11 +280,11 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                       maxLength={120}
                       className="w-full px-4 py-3 rounded-xl text-sm font-medium outline-none transition-all"
                       style={{
-                        background: "var(--glass-01)",
-                        border: `1px solid ${title ? color + "50" : "var(--glass-border)"}`,
-                        color: "var(--text-primary)",
-                        caretColor: color,
-                        boxShadow: title ? `0 0 0 3px ${color}10` : "none",
+                        background:  "var(--glass-01)",
+                        border:      `1px solid ${title ? color + "50" : "var(--glass-border)"}`,
+                        color:       "var(--text-primary)",
+                        caretColor:  color,
+                        boxShadow:   title ? `0 0 0 3px ${color}10` : "none",
                       }}
                     />
                     <div className="flex justify-end mt-1">
@@ -284,17 +301,17 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                     </label>
                     <textarea
                       value={description}
-                      onChange={(e) => setDescription(e.target.value)}
+                      onChange={(e) => setDesc(e.target.value)}
                       placeholder="Что входит в этот эпик? Какова конечная цель?"
                       rows={3}
                       maxLength={500}
                       className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all resize-none"
                       style={{
-                        background: "var(--glass-01)",
-                        border: "1px solid var(--glass-border)",
-                        color: "var(--text-secondary)",
-                        caretColor: color,
-                        fontFamily: "var(--font-sans)",
+                        background:  "var(--glass-01)",
+                        border:      "1px solid var(--glass-border)",
+                        color:       "var(--text-secondary)",
+                        caretColor:  color,
+                        fontFamily:  "var(--font-sans)",
                       }}
                     />
                   </div>
@@ -302,8 +319,8 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                   {/* Dates */}
                   <div className="grid grid-cols-2 gap-4">
                     {[
-                      { label: "Дата начала", value: startDate, onChange: setStartDate },
-                      { label: "Дата окончания", value: endDate, onChange: setEndDate },
+                      { label: "Дата начала",    value: startDate, onChange: setStartDate },
+                      { label: "Дата окончания", value: endDate,   onChange: setEndDate   },
                     ].map(({ label, value, onChange }) => (
                       <div key={label}>
                         <label className="text-xs font-semibold uppercase tracking-widest mb-2 block"
@@ -313,9 +330,9 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                         <input type="date" value={value} onChange={(e) => onChange(e.target.value)}
                           className="w-full px-4 py-2.5 rounded-xl text-sm outline-none transition-all"
                           style={{
-                            background: "var(--glass-01)",
-                            border: "1px solid var(--glass-border)",
-                            color: value ? "var(--text-primary)" : "var(--text-muted)",
+                            background:  "var(--glass-01)",
+                            border:      "1px solid var(--glass-border)",
+                            color:       value ? "var(--text-primary)" : "var(--text-muted)",
                             colorScheme: "dark",
                           }}
                         />
@@ -363,7 +380,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                         <motion.label
                           className="w-7 h-7 rounded-xl flex items-center justify-center cursor-pointer"
                           style={{ background: "var(--glass-02)", border: "1.5px dashed var(--glass-border)" }}
-                          whileHover={{ scale: 1.1, borderColor: color }}
+                          whileHover={{ scale: 1.1 }}
                           title="Свой цвет"
                         >
                           <input type="color" value={color}
@@ -405,10 +422,10 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                         className="relative px-5 py-2 rounded-xl text-sm font-semibold overflow-hidden"
                         style={{
                           background: title.trim() ? `linear-gradient(135deg, ${color}30, ${color}18)` : "var(--glass-01)",
-                          border: `1px solid ${title.trim() ? color + "50" : "var(--glass-border)"}`,
-                          color: title.trim() ? color : "var(--text-muted)",
-                          boxShadow: title.trim() ? `0 0 20px ${color}20` : "none",
-                          opacity: saving ? 0.7 : 1,
+                          border:     `1px solid ${title.trim() ? color + "50" : "var(--glass-border)"}`,
+                          color:      title.trim() ? color : "var(--text-muted)",
+                          boxShadow:  title.trim() ? `0 0 20px ${color}20` : "none",
+                          opacity:    saving ? 0.7 : 1,
                         }}
                         whileHover={title.trim() && !saving ? { scale: 1.03 } : {}}
                         whileTap={title.trim() && !saving ? { scale: 0.97 } : {}}>
@@ -418,7 +435,11 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                             animate={{ x: ["-100%", "200%"] }}
                             transition={{ duration: 0.9, repeat: Infinity }} />
                         )}
-                        <span className="relative">{saving ? "Создаю..." : "Создать эпик"}</span>
+                        <span className="relative">
+                          {saving
+                            ? (isOfflineMode ? "Сохраняю офлайн..." : "Создаю...")
+                            : (isOfflineMode ? "Создать (офлайн)" : "Создать эпик")}
+                        </span>
                       </motion.button>
                     </div>
                   </div>
@@ -437,6 +458,16 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                   Предпросмотр
                 </p>
                 <EpicPreviewCard title={title} description={description} color={color} />
+                {isOfflineMode && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-[10px] mt-2 text-center"
+                    style={{ color: "#eab308" }}
+                  >
+                    ✦ Будет синхронизирован при подключении
+                  </motion.p>
+                )}
               </motion.div>
             </motion.div>
           </motion.div>

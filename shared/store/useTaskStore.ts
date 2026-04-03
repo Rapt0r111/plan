@@ -1,27 +1,3 @@
-/**
- * @file useTaskStore.ts — shared/store
- *
- * v11 — Fix: Race-condition duplication in offline sync
- *
- * BUG (v10): When replayOfflineQueue POSTs a task/epic to the server,
- * the API route calls broadcast() (SSE). The client's own SSE handler
- * receives this immediately and calls router.refresh() → hydrateEpics,
- * concurrently with the replay's set() that replaces temp IDs with real ones.
- *
- * Race sequence that caused duplicates:
- *   1. Replay POSTs → server creates id=5 AND broadcasts SSE
- *   2. Client SSE handler: router.refresh() → hydrateEpics runs
- *      (store still has temp id=-1234 because replay set() hasn't run yet)
- *   3. hydrateEpics injects temp into server epic:
- *      epic.tasks = [realTask{id:5}, tempTask{id:-1234}]
- *   4. Replay set() maps tempTask{id:-1234} → realTask{id:5}:
- *      epic.tasks = [realTask{id:5}, realTask{id:5}] ← DUPLICATE
- *
- * FIX: Three deduplication points:
- *   FIX 1 – hydrateEpics: dedup epics+tasks after merge (primary guard)
- *   FIX 2 – replayOfflineQueue create_with_relations set(): dedup tasks after map
- *   FIX 3 – replayOfflineQueue create_epic set(): dedup epics after map
- */
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
@@ -38,8 +14,6 @@ import {
   type SubtaskDraft,
 } from "@/shared/lib/localCache";
 import type { EpicWithTasks, TaskView, TaskStatus, TaskPriority, SubtaskView, DbEpic } from "@/shared/types";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error";
 
@@ -67,8 +41,6 @@ export interface CreateEpicParams {
   startDate?: string | null;
   endDate?: string | null;
 }
-
-// ── Module-level helpers ──────────────────────────────────────────────────────
 
 let _tempIdSeq = 0;
 function nextTempId(): number {
@@ -136,7 +108,29 @@ function buildTempSubtasks(drafts: SubtaskDraft[]): SubtaskView[] {
   }));
 }
 
-// ── Store interface ───────────────────────────────────────────────────────────
+/** Dedup tasks in an epic by ID, keeping first occurrence */
+function dedupTasks(tasks: TaskView[]): TaskView[] {
+  const seen = new Set<number>();
+  return tasks.filter((t) => {
+    if (seen.has(t.id)) return false;
+    seen.add(t.id);
+    return true;
+  });
+}
+
+/** Replace tempId with realTask in epic's task list, with dedup to prevent duplicates */
+function replaceTempTask(
+  epics: EpicWithTasks[],
+  epicId: number,
+  tempId: number,
+  realTask: TaskView,
+): EpicWithTasks[] {
+  return epics.map((e) => {
+    if (e.id !== epicId) return e;
+    const tasks = dedupTasks(e.tasks.map((t) => (t.id === tempId ? realTask : t)));
+    return { ...e, tasks };
+  });
+}
 
 interface TaskStore {
   epics: EpicWithTasks[];
@@ -146,6 +140,12 @@ interface TaskStore {
   lastSyncedAt: Date | null;
   pendingOps: number;
   offlineQueueSize: number;
+  /**
+   * Set of task IDs currently being mutated (in-flight fetch).
+   * Used by hydrateEpics to preserve optimistic state and avoid
+   * SSE-triggered router.refresh() overwriting pending updates.
+   */
+  mutatingTaskIds: Set<number>;
 
   getEpic: (id: number) => EpicWithTasks | undefined;
   getTask: (id: number) => TaskView | undefined;
@@ -174,9 +174,8 @@ interface TaskStore {
   replayOfflineQueue: () => Promise<ReplayResult>;
 
   _beginOp: () => () => void;
+  _trackMutation: (taskId: number) => () => void;
 }
-
-// ── Store implementation ──────────────────────────────────────────────────────
 
 export const useTaskStore = create<TaskStore>()(
   subscribeWithSelector((set, get) => ({
@@ -187,18 +186,24 @@ export const useTaskStore = create<TaskStore>()(
     lastSyncedAt: null,
     pendingOps: 0,
     offlineQueueSize: 0,
+    mutatingTaskIds: new Set<number>(),
 
     getEpic: (id) => get().epics.find((e) => e.id === id),
     getTask: (id) => get().tasks[id],
     getTasksForEpic: (epicId) => get().epics.find((e) => e.id === epicId)?.tasks ?? [],
 
     // ─────────────────────────────────────────────────────────────────────────
-    // hydrateEpics v11 — MERGE + DEDUP
+    // hydrateEpics v12 — MERGE + DEDUP + PRESERVE MUTATING TASKS
     //
-    // FIX 1: After merging server epics with temp items, deduplicate both the
-    // epics list and each epic's tasks list. This is the primary guard against
-    // the race condition where SSE-triggered hydrateEpics runs concurrently
-    // with replayOfflineQueue's set() calls.
+    // FIX 1 (v11): Dedup epics+tasks after merge to prevent duplicates from
+    //   the race: SSE triggers hydrateEpics while createTask is still running.
+    //
+    // FIX 2 (v12): Preserve optimistic state for tasks with in-flight fetches.
+    //   When SSE triggers router.refresh() → hydrateEpics, server data may be
+    //   STALE (our mutation hasn't been processed yet). Previously this would
+    //   OVERWRITE the optimistic update, causing the task to visually revert.
+    //   Now: tasks in `mutatingTaskIds` keep their store version in both the
+    //   tasks index AND the epics array.
     // ─────────────────────────────────────────────────────────────────────────
     hydrateEpics: (serverEpics) => set((s) => {
       // ── Step 1: preserve temp epics (id < 0) ─────────────────────────────
@@ -218,11 +223,24 @@ export const useTaskStore = create<TaskStore>()(
         }
       }
 
-      // ── Step 3: inject pending temp tasks into their real epics ──────────
+      // ── Step 3: inject pending temp tasks + preserve mutating tasks ───────
+      const preserveIds = s.mutatingTaskIds;
+
       const serverEpicsWithPending = serverEpics.map((epic) => {
         const pending = pendingByEpic[epic.id];
-        if (!pending?.length) return epic;
-        const allTasks = [...epic.tasks, ...pending];
+
+        // For each server task, if it's being mutated, keep the store version
+        const tasks = epic.tasks.map((serverTask) => {
+          if (preserveIds.has(serverTask.id) && s.tasks[serverTask.id]) {
+            return s.tasks[serverTask.id];
+          }
+          return serverTask;
+        });
+
+        if (!pending?.length) {
+          return { ...epic, tasks };
+        }
+        const allTasks = [...tasks, ...pending];
         return {
           ...epic,
           tasks: allTasks,
@@ -234,16 +252,8 @@ export const useTaskStore = create<TaskStore>()(
       });
 
       const mergedEpics = [...serverEpicsWithPending, ...tempEpics];
-      const serverTasks = buildTaskIndex(serverEpics);
 
       // ── FIX 1: Deduplicate (race condition guard) ─────────────────────────
-      // When replayOfflineQueue creates an item on the server, the API route
-      // calls broadcast() which triggers SSE on all clients including ourselves.
-      // Our SSE handler calls router.refresh() → hydrateEpics concurrently with
-      // the replay's set() that replaces temp IDs. This creates duplicates:
-      //   epic.tasks = [realTask{id:5}, tempTask{id:-1}]  (after injection)
-      //   then replay maps tempTask → realTask: [task{5}, task{5}] ← BUG
-      // Deduplicating here (and in the replay set() calls) eliminates both sides.
       const seenEpicIds = new Set<number>();
       const dedupedEpics = mergedEpics
         .filter(e => {
@@ -251,21 +261,25 @@ export const useTaskStore = create<TaskStore>()(
           seenEpicIds.add(e.id);
           return true;
         })
-        .map(epic => {
-          const seenTaskIds = new Set<number>();
-          return {
-            ...epic,
-            tasks: epic.tasks.filter(t => {
-              if (seenTaskIds.has(t.id)) return false;
-              seenTaskIds.add(t.id);
-              return true;
-            }),
-          };
-        });
+        .map(epic => ({
+          ...epic,
+          tasks: dedupTasks(epic.tasks),
+        }));
+
+      // ── Build tasks index: server + temp + preserve mutating ──────────────
+      const serverTasks = buildTaskIndex(serverEpics);
+      const mergedTasks: Record<number, TaskView> = { ...serverTasks, ...allTempTasks };
+
+      // Preserve optimistic state for in-flight mutations
+      if (preserveIds.size > 0) {
+        for (const id of preserveIds) {
+          if (s.tasks[id]) mergedTasks[id] = s.tasks[id];
+        }
+      }
 
       return {
         epics: dedupedEpics,
-        tasks: { ...serverTasks, ...allTempTasks },
+        tasks: mergedTasks,
         syncStatus: "synced",
         lastSyncedAt: new Date(),
       };
@@ -283,6 +297,23 @@ export const useTaskStore = create<TaskStore>()(
           lastSyncedAt: next === 0 ? new Date() : s.lastSyncedAt,
         };
       });
+    },
+
+    /**
+     * Track a task ID as "in-flight mutation". Returns a cleanup function
+     * that removes the ID when the mutation completes (success or error).
+     * Only applies to real task IDs (id > 0).
+     */
+    _trackMutation: (taskId: number) => {
+      if (taskId <= 0) return () => {};
+      set((s) => ({ mutatingTaskIds: new Set([...s.mutatingTaskIds, taskId]) }));
+      return () => {
+        set((s) => {
+          const ids = new Set(s.mutatingTaskIds);
+          ids.delete(taskId);
+          return { mutatingTaskIds: ids };
+        });
+      };
     },
 
     // ── refreshOfflineQueue ───────────────────────────────────────────────────
@@ -343,13 +374,23 @@ export const useTaskStore = create<TaskStore>()(
         const realEpic: DbEpic = data.data;
         const realId = realEpic.id;
 
-        set((s) => ({
-          epics: s.epics.map((e) =>
-            e.id === tempId
-              ? { ...tempEpic, id: realId, createdAt: realEpic.createdAt, updatedAt: realEpic.updatedAt }
-              : e
-          ),
-        }));
+        set((s) => {
+          // Dedup: if hydrateEpics ran concurrently and already added realId,
+          // replace temp and deduplicate to avoid having both entries.
+          const seenIds = new Set<number>();
+          const epics = s.epics
+            .map((e) =>
+              e.id === tempId
+                ? { ...tempEpic, id: realId, createdAt: realEpic.createdAt, updatedAt: realEpic.updatedAt }
+                : e
+            )
+            .filter(e => {
+              if (seenIds.has(e.id)) return false;
+              seenIds.add(e.id);
+              return true;
+            });
+          return { epics };
+        });
 
         cacheEpics(get().epics);
         return { ...tempEpic, id: realId };
@@ -415,10 +456,6 @@ export const useTaskStore = create<TaskStore>()(
 
             set((s) => {
               // FIX 3: Deduplicate epics after replacing temp with real.
-              // If hydrateEpics ran concurrently (triggered by the SSE broadcast
-              // from this very POST), s.epics may contain both the temp epic
-              // (id=op.tempEpicId) and the real epic (id=realId). After mapping
-              // temp → real, both entries have id=realId. Filter keeps first.
               const seenReplayEpicIds = new Set<number>();
               const updatedEpics = s.epics
                 .map((e) =>
@@ -539,20 +576,10 @@ export const useTaskStore = create<TaskStore>()(
                   tasks: { ...restTasks, [realId]: realTask },
                   epics: s.epics.map((e) => {
                     if (e.id !== epicId) return e;
-                    // FIX 2: Deduplicate tasks after replacing temp with real.
-                    // If hydrateEpics ran concurrently (from SSE), e.tasks may
-                    // already contain realTask{id:realId} AND tempTask{id:op.tempTaskId}.
-                    // After map, both entries get id=realId. Filter removes the dupe.
-                    const seenTaskIds = new Set<number>();
+                    // FIX 2: Deduplicate after replacing temp with real
                     return {
                       ...e,
-                      tasks: e.tasks
-                        .map((t) => t.id === op.tempTaskId ? realTask : t)
-                        .filter(t => {
-                          if (seenTaskIds.has(t.id)) return false;
-                          seenTaskIds.add(t.id);
-                          return true;
-                        }),
+                      tasks: dedupTasks(e.tasks.map((t) => t.id === op.tempTaskId ? realTask : t)),
                       progress: { total: e.progress.total, done: e.progress.done },
                     };
                   }),
@@ -784,12 +811,8 @@ export const useTaskStore = create<TaskStore>()(
           const restTasks = omitTask(s.tasks, tempId);
           return {
             tasks: { ...restTasks, [realId]: realTask },
-            epics: s.epics.map((e) =>
-              e.id !== epicId ? e : {
-                ...e,
-                tasks: e.tasks.map((t) => t.id === tempId ? realTask : t),
-              }
-            ),
+            // FIX: use replaceTempTask which includes dedup
+            epics: replaceTempTask(s.epics, epicId, tempId, realTask),
           };
         });
 
@@ -883,12 +906,8 @@ export const useTaskStore = create<TaskStore>()(
           const restTasks = omitTask(s.tasks, tempId);
           return {
             tasks: { ...restTasks, [realId]: realTask },
-            epics: s.epics.map((e) =>
-              e.id !== epicId ? e : {
-                ...e,
-                tasks: e.tasks.map((t) => (t.id === tempId ? realTask : t)),
-              }
-            ),
+            // FIX: use replaceTempTask which includes dedup
+            epics: replaceTempTask(s.epics, epicId, tempId, realTask),
           };
         });
       } catch (err) {
@@ -980,12 +999,8 @@ export const useTaskStore = create<TaskStore>()(
           const restTasks = omitTask(s.tasks, tempId);
           return {
             tasks: { ...restTasks, [realId]: realTask },
-            epics: s.epics.map((e) =>
-              e.id !== epicId ? e : {
-                ...e,
-                tasks: e.tasks.map((t) => (t.id === tempId ? realTask : t)),
-              }
-            ),
+            // FIX: use replaceTempTask which includes dedup
+            epics: replaceTempTask(s.epics, epicId, tempId, realTask),
           };
         });
         return realTask;
@@ -1091,6 +1106,7 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
+      const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         const res = await apiPatch(`/api/tasks/${taskId}`, { status });
@@ -1134,6 +1150,7 @@ export const useTaskStore = create<TaskStore>()(
         }
       } finally {
         done();
+        stopTracking();
       }
     },
 
@@ -1183,6 +1200,7 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
+      const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         const res = await apiPatch(`/api/subtasks/${subtaskId}`, { isCompleted: newVal });
@@ -1211,6 +1229,7 @@ export const useTaskStore = create<TaskStore>()(
         }
       } finally {
         done();
+        stopTracking();
       }
     },
 
@@ -1246,6 +1265,7 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
+      const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { priority });
@@ -1264,7 +1284,10 @@ export const useTaskStore = create<TaskStore>()(
             syncStatus: "error",
           }));
         }
-      } finally { done(); }
+      } finally {
+        done();
+        stopTracking();
+      }
     },
 
     // ── updateTaskTitle ───────────────────────────────────────────────────────
@@ -1300,6 +1323,7 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
+      const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { title: patched });
@@ -1318,7 +1342,10 @@ export const useTaskStore = create<TaskStore>()(
             syncStatus: "error",
           }));
         }
-      } finally { done(); }
+      } finally {
+        done();
+        stopTracking();
+      }
     },
 
     // ── updateTaskDescription ─────────────────────────────────────────────────
@@ -1346,6 +1373,7 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
+      const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { description: next });
@@ -1364,7 +1392,10 @@ export const useTaskStore = create<TaskStore>()(
             syncStatus: "error",
           }));
         }
-      } finally { done(); }
+      } finally {
+        done();
+        stopTracking();
+      }
     },
 
     // ── updateTaskDueDate ─────────────────────────────────────────────────────
@@ -1391,6 +1422,7 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
+      const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { dueDate });
@@ -1409,7 +1441,10 @@ export const useTaskStore = create<TaskStore>()(
             syncStatus: "error",
           }));
         }
-      } finally { done(); }
+      } finally {
+        done();
+        stopTracking();
+      }
     },
 
     // ── addAssignee ───────────────────────────────────────────────────────────
@@ -1446,6 +1481,7 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
+      const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         const res = await fetch(`/api/tasks/${taskId}/assignees`, {
@@ -1469,7 +1505,10 @@ export const useTaskStore = create<TaskStore>()(
             syncStatus: "error",
           }));
         }
-      } finally { done(); }
+      } finally {
+        done();
+        stopTracking();
+      }
     },
 
     // ── removeAssignee ────────────────────────────────────────────────────────
@@ -1496,6 +1535,7 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
+      const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         const res = await fetch(`/api/tasks/${taskId}/assignees/${userId}`, { method: "DELETE" });
@@ -1514,7 +1554,10 @@ export const useTaskStore = create<TaskStore>()(
             syncStatus: "error",
           }));
         }
-      } finally { done(); }
+      } finally {
+        done();
+        stopTracking();
+      }
     },
 
     // ── deleteTask ────────────────────────────────────────────────────────────
@@ -1592,8 +1635,6 @@ export const useTaskStore = create<TaskStore>()(
     },
   }))
 );
-
-// ── Selectors ─────────────────────────────────────────────────────────────────
 
 export const useSyncStatus = () =>
   useTaskStore(

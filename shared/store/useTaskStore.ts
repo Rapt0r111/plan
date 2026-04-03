@@ -1,24 +1,26 @@
 /**
  * @file useTaskStore.ts — shared/store
  *
- * v10 — Полноценная офлайн-синхронизация для ЭПИКОВ
+ * v11 — Fix: Race-condition duplication in offline sync
  *
- * ИСПРАВЛЕНИЯ v10:
+ * BUG (v10): When replayOfflineQueue POSTs a task/epic to the server,
+ * the API route calls broadcast() (SSE). The client's own SSE handler
+ * receives this immediately and calls router.refresh() → hydrateEpics,
+ * concurrently with the replay's set() that replaces temp IDs with real ones.
  *
- * 1. НОВОЕ: createEpic — офлайн-создание эпика с оптимистичным UI.
- *    Как и у задач: temp ID < 0 → очередь → при onLine заменяется на real ID.
+ * Race sequence that caused duplicates:
+ *   1. Replay POSTs → server creates id=5 AND broadcasts SSE
+ *   2. Client SSE handler: router.refresh() → hydrateEpics runs
+ *      (store still has temp id=-1234 because replay set() hasn't run yet)
+ *   3. hydrateEpics injects temp into server epic:
+ *      epic.tasks = [realTask{id:5}, tempTask{id:-1234}]
+ *   4. Replay set() maps tempTask{id:-1234} → realTask{id:5}:
+ *      epic.tasks = [realTask{id:5}, realTask{id:5}] ← DUPLICATE
  *
- * 2. ИСПРАВЛЕНО: hydrateEpics — при обновлении из сервера сохраняет
- *    temp-элементы (отрицательные ID) из текущего состояния стора.
- *    Это гарантирует что офлайн-созданные эпики/задачи не исчезают
- *    при навигации или router.refresh() пока не завершена синхронизация.
- *
- * 3. ИСПРАВЛЕНО: replayOfflineQueue — двухпроходной алгоритм:
- *    - Проход 1: все create_epic (строим tempEpicToReal map)
- *    - Проход 2: всё остальное (подставляем реальные epicId)
- *    Гарантирует правильный порядок даже если задачи созданы в temp-эпике.
- *
- * 4. ИСПРАВЛЕНО: v9 (все мутации): catch (err) + isNetworkError(err) — сохранено.
+ * FIX: Three deduplication points:
+ *   FIX 1 – hydrateEpics: dedup epics+tasks after merge (primary guard)
+ *   FIX 2 – replayOfflineQueue create_with_relations set(): dedup tasks after map
+ *   FIX 3 – replayOfflineQueue create_epic set(): dedup epics after map
  */
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
@@ -28,9 +30,9 @@ import {
   updatePendingOp,
   getPendingOps,
   getPendingOpsCount,
+  cacheEpics,
   removePendingOp,
   incrementOpRetries,
-  cacheEpics,
   MAX_OP_RETRIES,
   type PendingOp,
   type SubtaskDraft,
@@ -77,13 +79,6 @@ function isCurrentlyOffline(): boolean {
   return typeof navigator !== "undefined" && !navigator.onLine;
 }
 
-/**
- * isNetworkError — fetch() бросает TypeError при:
- *   - ERR_INTERNET_DISCONNECTED (Chrome блокирует ВСЁ, включая localhost)
- *   - DNS не резолвится
- *   - Connection reset
- * ВАЖНО: navigator.onLine может быть true при этих ошибках!
- */
 function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError;
 }
@@ -156,18 +151,11 @@ interface TaskStore {
   getTask: (id: number) => TaskView | undefined;
   getTasksForEpic: (epicId: number) => TaskView[];
 
-  /**
-   * hydrateEpics — обновляет store серверными данными.
-   * ВАЖНО: сохраняет temp-элементы (id < 0) из текущего состояния,
-   * чтобы офлайн-созданные объекты не исчезали при навигации.
-   */
   hydrateEpics: (epics: EpicWithTasks[]) => void;
   setActiveEpic: (epicId: number | null) => void;
 
-  // ── Epic mutations ─────────────────────────────────────────────────────────
   createEpic: (params: CreateEpicParams) => Promise<EpicWithTasks | null>;
 
-  // ── Task mutations ─────────────────────────────────────────────────────────
   addTask: (epicId: number, title: string, status?: TaskStatus) => Promise<void>;
   createTask: (params: { epicId: number; title: string; status?: TaskStatus; priority?: TaskPriority }) => Promise<TaskView | null>;
   createTaskWithSubtasks: (params: CreateWithSubtasksParams) => Promise<TaskView | null>;
@@ -204,19 +192,19 @@ export const useTaskStore = create<TaskStore>()(
     getTask: (id) => get().tasks[id],
     getTasksForEpic: (epicId) => get().epics.find((e) => e.id === epicId)?.tasks ?? [],
 
-    /**
-     * hydrateEpics v10 — MERGE вместо REPLACE.
-     *
-     * При получении свежих серверных данных сохраняем temp-объекты
-     * (отрицательные ID) чтобы офлайн-изменения не потерялись.
-     *
-     * Temp → Real замена происходит в replayOfflineQueue после синхронизации.
-     */
+    // ─────────────────────────────────────────────────────────────────────────
+    // hydrateEpics v11 — MERGE + DEDUP
+    //
+    // FIX 1: After merging server epics with temp items, deduplicate both the
+    // epics list and each epic's tasks list. This is the primary guard against
+    // the race condition where SSE-triggered hydrateEpics runs concurrently
+    // with replayOfflineQueue's set() calls.
+    // ─────────────────────────────────────────────────────────────────────────
     hydrateEpics: (serverEpics) => set((s) => {
-      // ── Шаг 1: сохраняем temp-эпики (id < 0) ────────────────────────────
+      // ── Step 1: preserve temp epics (id < 0) ─────────────────────────────
       const tempEpics = s.epics.filter((e) => e.id < 0);
 
-      // ── Шаг 2: собираем temp-задачи, группируя по epicId ─────────────────
+      // ── Step 2: collect temp tasks grouped by their real epicId ───────────
       const allTempTasks: Record<number, TaskView> = {};
       const pendingByEpic: Record<number, TaskView[]> = {};
 
@@ -224,16 +212,13 @@ export const useTaskStore = create<TaskStore>()(
         const id = Number(idStr);
         if (id < 0) {
           allTempTasks[id] = task;
-          // Задача принадлежит реальному эпику → нужна инжекция в epic.tasks
           if (task.epicId > 0) {
             (pendingByEpic[task.epicId] ??= []).push(task);
           }
-          // Задача temp-эпика → уже входит в tempEpics.tasks, не трогаем
         }
       }
 
-      // ── Шаг 3: инжектируем pending-задачи в реальные эпики ───────────────
-      // Это ключевой шаг — без него task исчезала при каждом hydrateEpics()
+      // ── Step 3: inject pending temp tasks into their real epics ──────────
       const serverEpicsWithPending = serverEpics.map((epic) => {
         const pending = pendingByEpic[epic.id];
         if (!pending?.length) return epic;
@@ -251,8 +236,35 @@ export const useTaskStore = create<TaskStore>()(
       const mergedEpics = [...serverEpicsWithPending, ...tempEpics];
       const serverTasks = buildTaskIndex(serverEpics);
 
+      // ── FIX 1: Deduplicate (race condition guard) ─────────────────────────
+      // When replayOfflineQueue creates an item on the server, the API route
+      // calls broadcast() which triggers SSE on all clients including ourselves.
+      // Our SSE handler calls router.refresh() → hydrateEpics concurrently with
+      // the replay's set() that replaces temp IDs. This creates duplicates:
+      //   epic.tasks = [realTask{id:5}, tempTask{id:-1}]  (after injection)
+      //   then replay maps tempTask → realTask: [task{5}, task{5}] ← BUG
+      // Deduplicating here (and in the replay set() calls) eliminates both sides.
+      const seenEpicIds = new Set<number>();
+      const dedupedEpics = mergedEpics
+        .filter(e => {
+          if (seenEpicIds.has(e.id)) return false;
+          seenEpicIds.add(e.id);
+          return true;
+        })
+        .map(epic => {
+          const seenTaskIds = new Set<number>();
+          return {
+            ...epic,
+            tasks: epic.tasks.filter(t => {
+              if (seenTaskIds.has(t.id)) return false;
+              seenTaskIds.add(t.id);
+              return true;
+            }),
+          };
+        });
+
       return {
-        epics: mergedEpics,
+        epics: dedupedEpics,
         tasks: { ...serverTasks, ...allTempTasks },
         syncStatus: "synced",
         lastSyncedAt: new Date(),
@@ -280,15 +292,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── createEpic ────────────────────────────────────────────────────────────
-    /**
-     * createEpic — офлайн-first создание эпика.
-     *
-     * 1. Создаём temp-эпик с id < 0 и сразу кладём в store (оптимистично).
-     * 2. Кешируем store в IndexedDB (чтобы пережило page refresh).
-     * 3. Если offline → в очередь, возвращаем temp.
-     * 4. Если online → POST /api/epics, заменяем temp ID на real.
-     * 5. При сетевой ошибке → в очередь (не rollback!).
-     */
     createEpic: async (params) => {
       const {
         title,
@@ -314,10 +317,7 @@ export const useTaskStore = create<TaskStore>()(
         progress: { done: 0, total: 0 },
       };
 
-      // Оптимистичный update
       set((s) => ({ epics: [...s.epics, tempEpic] }));
-
-      // Кешируем сразу, чтобы temp-эпик пережил page refresh в оффлайне
       cacheEpics(get().epics);
 
       if (isCurrentlyOffline()) {
@@ -343,7 +343,6 @@ export const useTaskStore = create<TaskStore>()(
         const realEpic: DbEpic = data.data;
         const realId = realEpic.id;
 
-        // Заменяем temp-эпик на настоящий
         set((s) => ({
           epics: s.epics.map((e) =>
             e.id === tempId
@@ -364,7 +363,6 @@ export const useTaskStore = create<TaskStore>()(
           set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
           return tempEpic;
         }
-        // Откатываем только при серверной ошибке (не сетевой)
         set((s) => ({
           epics: s.epics.filter((e) => e.id !== tempId),
           syncStatus: "error",
@@ -377,14 +375,6 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── replayOfflineQueue ────────────────────────────────────────────────────
-    /**
-     * Двухпроходной алгоритм:
-     *   Проход 1: все create_epic → строим tempEpicToReal
-     *   Проход 2: всё остальное → подставляем реальные epicId
-     *
-     * Это гарантирует корректный порядок даже если задачи были созданы
-     * в оффлайн-эпике (их epicId — отрицательный temp ID).
-     */
     replayOfflineQueue: async () => {
       const ops = await getPendingOps();
       if (ops.length === 0) return { successCount: 0, droppedCount: 0 };
@@ -392,12 +382,10 @@ export const useTaskStore = create<TaskStore>()(
       let successCount = 0;
       let droppedCount = 0;
 
-      // Map: tempEpicId → realEpicId (заполняется в проходе 1)
       const tempEpicToReal = new Map<number, number>();
-      // Map: tempTaskId → realTaskId (заполняется в проходе 2)
       const tempToReal = new Map<number, number>();
 
-      // ── Проход 1: create_epic ─────────────────────────────────────────────
+      // ── Pass 1: create_epic ───────────────────────────────────────────────
       const epicOps = ops.filter(
         (op): op is Extract<PendingOp, { kind: "create_epic" }> => op.kind === "create_epic"
       );
@@ -425,22 +413,31 @@ export const useTaskStore = create<TaskStore>()(
 
             tempEpicToReal.set(op.tempEpicId, realId);
 
-            // Заменяем temp-эпик в store + обновляем epicId всех его задач
             set((s) => {
-              const updatedEpics = s.epics.map((e) =>
-                e.id === op.tempEpicId
-                  ? {
-                    ...e,
-                    id: realId,
-                    createdAt: realEpic.createdAt,
-                    updatedAt: realEpic.updatedAt,
-                    // Обновляем epicId у задач эпика
-                    tasks: e.tasks.map((t) => ({ ...t, epicId: realId })),
-                  }
-                  : e
-              );
+              // FIX 3: Deduplicate epics after replacing temp with real.
+              // If hydrateEpics ran concurrently (triggered by the SSE broadcast
+              // from this very POST), s.epics may contain both the temp epic
+              // (id=op.tempEpicId) and the real epic (id=realId). After mapping
+              // temp → real, both entries have id=realId. Filter keeps first.
+              const seenReplayEpicIds = new Set<number>();
+              const updatedEpics = s.epics
+                .map((e) =>
+                  e.id === op.tempEpicId
+                    ? {
+                      ...e,
+                      id: realId,
+                      createdAt: realEpic.createdAt,
+                      updatedAt: realEpic.updatedAt,
+                      tasks: e.tasks.map((t) => ({ ...t, epicId: realId })),
+                    }
+                    : e
+                )
+                .filter(e => {
+                  if (seenReplayEpicIds.has(e.id)) return false;
+                  seenReplayEpicIds.add(e.id);
+                  return true;
+                });
 
-              // Перестраиваем tasks map: заменяем epicId у задач temp-эпика
               const updatedTasks: Record<number, TaskView> = {};
               for (const [idStr, task] of Object.entries(s.tasks)) {
                 const id = Number(idStr);
@@ -475,7 +472,7 @@ export const useTaskStore = create<TaskStore>()(
         }
       }
 
-      // ── Проход 2: всё остальное ───────────────────────────────────────────
+      // ── Pass 2: everything else ───────────────────────────────────────────
       const otherOps = ops.filter((op) => op.kind !== "create_epic");
 
       for (const op of otherOps) {
@@ -483,12 +480,10 @@ export const useTaskStore = create<TaskStore>()(
 
         try {
           if (op.kind === "create_with_relations") {
-            // Подставляем реальный epicId если задача создавалась в temp-эпике
             let epicId = op.epicId;
             if (epicId < 0 && tempEpicToReal.has(epicId)) {
               epicId = tempEpicToReal.get(epicId)!;
             } else if (epicId < 0) {
-              // Эпик не был успешно создан — пропускаем задачу
               await removePendingOp(op.id);
               droppedCount++;
               set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
@@ -542,13 +537,25 @@ export const useTaskStore = create<TaskStore>()(
                 const restTasks = omitTask(s.tasks, op.tempTaskId);
                 return {
                   tasks: { ...restTasks, [realId]: realTask },
-                  epics: s.epics.map((e) =>
-                    e.id !== epicId ? e : {
+                  epics: s.epics.map((e) => {
+                    if (e.id !== epicId) return e;
+                    // FIX 2: Deduplicate tasks after replacing temp with real.
+                    // If hydrateEpics ran concurrently (from SSE), e.tasks may
+                    // already contain realTask{id:realId} AND tempTask{id:op.tempTaskId}.
+                    // After map, both entries get id=realId. Filter removes the dupe.
+                    const seenTaskIds = new Set<number>();
+                    return {
                       ...e,
-                      tasks: e.tasks.map((t) => t.id === op.tempTaskId ? realTask : t),
+                      tasks: e.tasks
+                        .map((t) => t.id === op.tempTaskId ? realTask : t)
+                        .filter(t => {
+                          if (seenTaskIds.has(t.id)) return false;
+                          seenTaskIds.add(t.id);
+                          return true;
+                        }),
                       progress: { total: e.progress.total, done: e.progress.done },
-                    }
-                  ),
+                    };
+                  }),
                 };
               });
 
@@ -577,7 +584,6 @@ export const useTaskStore = create<TaskStore>()(
             const patch = { ...op.patch };
             let expectedUpdatedAt = op.expectedUpdatedAt;
 
-            // Подставляем реальный taskId если задача была temp
             const tempMatch = url.match(/\/api\/tasks\/(-\d+)/);
             if (tempMatch) {
               const tempId = Number(tempMatch[1]);
@@ -641,7 +647,7 @@ export const useTaskStore = create<TaskStore>()(
             continue;
           }
 
-          // Обратная совместимость: subtask toggle, assignee add/remove
+          // Legacy ops (subtask toggle, assignee add/remove)
           if (!op.kind) {
             let url = op.url;
             const tempMatch = url.match(/\/api\/tasks\/(-\d+)/);
@@ -688,7 +694,6 @@ export const useTaskStore = create<TaskStore>()(
         lastSyncedAt: remaining === 0 ? new Date() : get().lastSyncedAt,
       });
 
-      // Обновляем кеш после синхронизации
       cacheEpics(get().epics);
 
       return { successCount, droppedCount };

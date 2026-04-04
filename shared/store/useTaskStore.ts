@@ -118,7 +118,7 @@ function dedupTasks(tasks: TaskView[]): TaskView[] {
   });
 }
 
-/** Replace tempId with realTask in epic's task list, with dedup to prevent duplicates */
+/** Replace tempId with realTask in epic\'s task list, with dedup to prevent duplicates */
 function replaceTempTask(
   epics: EpicWithTasks[],
   epicId: number,
@@ -140,19 +140,12 @@ interface TaskStore {
   lastSyncedAt: Date | null;
   pendingOps: number;
   offlineQueueSize: number;
-  /**
-   * Set of task IDs currently being mutated (in-flight fetch).
-   * Used by hydrateEpics to preserve optimistic state and avoid
-   * SSE-triggered router.refresh() overwriting pending updates.
-   */
   mutatingTaskIds: Set<number>;
-  /**
-   * Temp task IDs (id < 0) currently being replayed (create fetch in-flight).
-   * hydrateEpics skips injecting these into pendingByEpic so they are NOT
-   * inserted alongside the real task when the SSE fires before set() runs.
-   * This prevents the visible duplication of offline-created tasks.
-   */
   replayingTempIds: Set<number>;
+  /** FIX: track temp epic IDs being replayed to prevent duplication in hydrateEpics */
+  replayingTempEpicIds: Set<number>;
+  /** FIX: task IDs with pending offline patch ops — preserved across hydrateEpics calls */
+  pendingPatchTaskIds: Set<number>;
 
   getEpic: (id: number) => EpicWithTasks | undefined;
   getTask: (id: number) => TaskView | undefined;
@@ -195,32 +188,35 @@ export const useTaskStore = create<TaskStore>()(
     offlineQueueSize: 0,
     mutatingTaskIds: new Set<number>(),
     replayingTempIds: new Set<number>(),
+    replayingTempEpicIds: new Set<number>(),
+    pendingPatchTaskIds: new Set<number>(),
 
     getEpic: (id) => get().epics.find((e) => e.id === id),
     getTask: (id) => get().tasks[id],
     getTasksForEpic: (epicId) => get().epics.find((e) => e.id === epicId)?.tasks ?? [],
 
     // ─────────────────────────────────────────────────────────────────────────
-    // hydrateEpics v13 — FIX: skip replayingTempIds to prevent duplication
+    // hydrateEpics v14 — FIX: use replayingTempEpicIds + pendingPatchTaskIds
     //
-    // BUG: When replayOfflineQueue creates a task on the server, an SSE event
-    // fires. router.refresh() → hydrateEpics runs with server data (which
-    // already has the real task, e.g. id=456). But s.tasks still has the
-    // temp task (id=-123) because replay's set() hasn't run yet. hydrateEpics
-    // was injecting BOTH into the epic: [id=456, id=-123] → visible duplicate.
+    // BUG FIXED 1: Epic duplication during sync
+    //   BEFORE: tempEpics = s.epics.filter((e) => e.id < 0)
+    //           When SSE fires during epic replay, both temp AND real epic appear.
+    //   AFTER:  Filter out temp epics that are currently being replayed.
     //
-    // FIX: replayOfflineQueue marks the temp ID in `replayingTempIds` before
-    // the fetch. hydrateEpics now skips any temp task in that set, so only
-    // the server's real task is injected. The marking is cleared inside
-    // replay's set() call (or in the catch/drop paths).
+    // BUG FIXED 2: Status/priority reverting after offline change
+    //   BEFORE: Only mutatingTaskIds (active fetches) preserved across hydrateEpics.
+    //           Queued offline patches were ignored → server data overwrites optimistic state.
+    //   AFTER:  pendingPatchTaskIds also preserved — tasks with queued patches keep
+    //           their optimistic state until the patch is actually replayed.
     // ─────────────────────────────────────────────────────────────────────────
     hydrateEpics: (serverEpics) => set((s) => {
-      // ── Step 1: preserve temp epics (id < 0) ─────────────────────────────
-      const tempEpics = s.epics.filter((e) => e.id < 0);
+      // Step 1: preserve temp epics (id < 0) that are NOT currently being replayed
+      // FIX v14: exclude epics in replayingTempEpicIds to prevent duplication
+      const tempEpics = s.epics.filter((e) => e.id < 0 && !s.replayingTempEpicIds.has(e.id));
 
-      // ── Step 2: collect temp tasks grouped by their real epicId ───────────
-      // FIX v13: skip temp tasks currently being replayed — they must not be
-      // injected alongside the server's real task (which the SSE just brought).
+      // Step 2: collect temp tasks grouped by their real epicId
+      // Skip temp tasks currently being replayed (they must not be injected
+      // alongside the server\'s real task which the SSE just brought).
       const allTempTasks: Record<number, TaskView> = {};
       const pendingByEpic: Record<number, TaskView[]> = {};
 
@@ -234,13 +230,14 @@ export const useTaskStore = create<TaskStore>()(
         }
       }
 
-      // ── Step 3: inject pending temp tasks + preserve mutating tasks ───────
-      const preserveIds = s.mutatingTaskIds;
+      // Step 3: inject pending temp tasks + preserve mutating + preserve offline patches
+      // FIX v14: include pendingPatchTaskIds so offline status/priority changes are NOT
+      // overwritten by server data before the patch_task op is replayed.
+      const preserveIds = new Set([...s.mutatingTaskIds, ...s.pendingPatchTaskIds]);
 
       const serverEpicsWithPending = serverEpics.map((epic) => {
         const pending = pendingByEpic[epic.id];
 
-        // For each server task, if it's being mutated, keep the store version
         const tasks = epic.tasks.map((serverTask) => {
           if (preserveIds.has(serverTask.id) && s.tasks[serverTask.id]) {
             return s.tasks[serverTask.id];
@@ -264,7 +261,7 @@ export const useTaskStore = create<TaskStore>()(
 
       const mergedEpics = [...serverEpicsWithPending, ...tempEpics];
 
-      // ── Deduplicate epics (race condition guard) ───────────────────────────
+      // Deduplicate epics (race condition guard)
       const seenEpicIds = new Set<number>();
       const dedupedEpics = mergedEpics
         .filter(e => {
@@ -277,11 +274,10 @@ export const useTaskStore = create<TaskStore>()(
           tasks: dedupTasks(epic.tasks),
         }));
 
-      // ── Build tasks index: server + temp + preserve mutating ──────────────
+      // Build tasks index: server + temp + preserve mutating/patching
       const serverTasks = buildTaskIndex(serverEpics);
       const mergedTasks: Record<number, TaskView> = { ...serverTasks, ...allTempTasks };
 
-      // Preserve optimistic state for in-flight mutations
       if (preserveIds.size > 0) {
         for (const id of preserveIds) {
           if (s.tasks[id]) mergedTasks[id] = s.tasks[id];
@@ -323,9 +319,26 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── refreshOfflineQueue ───────────────────────────────────────────────────
+    // FIX v14: also restore pendingPatchTaskIds from IDB on mount so that
+    // tasks with queued offline patches are preserved across page refreshes.
     refreshOfflineQueue: async () => {
-      const count = await getPendingOpsCount();
-      set({ offlineQueueSize: count });
+      try {
+        const ops = await getPendingOps();
+        // Rebuild pendingPatchTaskIds from queued patch_task ops
+        const patchTaskIds = new Set<number>();
+        for (const op of ops) {
+          if (op.kind === "patch_task") {
+            const m = op.url.match(/\/api\/tasks\/(\d+)/);
+            if (m && Number(m[1]) > 0) {
+              patchTaskIds.add(Number(m[1]));
+            }
+          }
+        }
+        set({ offlineQueueSize: ops.length, pendingPatchTaskIds: patchTaskIds });
+      } catch {
+        const count = await getPendingOpsCount();
+        set({ offlineQueueSize: count });
+      }
     },
 
     // ── createEpic ────────────────────────────────────────────────────────────
@@ -438,6 +451,13 @@ export const useTaskStore = create<TaskStore>()(
       for (const op of epicOps) {
         if (isCurrentlyOffline()) break;
 
+        // FIX v14: mark temp epic as replaying BEFORE the fetch
+        // This prevents hydrateEpics (from SSE) from showing the temp epic
+        // alongside the newly created real epic during the async window.
+        set((s) => ({
+          replayingTempEpicIds: new Set([...s.replayingTempEpicIds, op.tempEpicId]),
+        }));
+
         try {
           const res = await fetch("/api/epics", {
             method: "POST",
@@ -459,6 +479,9 @@ export const useTaskStore = create<TaskStore>()(
             tempEpicToReal.set(op.tempEpicId, realId);
 
             set((s) => {
+              const replayingTempEpicIds = new Set(s.replayingTempEpicIds);
+              replayingTempEpicIds.delete(op.tempEpicId);
+
               const seenReplayEpicIds = new Set<number>();
               const updatedEpics = s.epics
                 .map((e) =>
@@ -486,7 +509,7 @@ export const useTaskStore = create<TaskStore>()(
                   : task;
               }
 
-              return { epics: updatedEpics, tasks: updatedTasks };
+              return { epics: updatedEpics, tasks: updatedTasks, replayingTempEpicIds };
             });
 
             cacheEpics(get().epics);
@@ -497,17 +520,43 @@ export const useTaskStore = create<TaskStore>()(
           } else if (res.status >= 400 && res.status < 500) {
             await removePendingOp(op.id);
             droppedCount++;
-            set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
+            set((s) => {
+              const replayingTempEpicIds = new Set(s.replayingTempEpicIds);
+              replayingTempEpicIds.delete(op.tempEpicId);
+              return {
+                offlineQueueSize: Math.max(0, s.offlineQueueSize - 1),
+                replayingTempEpicIds,
+              };
+            });
           } else {
             if (op.retries >= MAX_OP_RETRIES) {
               await removePendingOp(op.id);
               droppedCount++;
-              set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
+              set((s) => {
+                const replayingTempEpicIds = new Set(s.replayingTempEpicIds);
+                replayingTempEpicIds.delete(op.tempEpicId);
+                return {
+                  offlineQueueSize: Math.max(0, s.offlineQueueSize - 1),
+                  replayingTempEpicIds,
+                };
+              });
             } else {
+              // On retry: unmark so the next replay attempt can re-mark it
+              set((s) => {
+                const replayingTempEpicIds = new Set(s.replayingTempEpicIds);
+                replayingTempEpicIds.delete(op.tempEpicId);
+                return { replayingTempEpicIds };
+              });
               await incrementOpRetries(op.id);
             }
           }
         } catch {
+          // Network error: unmark and stop
+          set((s) => {
+            const replayingTempEpicIds = new Set(s.replayingTempEpicIds);
+            replayingTempEpicIds.delete(op.tempEpicId);
+            return { replayingTempEpicIds };
+          });
           break;
         }
       }
@@ -530,14 +579,6 @@ export const useTaskStore = create<TaskStore>()(
               continue;
             }
 
-            // FIX v13 (deduplication):
-            // Mark this temp task as "currently being replayed". While marked,
-            // hydrateEpics will NOT inject it into pendingByEpic. This prevents
-            // the race where SSE fires between `await fetch()` and our `set()`:
-            //   1. fetch resolves → realId obtained
-            //   2. SSE arrives → hydrateEpics with server data (has realId)
-            //   3. Without this fix: hydrateEpics injects BOTH realId AND tempId
-            //   4. With this fix:    hydrateEpics injects realId only → no duplicate
             set((s) => ({
               replayingTempIds: new Set([...s.replayingTempIds, op.tempTaskId]),
             }));
@@ -567,15 +608,10 @@ export const useTaskStore = create<TaskStore>()(
 
               set((s) => {
                 const tempTask = s.tasks[op.tempTaskId];
-                // Always clean up replayingTempIds regardless of whether
-                // tempTask still exists in the store (it may have been
-                // cleared by a concurrent hydrateEpics call).
                 const replayingTempIds = new Set(s.replayingTempIds);
                 replayingTempIds.delete(op.tempTaskId);
 
                 if (!tempTask) {
-                  // hydrateEpics already replaced the temp with the real task.
-                  // The store is correct; just unmark replayingTempIds.
                   return { ...s, replayingTempIds };
                 }
 
@@ -639,7 +675,6 @@ export const useTaskStore = create<TaskStore>()(
                   };
                 });
               } else {
-                // On retry: unmark so the next replay attempt can re-mark it.
                 set((s) => {
                   const replayingTempIds = new Set(s.replayingTempIds);
                   replayingTempIds.delete(op.tempTaskId);
@@ -667,10 +702,6 @@ export const useTaskStore = create<TaskStore>()(
               }
             }
 
-            // FIX v13 (status-revert):
-            // Track the task ID as mutating so hydrateEpics preserves our
-            // optimistic state during the fetch. Without this, an SSE event
-            // mid-replay causes hydrateEpics to overwrite "done" → "todo".
             const taskIdMatch = url.match(/\/api\/tasks\/(\d+)/);
             const replayTaskId = taskIdMatch ? Number(taskIdMatch[1]) : 0;
             const stopTrackingPatch = replayTaskId > 0
@@ -682,13 +713,29 @@ export const useTaskStore = create<TaskStore>()(
             if (res.ok) {
               await removePendingOp(op.id);
               successCount++;
-              set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
+              // FIX v14: clear from pendingPatchTaskIds on successful replay
+              set((s) => {
+                const pendingPatchTaskIds = new Set(s.pendingPatchTaskIds);
+                if (replayTaskId > 0) pendingPatchTaskIds.delete(replayTaskId);
+                return {
+                  offlineQueueSize: Math.max(0, s.offlineQueueSize - 1),
+                  pendingPatchTaskIds,
+                };
+              });
               stopTrackingPatch();
             } else if (res.status === 409) {
               const conflictTaskIdMatch = url.match(/\/api\/tasks\/(\d+)/);
               if (!conflictTaskIdMatch) {
                 await removePendingOp(op.id);
                 droppedCount++;
+                set((s) => {
+                  const pendingPatchTaskIds = new Set(s.pendingPatchTaskIds);
+                  if (replayTaskId > 0) pendingPatchTaskIds.delete(replayTaskId);
+                  return {
+                    offlineQueueSize: Math.max(0, s.offlineQueueSize - 1),
+                    pendingPatchTaskIds,
+                  };
+                });
                 stopTrackingPatch();
                 continue;
               }
@@ -698,6 +745,14 @@ export const useTaskStore = create<TaskStore>()(
               if (!currentRes.ok) {
                 await removePendingOp(op.id);
                 droppedCount++;
+                set((s) => {
+                  const pendingPatchTaskIds = new Set(s.pendingPatchTaskIds);
+                  if (replayTaskId > 0) pendingPatchTaskIds.delete(replayTaskId);
+                  return {
+                    offlineQueueSize: Math.max(0, s.offlineQueueSize - 1),
+                    pendingPatchTaskIds,
+                  };
+                });
                 stopTrackingPatch();
                 continue;
               }
@@ -710,31 +765,57 @@ export const useTaskStore = create<TaskStore>()(
 
               if (rebaseRes.ok) {
                 const mergedTask = { ...currentTask, ...patch };
-                set((s) => ({
-                  tasks: { ...s.tasks, [taskId]: mergedTask as TaskView },
-                  epics: updateEpicsForTask(s.epics, taskId, (tasks) =>
-                    tasks.map((t) => t.id === taskId ? mergedTask as TaskView : t)
-                  ),
-                }));
+                set((s) => {
+                  const pendingPatchTaskIds = new Set(s.pendingPatchTaskIds);
+                  if (replayTaskId > 0) pendingPatchTaskIds.delete(replayTaskId);
+                  return {
+                    tasks: { ...s.tasks, [taskId]: mergedTask as TaskView },
+                    epics: updateEpicsForTask(s.epics, taskId, (tasks) =>
+                      tasks.map((t) => t.id === taskId ? mergedTask as TaskView : t)
+                    ),
+                    offlineQueueSize: Math.max(0, s.offlineQueueSize - 1),
+                    pendingPatchTaskIds,
+                  };
+                });
                 await removePendingOp(op.id);
                 successCount++;
-                set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
               } else {
                 await removePendingOp(op.id);
                 droppedCount++;
-                set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
+                set((s) => {
+                  const pendingPatchTaskIds = new Set(s.pendingPatchTaskIds);
+                  if (replayTaskId > 0) pendingPatchTaskIds.delete(replayTaskId);
+                  return {
+                    offlineQueueSize: Math.max(0, s.offlineQueueSize - 1),
+                    pendingPatchTaskIds,
+                  };
+                });
               }
               stopTrackingPatch();
             } else if (res.status >= 400 && res.status < 500) {
               await removePendingOp(op.id);
               droppedCount++;
-              set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
+              set((s) => {
+                const pendingPatchTaskIds = new Set(s.pendingPatchTaskIds);
+                if (replayTaskId > 0) pendingPatchTaskIds.delete(replayTaskId);
+                return {
+                  offlineQueueSize: Math.max(0, s.offlineQueueSize - 1),
+                  pendingPatchTaskIds,
+                };
+              });
               stopTrackingPatch();
             } else {
               if (op.retries >= MAX_OP_RETRIES) {
                 await removePendingOp(op.id);
                 droppedCount++;
-                set((s) => ({ offlineQueueSize: Math.max(0, s.offlineQueueSize - 1) }));
+                set((s) => {
+                  const pendingPatchTaskIds = new Set(s.pendingPatchTaskIds);
+                  if (replayTaskId > 0) pendingPatchTaskIds.delete(replayTaskId);
+                  return {
+                    offlineQueueSize: Math.max(0, s.offlineQueueSize - 1),
+                    pendingPatchTaskIds,
+                  };
+                });
               } else {
                 await incrementOpRetries(op.id);
               }
@@ -779,15 +860,14 @@ export const useTaskStore = create<TaskStore>()(
             }
           }
         } catch {
-          // Network error: stop processing. Clear all replay/mutation tracking
-          // so stale IDs don't linger in the sets (they'll be re-tracked when
-          // the next online event triggers a fresh replayOfflineQueue run).
+          // Network error: clear all replay/mutation tracking
           set((s) => {
-            const hasTracking = s.replayingTempIds.size > 0 || s.mutatingTaskIds.size > 0;
+            const hasTracking = s.replayingTempIds.size > 0 || s.mutatingTaskIds.size > 0 || s.replayingTempEpicIds.size > 0;
             if (!hasTracking) return s;
             return {
               replayingTempIds: new Set<number>(),
               mutatingTaskIds: new Set<number>(),
+              replayingTempEpicIds: new Set<number>(),
             };
           });
           break;
@@ -1177,8 +1257,10 @@ export const useTaskStore = create<TaskStore>()(
             body: { isCompleted: true },
           });
         }
+        // FIX v14: track taskId so hydrateEpics preserves the optimistic status
         set((s) => ({
           offlineQueueSize: s.offlineQueueSize + 1 + subtasksToUpdate.length,
+          pendingPatchTaskIds: new Set([...s.pendingPatchTaskIds, taskId]),
         }));
         return;
       }
@@ -1209,8 +1291,10 @@ export const useTaskStore = create<TaskStore>()(
               body: { isCompleted: true },
             });
           }
+          // FIX v14: track taskId for offline patch
           set((s) => ({
             offlineQueueSize: s.offlineQueueSize + 1 + subtasksToUpdate.length,
+            pendingPatchTaskIds: new Set([...s.pendingPatchTaskIds, taskId]),
           }));
         } else {
           set((s) => {
@@ -1338,7 +1422,11 @@ export const useTaskStore = create<TaskStore>()(
           patch: { priority },
           expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
         });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        // FIX v14: track for hydrateEpics preservation
+        set((s) => ({
+          offlineQueueSize: s.offlineQueueSize + 1,
+          pendingPatchTaskIds: new Set([...s.pendingPatchTaskIds, taskId]),
+        }));
         return;
       }
 
@@ -1354,7 +1442,10 @@ export const useTaskStore = create<TaskStore>()(
             patch: { priority },
             expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
           });
-          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+          set((s) => ({
+            offlineQueueSize: s.offlineQueueSize + 1,
+            pendingPatchTaskIds: new Set([...s.pendingPatchTaskIds, taskId]),
+          }));
         } else {
           set((s) => ({
             tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], priority: prev } },
@@ -1396,7 +1487,10 @@ export const useTaskStore = create<TaskStore>()(
           patch: { title: patched },
           expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
         });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        set((s) => ({
+          offlineQueueSize: s.offlineQueueSize + 1,
+          pendingPatchTaskIds: new Set([...s.pendingPatchTaskIds, taskId]),
+        }));
         return;
       }
 
@@ -1412,7 +1506,10 @@ export const useTaskStore = create<TaskStore>()(
             patch: { title: patched },
             expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
           });
-          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+          set((s) => ({
+            offlineQueueSize: s.offlineQueueSize + 1,
+            pendingPatchTaskIds: new Set([...s.pendingPatchTaskIds, taskId]),
+          }));
         } else {
           set((s) => ({
             tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], title: prev } },
@@ -1446,7 +1543,12 @@ export const useTaskStore = create<TaskStore>()(
           patch: { description: next },
           expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
         });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        set((s) => ({
+          offlineQueueSize: s.offlineQueueSize + 1,
+          pendingPatchTaskIds: taskId > 0
+            ? new Set([...s.pendingPatchTaskIds, taskId])
+            : s.pendingPatchTaskIds,
+        }));
         return;
       }
 
@@ -1462,7 +1564,12 @@ export const useTaskStore = create<TaskStore>()(
             patch: { description: next },
             expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
           });
-          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+          set((s) => ({
+            offlineQueueSize: s.offlineQueueSize + 1,
+            pendingPatchTaskIds: taskId > 0
+              ? new Set([...s.pendingPatchTaskIds, taskId])
+              : s.pendingPatchTaskIds,
+          }));
         } else {
           set((s) => ({
             tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], description: prev } },
@@ -1495,7 +1602,12 @@ export const useTaskStore = create<TaskStore>()(
           patch: { dueDate: dueDate ?? null },
           expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
         });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        set((s) => ({
+          offlineQueueSize: s.offlineQueueSize + 1,
+          pendingPatchTaskIds: taskId > 0
+            ? new Set([...s.pendingPatchTaskIds, taskId])
+            : s.pendingPatchTaskIds,
+        }));
         return;
       }
 
@@ -1511,7 +1623,12 @@ export const useTaskStore = create<TaskStore>()(
             patch: { dueDate: dueDate ?? null },
             expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
           });
-          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+          set((s) => ({
+            offlineQueueSize: s.offlineQueueSize + 1,
+            pendingPatchTaskIds: taskId > 0
+              ? new Set([...s.pendingPatchTaskIds, taskId])
+              : s.pendingPatchTaskIds,
+          }));
         } else {
           set((s) => ({
             tasks: { ...s.tasks, [taskId]: { ...s.tasks[taskId], dueDate: prev } },
@@ -1645,8 +1762,12 @@ export const useTaskStore = create<TaskStore>()(
 
       set((s) => {
         const restTasks = omitTask(s.tasks, taskId);
+        // Also remove from pendingPatchTaskIds if present
+        const pendingPatchTaskIds = new Set(s.pendingPatchTaskIds);
+        pendingPatchTaskIds.delete(taskId);
         return {
           tasks: restTasks,
+          pendingPatchTaskIds,
           epics: s.epics.map((e) =>
             e.id !== task.epicId ? e : {
               ...e,

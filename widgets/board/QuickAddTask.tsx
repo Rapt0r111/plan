@@ -2,15 +2,10 @@
 /**
  * @file QuickAddTask.tsx — widgets/board
  *
- * v3 — subtask presets 1–5 с isCompleted checkboxes:
- *
- *   • Переключатель количества подзадач: чипы 1, 2, 3, 4, 5 (дефолт 3)
- *   • Под чипами — ряд чекбоксов isCompleted для каждой подзадачи
- *   • title подзадач не редактируется (генерируется сервером: "Подзадача N")
- *   • При сохранении: createTaskWithSubtasks(subtasks: [{isCompleted}])
- *   • Офлайн: попадает в queued create_with_relations
- *
- * Multi-assignee и AI-приоритет сохранены из v2.
+ * v4 — Offline read-only guard:
+ *   При офлайн-режиме кнопка «Добавить задачу» показывает замок
+ *   и нажатие блокируется. Форма ввода не открывается.
+ *   Логика добавления задач/подзадач не изменилась.
  */
 
 import {
@@ -24,6 +19,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { PRIORITY_META, PRIORITY_ORDER } from "@/shared/config/task-meta";
 import { suggestPriority } from "@/features/ai/useAISuggestions";
+import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
 import type { TaskStatus, TaskPriority, TaskView } from "@/shared/types";
 import { type UserOption } from "@/shared/lib/utils";
 
@@ -36,7 +32,6 @@ interface Props {
   onCreated?:    (task: TaskView) => void;
 }
 
-// Количество подзадач: 1–5, дефолт 3
 const SUBTASK_PRESETS = [1, 2, 3, 4, 5] as const;
 type SubtaskCount = (typeof SUBTASK_PRESETS)[number];
 const DEFAULT_SUBTASK_COUNT: SubtaskCount = 3;
@@ -110,15 +105,6 @@ function AssigneeChip({
   );
 }
 
-/**
- * SubtaskPresets — блок выбора количества подзадач и их isCompleted-статусов.
- *
- * Логика:
- *   - Чипы 1–5 определяют сколько подзадач создаётся.
- *   - Под чипами — N чекбоксов, каждый управляет isCompleted своей подзадачи.
- *   - При уменьшении count — лишние isCompleted обрезаются.
- *   - title не редактируется (UI показывает placeholder "Подзадача N").
- */
 function SubtaskPresets({
   count,
   onCountChange,
@@ -134,7 +120,6 @@ function SubtaskPresets({
 }) {
   return (
     <div className="space-y-2">
-      {/* Количество подзадач */}
       <div className="flex items-center gap-1.5">
         <span className="text-[10px] font-medium shrink-0" style={{ color: "var(--text-muted)" }}>
           Подзадачи:
@@ -169,7 +154,6 @@ function SubtaskPresets({
         </div>
       </div>
 
-      {/* Чекбоксы isCompleted */}
       <div className="space-y-1">
         {Array.from({ length: count }, (_, i) => (
           <motion.label
@@ -180,7 +164,6 @@ function SubtaskPresets({
             className="flex items-center gap-2 cursor-pointer group"
             onClick={() => onSubtaskToggle(i)}
           >
-            {/* Checkbox */}
             <div
               className="w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 border transition-all duration-150"
               style={
@@ -216,8 +199,6 @@ function SubtaskPresets({
                 )}
               </AnimatePresence>
             </div>
-
-            {/* Placeholder title (не редактируется) */}
             <span
               className="text-xs transition-all duration-150"
               style={{
@@ -227,8 +208,6 @@ function SubtaskPresets({
             >
               Подзадача {i + 1}
             </span>
-
-            {/* Статус-значок */}
             {subtaskStates[i] && (
               <motion.span
                 initial={{ opacity: 0, scale: 0.8 }}
@@ -272,6 +251,8 @@ function useUsers() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCreated }: Props) {
+  const offline = useIsOffline();
+
   const [open, setOpen]               = useState(false);
   const [title, setTitle]             = useState("");
   const [priority, setPriority]       = useState<TaskPriority>("medium");
@@ -281,9 +262,8 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
   const [suggestedPriority, setSuggestedPriority] = useState<TaskPriority | null>(null);
   const priorityTouchedRef = useRef(false);
 
-  // Subtask presets state
   const [subtaskCount, setSubtaskCount] = useState<SubtaskCount>(DEFAULT_SUBTASK_COUNT);
-  const [subtaskEnabled, setSubtaskEnabled] = useState(false); // показывать ли блок подзадач
+  const [subtaskEnabled, setSubtaskEnabled] = useState(false);
   const [subtaskStates, setSubtaskStates]   = useState<boolean[]>(
     Array(DEFAULT_SUBTASK_COUNT).fill(false)
   );
@@ -295,7 +275,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
 
   const accentHex = epicColor ?? "#8b5cf6";
 
-  // ── Subtask count change — обрезаем / расширяем массив isCompleted ────────
   const handleSubtaskCountChange = useCallback((n: SubtaskCount) => {
     setSubtaskCount(n);
     setSubtaskStates((prev) => {
@@ -312,12 +291,13 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
     setAssigneeIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   }, []);
 
-  // ── Open / Close ──────────────────────────────────────────────────────────
   const handleOpen = useCallback(() => {
+    // ✅ OFFLINE GUARD: don't open form when offline (store also guards, but UX is cleaner)
+    if (offline) return;
     setOpen(true);
     fetchUsers();
     requestAnimationFrame(() => requestAnimationFrame(() => inputRef.current?.focus()));
-  }, [fetchUsers]);
+  }, [fetchUsers, offline]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -331,7 +311,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
     setSubtaskStates(Array(DEFAULT_SUBTASK_COUNT).fill(false));
   }, []);
 
-  // ── AI-подсказка приоритета ───────────────────────────────────────────────
   function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setTitle(val);
@@ -347,7 +326,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
     setSuggestedPriority(null);
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     const trimmed = title.trim();
     if (!trimmed || saving) return;
@@ -398,7 +376,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
     if (e.key === "Escape") { e.preventDefault(); handleClose(); }
   }, [handleSave, handleClose]);
 
-  // ── Click outside ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -410,7 +387,11 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
     return () => document.removeEventListener("mousedown", handler);
   }, [open, handleClose]);
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // Close form if user goes offline mid-input
+  useEffect(() => {
+    if (offline && open) handleClose();
+  }, [offline, open, handleClose]);
+
   return (
     <div
       ref={containerRef}
@@ -418,7 +399,7 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
     >
       <AnimatePresence mode="wait" initial={false}>
         {!open ? (
-          /* ── КНОПКА-ТРИГГЕР ────────────────────────────────────────── */
+          /* ── TRIGGER BUTTON ─────────────────────────────────────── */
           <motion.button
             key="trigger"
             type="button"
@@ -428,22 +409,40 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4, transition: { duration: 0.12 } }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            whileTap={{ scale: 0.98 }}
+            whileTap={offline ? {} : { scale: 0.98 }}
+            disabled={offline}
             className="quick-add-trigger"
+            style={offline ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
+            title={offline ? "Недоступно в офлайн-режиме" : undefined}
           >
-            <motion.span
-              className="quick-add-trigger-icon"
-              whileHover={{ rotate: 90 }}
-              transition={{ duration: 0.18 }}
-            >
-              <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M5 1v8M1 5h8" />
+            {offline ? (
+              /* Lock icon when offline */
+              <svg
+                className="quick-add-trigger-icon"
+                viewBox="0 0 14 14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <rect x="2" y="6" width="10" height="7" rx="1.5" />
+                <path d="M4.5 6V4a2.5 2.5 0 0 1 5 0v2" />
               </svg>
-            </motion.span>
-            Добавить задачу
+            ) : (
+              <motion.span
+                className="quick-add-trigger-icon"
+                whileHover={{ rotate: 90 }}
+                transition={{ duration: 0.18 }}
+              >
+                <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                  <path d="M5 1v8M1 5h8" />
+                </svg>
+              </motion.span>
+            )}
+            {offline ? "Только просмотр" : "Добавить задачу"}
           </motion.button>
         ) : (
-          /* ── КАРТОЧКА ВВОДА ────────────────────────────────────────── */
+          /* ── INPUT CARD ─────────────────────────────────────────── */
           <motion.div
             key="card"
             layout
@@ -461,7 +460,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
             />
 
             <div className="px-3 pt-2.5 pb-3 space-y-2">
-              {/* Input */}
               <input
                 ref={inputRef}
                 type="text"
@@ -475,7 +473,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
                 className="quick-add-input disabled:opacity-50"
               />
 
-              {/* AI hint */}
               <AnimatePresence>
                 {suggestedPriority && (
                   <motion.p
@@ -496,7 +493,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
                 )}
               </AnimatePresence>
 
-              {/* Прогрессивное раскрытие */}
               <AnimatePresence>
                 {metaVisible && (
                   <motion.div
@@ -508,7 +504,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
                     className="overflow-hidden"
                   >
                     <div className="pt-1 space-y-2.5">
-                      {/* ── Приоритет ── */}
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[10px] font-medium shrink-0 mr-0.5" style={{ color: "var(--text-muted)" }}>
                           Приоритет:
@@ -523,7 +518,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
                         ))}
                       </div>
 
-                      {/* ── Подзадачи toggle + presets ── */}
                       <div>
                         <button
                           type="button"
@@ -576,7 +570,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
                         </AnimatePresence>
                       </div>
 
-                      {/* ── Исполнители ── */}
                       {users.length > 0 && (
                         <div className="space-y-1.5">
                           <span className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
@@ -599,7 +592,6 @@ export function QuickAddTask({ epicId, defaultStatus = "todo", epicColor, onCrea
                 )}
               </AnimatePresence>
 
-              {/* Footer */}
               <div className="flex items-center justify-between pt-0.5">
                 <div className="flex items-center gap-1.5">
                   <kbd className="quick-add-kbd">↵</kbd>

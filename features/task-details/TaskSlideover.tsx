@@ -2,22 +2,17 @@
 /**
  * @file TaskSlideover.tsx — features/task-details
  *
- * ИСПРАВЛЕНИЯ v2:
- *
- * 1. epicColor хардкод "#7c3aed" → динамически из Zustand store
- *    БЫЛО: const epicColor = "#7c3aed"; // захардкоженный фиолетовый всегда
- *    СТАЛО: читаем эпик из стора по task.epicId → берём его color
- *    Fallback: "#7c3aed" если эпик не найден в сторе (первый рендер до гидрации)
- *
- * 2. Дублированный useEffect для scroll lock → useBodyScrollLock хук
- *    Был одинаковый useEffect в TaskSlideover.tsx и EpicWorkspace.tsx.
- *    Теперь оба используют shared хук из shared/lib/hooks/useBodyScrollLock.ts.
- *    Бонус: правильная работа при вложенных модалах (счётчик блокировок).
+ * OFFLINE GUARD v2:
+ *   - Статус и приоритет недоступны при офлайн
+ *   - Кнопки визуально задисейблены (opacity + cursor) и не кликабельны
+ *   - Показывается маленький индикатор «Только просмотр» в хедере
+ *   - Подзадачи: просмотр разрешён, toggle заблокирован
  */
 import React, { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { useBodyScrollLock } from "@/shared/lib/hooks/useBodyScrollLock";
+import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
 import { SubtaskList } from "./SubtaskList";
 import { formatDate } from "@/shared/lib/utils";
 import type { TaskStatus, TaskPriority, TaskView } from "@/shared/types";
@@ -80,12 +75,20 @@ const backdropVariants = {
 };
 
 /* ── Section Header ────────────────────────────────────────────────────────── */
-function SectionHeader({ label }: { label: string }) {
+function SectionHeader({ label, readOnly }: { label: string; readOnly?: boolean }) {
   return (
     <div className="flex items-center gap-2 mb-2">
       <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
         {label}
       </span>
+      {readOnly && (
+        <span
+          className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
+          style={{ background: "rgba(100,116,139,0.15)", color: "var(--text-muted)" }}
+        >
+          🔒 офлайн
+        </span>
+      )}
       <div className="flex-1 h-px" style={{ background: "var(--glass-border)" }} />
     </div>
   );
@@ -95,20 +98,18 @@ function SectionHeader({ label }: { label: string }) {
 export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideoverProps) {
   const isOpen = isOpenProp ?? task !== null;
   const panelRef = useRef<HTMLDivElement>(null);
+  const offline = useIsOffline();
 
   const updateTaskStatus   = useTaskStore((s) => s.updateTaskStatus);
   const updateTaskPriority = useTaskStore((s) => s.updateTaskPriority);
   const liveTask = useTaskStore((s) => (task ? s.getTask(task.id) : null)) ?? task;
 
-  // ИСПРАВЛЕНО: epicColor теперь берётся из стора по epicId задачи
-  // Было: const epicColor = "#7c3aed"; (всегда один хардкод)
   const epicColor = useTaskStore((s) => {
     if (!liveTask) return "#7c3aed";
     const epic = s.epics.find((e) => e.id === liveTask.epicId);
     return epic?.color ?? "#7c3aed";
   });
 
-  // Escape key listener — useEffect правомерен: DOM event subscription
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -116,7 +117,6 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
     return () => document.removeEventListener("keydown", onKey);
   }, [isOpen, onClose]);
 
-  // ИСПРАВЛЕНО: scroll lock через общий хук вместо дублированного useEffect
   useBodyScrollLock(isOpen);
 
   return (
@@ -152,7 +152,7 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                 transformStyle: "preserve-3d",
               }}
             >
-              {/* Top color line — теперь цвет эпика, а не хардкод */}
+              {/* Top color line */}
               <div
                 className="absolute top-0 left-0 right-0 h-px pointer-events-none"
                 style={{ background: `linear-gradient(90deg, ${epicColor} 0%, transparent 60%)` }}
@@ -171,6 +171,29 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                   <h2 className="text-base font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
                     {liveTask.title}
                   </h2>
+                  {/* Read-only badge when offline */}
+                  {offline && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-1.5 mt-1.5"
+                    >
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
+                        style={{
+                          background: "rgba(234,179,8,0.12)",
+                          border:     "1px solid rgba(234,179,8,0.25)",
+                          color:      "#eab308",
+                        }}
+                      >
+                        <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                          <rect x="2" y="5.5" width="8" height="6" rx="1.2" />
+                          <path d="M3.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5" />
+                        </svg>
+                        Только просмотр
+                      </span>
+                    </motion.div>
+                  )}
                 </div>
                 <button
                   onClick={onClose}
@@ -193,18 +216,18 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
 
                 {/* Status */}
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
-                  <SectionHeader label="Статус" />
-                  <div className="flex flex-wrap gap-1.5">
+                  <SectionHeader label="Статус" readOnly={offline} />
+                  <div className="flex flex-wrap gap-1.5" style={{ opacity: offline ? 0.6 : 1 }}>
                     {STATUS_OPTIONS.map((s) => (
                       <button
                         key={s}
-                        onClick={() => updateTaskStatus(liveTask.id, s)}
+                        onClick={offline ? undefined : () => updateTaskStatus(liveTask.id, s)}
                         style={{
                           padding: "4px 12px",
                           borderRadius: 99,
                           fontSize: 11,
                           fontWeight: 500,
-                          cursor: "pointer",
+                          cursor: offline ? "not-allowed" : "pointer",
                           outline: "none",
                           transition: "all 0.2s ease",
                           background:  liveTask.status === s ? STATUS_BG[s]     : "var(--glass-01)",
@@ -220,15 +243,15 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
 
                 {/* Priority */}
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
-                  <SectionHeader label="Приоритет" />
-                  <div className="flex flex-wrap gap-2">
+                  <SectionHeader label="Приоритет" readOnly={offline} />
+                  <div className="flex flex-wrap gap-2" style={{ opacity: offline ? 0.6 : 1 }}>
                     {PRIORITY_OPTIONS.map((p) => (
                       <button
                         key={p}
-                        onClick={() => updateTaskPriority(liveTask.id, p)}
+                        onClick={offline ? undefined : () => updateTaskPriority(liveTask.id, p)}
                         className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
                         style={{
-                          cursor: "pointer",
+                          cursor: offline ? "not-allowed" : "pointer",
                           outline: "none",
                           transition: "all 0.2s ease",
                           background:  liveTask.priority === p ? PRIORITY_COLORS[p] + "20" : "var(--glass-01)",
@@ -254,11 +277,12 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                   </motion.div>
                 )}
 
-                {/* Subtasks */}
+                {/* Subtasks — viewing allowed, toggling blocked offline */}
                 {liveTask.subtasks.length > 0 && (
                   <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
                     <SectionHeader
                       label={`Подзадачи (${liveTask.subtasks.filter((s) => s.isCompleted).length}/${liveTask.subtasks.length})`}
+                      readOnly={offline}
                     />
                     <SubtaskList taskId={liveTask.id} subtasks={liveTask.subtasks} />
                   </motion.div>

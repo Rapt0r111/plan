@@ -1,8 +1,16 @@
 "use client";
-
+/**
+ * @file GlobalFAB.tsx — features/create
+ *
+ * v2 — Offline read-only guard:
+ *   При офлайн-режиме FAB показывает иконку замка вместо «+».
+ *   Меню действий не открывается. Пользователь видит,
+ *   что создание/редактирование недоступно.
+ */
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useSpring, useMotionValue } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
 import { CreateEpicModal } from "./CreateEpicModal";
 import { CreateTaskModal } from "./CreateTaskModal";
 
@@ -16,8 +24,8 @@ const actions = [
     bg: "rgba(109,40,217,0.15)",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
-        <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+        <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
       </svg>
     ),
   },
@@ -30,8 +38,8 @@ const actions = [
     bg: "rgba(2,132,199,0.15)",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="1.8"/>
-        <path d="M8 12l3 3 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M8 12l3 3 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
   },
@@ -44,8 +52,8 @@ const actions = [
     bg: "rgba(217,119,6,0.15)",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
-        <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
       </svg>
     ),
   },
@@ -70,7 +78,6 @@ function ActionButton({
       exit={{ opacity: 0, x: 30, scale: 0.75, filter: "blur(6px)" }}
       transition={{ type: "spring", stiffness: 420, damping: 30, delay: index * 0.06 }}
     >
-      {/* Label pill */}
       <AnimatePresence>
         {hovered && (
           <motion.div
@@ -98,7 +105,6 @@ function ActionButton({
         )}
       </AnimatePresence>
 
-      {/* Icon button */}
       <motion.button
         onClick={() => onAction(action.id)}
         onHoverStart={() => setHovered(true)}
@@ -148,11 +154,13 @@ function PulseRings({ color }: { color: string }) {
 
 export function GlobalFAB() {
   const router = useRouter();
+  const offline = useIsOffline();
+
   const [open, setOpen] = useState(false);
   const [epicOpen, setEpicOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
+  const safeOpen = open && !offline;
   // Magnetic effect
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
@@ -160,7 +168,7 @@ export function GlobalFAB() {
   const springY = useSpring(my, { stiffness: 200, damping: 20 });
 
   const handleMouse = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (open) return;
+    if (open || offline) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
@@ -181,10 +189,16 @@ export function GlobalFAB() {
     };
   }, []);
 
-  // ✅ ИСПРАВЛЕНО: router.push вместо window.location.href
-  // Было: else window.location.href = "/settings" — полная перезагрузка,
-  //       убивала React state, Framer Motion переходы, Zustand store.
-  // Стало: router.push — soft navigation, состояние сохраняется.
+  // Close menu if going offline
+
+  const handleFabClick = () => {
+    // ✅ OFFLINE GUARD: don't open action menu when offline
+    if (offline) return;
+    setOpen((v) => !v);
+    mx.set(0);
+    my.set(0);
+  };
+
   const handleAction = (id: string) => {
     setOpen(false);
     if (id === "epic") setEpicOpen(true);
@@ -196,9 +210,9 @@ export function GlobalFAB() {
     <>
       {/* Backdrop */}
       <AnimatePresence>
-        {open && (
+        {safeOpen && (
           <motion.div
-            className="fixed inset-0 z-[8999]"
+            className="fixed inset-0 z-8999"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -227,7 +241,7 @@ export function GlobalFAB() {
 
         {/* Divider when open */}
         <AnimatePresence>
-          {open && (
+          {safeOpen && (
             <motion.div
               initial={{ scaleX: 0, opacity: 0 }}
               animate={{ scaleX: 1, opacity: 1 }}
@@ -241,67 +255,98 @@ export function GlobalFAB() {
 
         {/* Main FAB */}
         <div className="relative">
-          {!open && <PulseRings color="rgba(139,92,246,0.6)" />}
+          {!open && !offline && <PulseRings color="rgba(139,92,246,0.6)" />}
 
           <motion.button
-            onClick={() => {
-              setOpen((v) => !v);
-              mx.set(0);
-              my.set(0);
-            }}
+            onClick={handleFabClick}
             onMouseMove={handleMouse}
             onMouseLeave={() => { mx.set(0); my.set(0); }}
             className="relative w-14 h-14 backdrop-blur rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden"
-            style={{ x: springX, y: springY }}
-            whileTap={{ scale: 0.88 }}
-            animate={{ rotate: open ? 45 : 0 }}
-            transition={{ type: "spring", stiffness: 320, damping: 24 }}
+            style={{
+              x: offline ? 0 : springX,
+              y: offline ? 0 : springY,
+              cursor: offline ? "not-allowed" : "pointer",
+            }}
+            whileTap={offline ? {} : { scale: 0.88 }}
+            title={offline ? "Недоступно в офлайн-режиме" : undefined}
           >
             {/* Multi-layer background */}
             <div
               className="absolute inset-0 rounded-2xl"
               style={{
-                background: open
-                  ? "linear-gradient(135deg, rgba(239,68,68,0.9) 0%, rgba(220,38,38,0.7) 100%)"
-                  : "linear-gradient(135deg, rgba(109,40,217,0.95) 0%, rgba(124,58,237,0.8) 50%, rgba(139,92,246,0.7) 100%)",
-                boxShadow: open
-                  ? "0 0 40px rgba(239,68,68,0.6), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.2)"
-                  : "0 0 40px rgba(109,40,217,0.7), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15)",
-                border: open ? "1px solid rgba(239,68,68,0.5)" : "1px solid rgba(139,92,246,0.5)",
+                background: offline
+                  ? "linear-gradient(135deg, rgba(100,116,139,0.6) 0%, rgba(71,85,105,0.5) 100%)"
+                  : open
+                    ? "linear-gradient(135deg, rgba(239,68,68,0.9) 0%, rgba(220,38,38,0.7) 100%)"
+                    : "linear-gradient(135deg, rgba(109,40,217,0.95) 0%, rgba(124,58,237,0.8) 50%, rgba(139,92,246,0.7) 100%)",
+                boxShadow: offline
+                  ? "0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08)"
+                  : open
+                    ? "0 0 40px rgba(239,68,68,0.6), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.2)"
+                    : "0 0 40px rgba(109,40,217,0.7), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15)",
+                border: offline
+                  ? "1px solid rgba(100,116,139,0.4)"
+                  : open
+                    ? "1px solid rgba(239,68,68,0.5)"
+                    : "1px solid rgba(139,92,246,0.5)",
                 transition: "all 0.35s ease",
               }}
             />
             {/* Top shimmer */}
-            <div
-              className="absolute top-0 left-2 right-2 h-px rounded-full"
-              style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)" }}
-            />
-            {/* Inner noise texture illusion */}
-            <motion.div
-              className="absolute inset-0 rounded-2xl opacity-20"
-              animate={{ rotate: [0, 360] }}
-              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-              style={{
-                background: "conic-gradient(from 0deg, transparent 0%, rgba(255,255,255,0.1) 25%, transparent 50%, rgba(255,255,255,0.05) 75%, transparent 100%)",
-              }}
-            />
+            {!offline && (
+              <div
+                className="absolute top-0 left-2 right-2 h-px rounded-full"
+                style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)" }}
+              />
+            )}
 
-            {/* Plus / X icon */}
+            {/* Icon */}
             <div className="relative z-10">
-              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                <motion.line
-                  x1="11" y1="4" x2="11" y2="18"
-                  stroke="white" strokeWidth="2.2" strokeLinecap="round"
-                  animate={{ rotate: open ? 90 : 0, originX: "11px", originY: "11px" }}
-                />
-                <motion.line
-                  x1="4" y1="11" x2="18" y2="11"
-                  stroke="white" strokeWidth="2.2" strokeLinecap="round"
-                />
-              </svg>
+              {offline ? (
+                /* Lock icon — read-only mode indicator */
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              ) : (
+                <motion.div animate={{ rotate: open ? 45 : 0 }} transition={{ type: "spring", stiffness: 320, damping: 24 }}>
+                  <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                    <motion.line
+                      x1="11" y1="4" x2="11" y2="18"
+                      stroke="white" strokeWidth="2.2" strokeLinecap="round"
+                    />
+                    <motion.line
+                      x1="4" y1="11" x2="18" y2="11"
+                      stroke="white" strokeWidth="2.2" strokeLinecap="round"
+                    />
+                  </svg>
+                </motion.div>
+              )}
             </div>
           </motion.button>
         </div>
+
+        {/* Offline tooltip */}
+        <AnimatePresence>
+          {offline && (
+            <motion.div
+              initial={{ opacity: 0, y: 4, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 4, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
+              className="absolute bottom-full mb-3 right-0 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap"
+              style={{
+                background: "var(--bg-elevated)",
+                border: "1px solid rgba(100,116,139,0.3)",
+                color: "var(--text-muted)",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+                pointerEvents: "none",
+              }}
+            >
+              🔒 Только просмотр
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <CreateEpicModal open={epicOpen} onClose={() => setEpicOpen(false)} />

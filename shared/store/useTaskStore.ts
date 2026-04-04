@@ -13,6 +13,7 @@ import {
   type PendingOp,
   type SubtaskDraft,
 } from "@/shared/lib/localCache";
+import { useNotificationStore } from "@/features/sync/useNotificationStore";
 import type { EpicWithTasks, TaskView, TaskStatus, TaskPriority, SubtaskView, DbEpic } from "@/shared/types";
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "error";
@@ -49,6 +50,20 @@ function nextTempId(): number {
 
 function isCurrentlyOffline(): boolean {
   return typeof navigator !== "undefined" && !navigator.onLine;
+}
+
+/**
+ * notifyOfflineBlocked — shows a toast and blocks the mutation.
+ * Called at the very start of every write operation when offline.
+ * Never queues — offline mode is strictly read-only.
+ */
+function notifyOfflineBlocked(): void {
+  useNotificationStore.getState().push({
+    kind:  "error",
+    title: "Только просмотр",
+    body:  "Изменения недоступны в офлайн-режиме",
+    icon:  "🔒",
+  });
 }
 
 function isNetworkError(err: unknown): boolean {
@@ -155,13 +170,8 @@ interface TaskStore {
   pendingOps: number;
   offlineQueueSize: number;
   mutatingTaskIds: Set<number>;
-  // Temp IDs currently being sent to server (BOTH online creates AND replay).
-  // hydrateEpics excludes these from temp-injection to prevent duplication
-  // when SSE fires while a fetch is in-flight.
   replayingTempIds: Set<number>;
-  // Temp epic IDs currently being replayed
   replayingTempEpicIds: Set<number>;
-  // Task IDs with pending offline patch ops — preserved across hydrateEpics calls
   pendingPatchTaskIds: Set<number>;
 
   getEpic: (id: number) => EpicWithTasks | undefined;
@@ -212,24 +222,9 @@ export const useTaskStore = create<TaskStore>()(
     getTask: (id) => get().tasks[id],
     getTasksForEpic: (epicId) => get().epics.find((e) => e.id === epicId)?.tasks ?? [],
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // hydrateEpics — мёрдж серверных данных с локальным оптимистичным стором
-    //
-    // ЗАЩИЩЁННЫЕ задачи (не перезаписываются серверными данными):
-    //   1. mutatingTaskIds    — активный fetch в процессе
-    //   2. pendingPatchTaskIds — есть queued patch_task в IDB (офлайн-изменения)
-    //
-    // ИСКЛЮЧАЕМЫЕ из инжекции temp-задачи:
-    //   replayingTempIds — temp ID в процессе отправки на сервер.
-    //   Используется и для replay, и для онлайн-создания (createTask и т.д.).
-    //   Это предотвращает дублирование когда SSE приходит пока fetch в полёте.
-    // ─────────────────────────────────────────────────────────────────────────
     hydrateEpics: (serverEpics) => set((s) => {
-      // Step 1: temp epics (id < 0) не находящиеся в процессе replay
       const tempEpics = s.epics.filter((e) => e.id < 0 && !s.replayingTempEpicIds.has(e.id));
 
-      // Step 2: temp задачи (id < 0) НЕ находящиеся в процессе отправки
-      // replayingTempIds = объединение replay + онлайн-создания
       const allTempTasks: Record<number, TaskView> = {};
       const pendingByEpic: Record<number, TaskView[]> = {};
 
@@ -243,7 +238,6 @@ export const useTaskStore = create<TaskStore>()(
         }
       }
 
-      // Step 3: задачи которые нужно сохранить из локального стора
       const preserveIds = new Set([...s.mutatingTaskIds, ...s.pendingPatchTaskIds]);
 
       const serverEpicsWithPending = serverEpics.map((epic) => {
@@ -272,7 +266,6 @@ export const useTaskStore = create<TaskStore>()(
 
       const mergedEpics = [...serverEpicsWithPending, ...tempEpics];
 
-      // Дедупликация эпиков и задач внутри каждого эпика
       const seenEpicIds = new Set<number>();
       const dedupedEpics = mergedEpics
         .filter(e => {
@@ -285,7 +278,6 @@ export const useTaskStore = create<TaskStore>()(
           tasks: dedupTasks(epic.tasks),
         }));
 
-      // Индекс задач: сервер + temp + защищённые
       const serverTasks = buildTaskIndex(serverEpics);
       const mergedTasks: Record<number, TaskView> = { ...serverTasks, ...allTempTasks };
 
@@ -325,9 +317,6 @@ export const useTaskStore = create<TaskStore>()(
       };
     },
 
-    // ── refreshOfflineQueue ───────────────────────────────────────────────────
-    // Восстанавливает pendingPatchTaskIds из IDB чтобы hydrateEpics мог
-    // корректно защищать задачи с офлайн-изменениями.
     refreshOfflineQueue: async () => {
       try {
         const ops = await getPendingOps();
@@ -348,9 +337,10 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── createEpic ────────────────────────────────────────────────────────────
-    // ИСПРАВЛЕНО: добавляем tempId в replayingTempEpicIds перед fetch.
-    // Это предотвращает дублирование когда SSE приходит пока fetch в полёте.
     createEpic: async (params) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return null; }
+
       const {
         title,
         description = null,
@@ -378,17 +368,6 @@ export const useTaskStore = create<TaskStore>()(
       set((s) => ({ epics: [...s.epics, tempEpic] }));
       cacheEpics(get().epics);
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: "create_epic",
-          tempEpicId: tempId,
-          title, description, color, startDate, endDate,
-        });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
-        return tempEpic;
-      }
-
-      // Онлайн: защищаем temp epic от дублирования при SSE → hydrateEpics
       set((s) => ({ replayingTempEpicIds: addToSet(s.replayingTempEpicIds, tempId) }));
 
       const done = get()._beginOp();
@@ -426,7 +405,8 @@ export const useTaskStore = create<TaskStore>()(
         cacheEpics(get().epics);
         return { ...tempEpic, id: realId };
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
+          // Brief connectivity loss after being online — queue for later
           await enqueuePendingOp({
             kind: "create_epic",
             tempEpicId: tempId,
@@ -613,7 +593,6 @@ export const useTaskStore = create<TaskStore>()(
                 const replayingTempIds = removeFromSet(s.replayingTempIds, op.tempTaskId);
 
                 if (!tempTask) {
-                  // Task was already replaced by hydrateEpics — just update index
                   return { replayingTempIds };
                 }
 
@@ -826,7 +805,6 @@ export const useTaskStore = create<TaskStore>()(
             }
           }
         } catch {
-          // Сбрасываем все флаги отслеживания при сетевой ошибке
           set((s) => {
             const hasTracking = s.replayingTempIds.size > 0 || s.mutatingTaskIds.size > 0 || s.replayingTempEpicIds.size > 0;
             if (!hasTracking) return s;
@@ -853,10 +831,10 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── createTaskWithSubtasks ────────────────────────────────────────────────
-    // ИСПРАВЛЕНО: добавляем tempId в replayingTempIds перед fetch (онлайн-путь).
-    // Это предотвращает дублирование: если SSE придёт пока fetch в полёте,
-    // hydrateEpics не инжектирует temp-задачу рядом с реальной от сервера.
     createTaskWithSubtasks: async (params) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return null; }
+
       const {
         epicId, title, status = "todo", priority = "medium",
         description = null, dueDate = null, sortOrder = 9999,
@@ -889,20 +867,6 @@ export const useTaskStore = create<TaskStore>()(
         ),
       }));
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: "create_with_relations",
-          tempTaskId: tempId,
-          epicId, title, status, priority, description, dueDate,
-          sortOrder: sortOrder ?? 9999,
-          assigneeIds,
-          subtasks: subtaskDrafts,
-        });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
-        return tempTask;
-      }
-
-      // Онлайн: защищаем temp-задачу от дублирования при SSE → hydrateEpics
       set((s) => ({ replayingTempIds: addToSet(s.replayingTempIds, tempId) }));
 
       const done = get()._beginOp();
@@ -950,7 +914,7 @@ export const useTaskStore = create<TaskStore>()(
 
         return realTask;
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: "create_with_relations",
             tempTaskId: tempId,
@@ -987,8 +951,10 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── addTask ───────────────────────────────────────────────────────────────
-    // ИСПРАВЛЕНО: replayingTempIds на время онлайн-fetch
     addTask: async (epicId, title, status = "todo") => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const tempId = nextTempId();
       const now = new Date().toISOString();
 
@@ -1010,23 +976,6 @@ export const useTaskStore = create<TaskStore>()(
         ),
       }));
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: "create_with_relations",
-          tempTaskId: tempId,
-          epicId, title, status,
-          priority: "medium",
-          description: null,
-          dueDate: null,
-          sortOrder: 9999,
-          assigneeIds: [],
-          subtasks: [],
-        });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
-        return;
-      }
-
-      // Онлайн: защищаем temp-задачу от дублирования при SSE → hydrateEpics
       set((s) => ({ replayingTempIds: addToSet(s.replayingTempIds, tempId) }));
 
       const done = get()._beginOp();
@@ -1051,7 +1000,7 @@ export const useTaskStore = create<TaskStore>()(
           };
         });
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: "create_with_relations",
             tempTaskId: tempId,
@@ -1090,8 +1039,10 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── createTask ────────────────────────────────────────────────────────────
-    // ИСПРАВЛЕНО: replayingTempIds на время онлайн-fetch
     createTask: async ({ epicId, title, status = "todo", priority = "medium" }) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return null; }
+
       const tempId = nextTempId();
       const now = new Date().toISOString();
 
@@ -1112,22 +1063,6 @@ export const useTaskStore = create<TaskStore>()(
         ),
       }));
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: "create_with_relations",
-          tempTaskId: tempId,
-          epicId, title, status, priority,
-          description: null,
-          dueDate: null,
-          sortOrder: 9999,
-          assigneeIds: [],
-          subtasks: [],
-        });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
-        return tempTask;
-      }
-
-      // Онлайн: защищаем temp-задачу от дублирования при SSE → hydrateEpics
       set((s) => ({ replayingTempIds: addToSet(s.replayingTempIds, tempId) }));
 
       const done = get()._beginOp();
@@ -1153,7 +1088,7 @@ export const useTaskStore = create<TaskStore>()(
         });
         return realTask;
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: "create_with_relations",
             tempTaskId: tempId,
@@ -1193,6 +1128,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── updateTaskStatus ──────────────────────────────────────────────────────
     updateTaskStatus: async (taskId, status) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const task = get().tasks[taskId];
       if (!task || task.status === status) return;
 
@@ -1237,28 +1175,6 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: "patch_task",
-          url: `/api/tasks/${taskId}`,
-          patch: { status },
-          expectedUpdatedAt: task.updatedAt,
-        });
-        for (const subtaskId of subtasksToUpdate) {
-          await enqueuePendingOp({
-            kind: undefined,
-            url: `/api/subtasks/${subtaskId}`,
-            method: "PATCH",
-            body: { isCompleted: true },
-          });
-        }
-        set((s) => ({
-          offlineQueueSize: s.offlineQueueSize + 1 + subtasksToUpdate.length,
-          pendingPatchTaskIds: addToSet(s.pendingPatchTaskIds, taskId),
-        }));
-        return;
-      }
-
       const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
@@ -1270,7 +1186,7 @@ export const useTaskStore = create<TaskStore>()(
           );
         }
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: "patch_task",
             url: `/api/tasks/${taskId}`,
@@ -1310,6 +1226,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── toggleSubtask ─────────────────────────────────────────────────────────
     toggleSubtask: async (taskId, subtaskId, current) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const newVal = !current;
 
       set((s) => {
@@ -1343,24 +1262,13 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: undefined,
-          url: `/api/subtasks/${subtaskId}`,
-          method: "PATCH",
-          body: { isCompleted: newVal },
-        });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
-        return;
-      }
-
       const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         const res = await apiPatch(`/api/subtasks/${subtaskId}`, { isCompleted: newVal });
         if (!res.ok) throw new Error(`status ${res.status}`);
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: undefined,
             url: `/api/subtasks/${subtaskId}`,
@@ -1389,6 +1297,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── updateTaskPriority ────────────────────────────────────────────────────
     updateTaskPriority: async (taskId, priority) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const prev = get().tasks[taskId]?.priority;
       if (!prev || prev === priority) return;
 
@@ -1408,26 +1319,12 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: "patch_task",
-          url: `/api/tasks/${taskId}`,
-          patch: { priority },
-          expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
-        });
-        set((s) => ({
-          offlineQueueSize: s.offlineQueueSize + 1,
-          pendingPatchTaskIds: addToSet(s.pendingPatchTaskIds, taskId),
-        }));
-        return;
-      }
-
       const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { priority });
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: "patch_task",
             url: `/api/tasks/${taskId}`,
@@ -1452,6 +1349,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── updateTaskTitle ───────────────────────────────────────────────────────
     updateTaskTitle: async (taskId, title) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const prev = get().tasks[taskId]?.title;
       if (!prev || prev === title || !title.trim()) return;
       const patched = title.trim();
@@ -1472,26 +1372,12 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: "patch_task",
-          url: `/api/tasks/${taskId}`,
-          patch: { title: patched },
-          expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
-        });
-        set((s) => ({
-          offlineQueueSize: s.offlineQueueSize + 1,
-          pendingPatchTaskIds: addToSet(s.pendingPatchTaskIds, taskId),
-        }));
-        return;
-      }
-
       const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { title: patched });
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: "patch_task",
             url: `/api/tasks/${taskId}`,
@@ -1516,6 +1402,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── updateTaskDescription ─────────────────────────────────────────────────
     updateTaskDescription: async (taskId, description) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const prev = get().tasks[taskId]?.description ?? null;
       const next = description?.trim() || null;
       if (prev === next) return;
@@ -1528,28 +1417,12 @@ export const useTaskStore = create<TaskStore>()(
         };
       });
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: "patch_task",
-          url: `/api/tasks/${taskId}`,
-          patch: { description: next },
-          expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
-        });
-        set((s) => ({
-          offlineQueueSize: s.offlineQueueSize + 1,
-          pendingPatchTaskIds: taskId > 0
-            ? addToSet(s.pendingPatchTaskIds, taskId)
-            : s.pendingPatchTaskIds,
-        }));
-        return;
-      }
-
       const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { description: next });
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: "patch_task",
             url: `/api/tasks/${taskId}`,
@@ -1576,6 +1449,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── updateTaskDueDate ─────────────────────────────────────────────────────
     updateTaskDueDate: async (taskId, dueDate) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const prev = get().tasks[taskId]?.dueDate ?? null;
       if (prev === dueDate) return;
 
@@ -1587,28 +1463,12 @@ export const useTaskStore = create<TaskStore>()(
         };
       });
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: "patch_task",
-          url: `/api/tasks/${taskId}`,
-          patch: { dueDate: dueDate ?? null },
-          expectedUpdatedAt: get().tasks[taskId]?.updatedAt,
-        });
-        set((s) => ({
-          offlineQueueSize: s.offlineQueueSize + 1,
-          pendingPatchTaskIds: taskId > 0
-            ? addToSet(s.pendingPatchTaskIds, taskId)
-            : s.pendingPatchTaskIds,
-        }));
-        return;
-      }
-
       const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         await apiPatch(`/api/tasks/${taskId}`, { dueDate });
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: "patch_task",
             url: `/api/tasks/${taskId}`,
@@ -1635,6 +1495,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── addAssignee ───────────────────────────────────────────────────────────
     addAssignee: async (taskId, user) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const task = get().tasks[taskId];
       if (!task || task.assignees.some((a) => a.id === user.id)) return;
 
@@ -1656,17 +1519,6 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: undefined,
-          url: `/api/tasks/${taskId}/assignees`,
-          method: "POST",
-          body: { userId: user.id },
-        });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
-        return;
-      }
-
       const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
@@ -1677,7 +1529,7 @@ export const useTaskStore = create<TaskStore>()(
         });
         if (!res.ok) throw new Error(`status ${res.status}`);
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: undefined,
             url: `/api/tasks/${taskId}/assignees`,
@@ -1699,6 +1551,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── removeAssignee ────────────────────────────────────────────────────────
     removeAssignee: async (taskId, userId) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const task = get().tasks[taskId];
       if (!task) return;
       const prev = task.assignees;
@@ -1711,23 +1566,13 @@ export const useTaskStore = create<TaskStore>()(
         };
       });
 
-      if (isCurrentlyOffline()) {
-        await enqueuePendingOp({
-          kind: undefined,
-          url: `/api/tasks/${taskId}/assignees/${userId}`,
-          method: "DELETE",
-        });
-        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
-        return;
-      }
-
       const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
         const res = await fetch(`/api/tasks/${taskId}/assignees/${userId}`, { method: "DELETE" });
         if (!res.ok) throw new Error(`status ${res.status}`);
       } catch (err) {
-        if (isNetworkError(err) || isCurrentlyOffline()) {
+        if (isNetworkError(err)) {
           await enqueuePendingOp({
             kind: undefined,
             url: `/api/tasks/${taskId}/assignees/${userId}`,
@@ -1748,6 +1593,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── deleteTask ────────────────────────────────────────────────────────────
     deleteTask: async (taskId) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const task = get().tasks[taskId];
       if (!task) return;
       const epicSnapshot = get().epics.find((e) => e.id === task.epicId);
@@ -1788,6 +1636,9 @@ export const useTaskStore = create<TaskStore>()(
 
     // ── reorderTasks ──────────────────────────────────────────────────────────
     reorderTasks: async (epicId, orderedIds) => {
+      // ✅ OFFLINE GUARD: block all writes when offline
+      if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
+
       const prevOrder = get().epics.find((e) => e.id === epicId)?.tasks.map((t) => t.id);
 
       set((s) => ({

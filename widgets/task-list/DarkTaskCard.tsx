@@ -2,13 +2,10 @@
 /**
  * @file DarkTaskCard.tsx — widgets/task-list
  *
- * РЕФАКТОРИНГ DRY v2:
- *  Убраны локальные STATUS_CFG и PRIORITY_COLOR.
- *  Теперь импортируются из shared/config/task-meta — единственного источника правды.
- *
- * PREFS v3:
- *  showTaskDescriptions, showAssigneeAvatars, showSubtaskProgress, showDueDates
- *  читаются из usePrefsStore и применяются к рендеру.
+ * OFFLINE GUARD v2:
+ *   - Статус-пилюля (cycleStatus) заблокирована при офлайн
+ *   - Subtask toggle заблокирован при офлайн
+ *   - Визуально: кнопки dimmed, cursor: not-allowed
  */
 import { useState, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -17,6 +14,7 @@ import { formatDate } from "@/shared/lib/utils";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { STATUS_META, PRIORITY_META, STATUS_CYCLE } from "@/shared/config/task-meta";
 import { usePrefsStore } from "@/shared/store/usePrefsStore";
+import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
 import type { TaskView, TaskStatus } from "@/shared/types";
 
 interface Props {
@@ -27,9 +25,10 @@ interface Props {
 
 export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen }: Props) {
   const [subtasksOpen, setSubtasksOpen] = useState(false);
-  const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
+  const offline          = useIsOffline();
+  const toggleSubtask    = useTaskStore((s) => s.toggleSubtask);
   const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
-  const liveTask = useTaskStore((s) => s.getTask(task.id)) ?? task;
+  const liveTask         = useTaskStore((s) => s.getTask(task.id)) ?? task;
 
   const {
     showTaskDescriptions,
@@ -38,14 +37,16 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
     showDueDates,
   } = usePrefsStore((s) => s.prefs);
 
-  const statusMeta   = STATUS_META[liveTask.status];
+  const statusMeta    = STATUS_META[liveTask.status];
   const priorityColor = PRIORITY_META[liveTask.priority].color;
-  const progressPct  =
+  const progressPct   =
     liveTask.subtasks.length > 0
       ? (liveTask.progress.done / liveTask.progress.total) * 100
       : 0;
 
   function cycleStatus(e: React.MouseEvent) {
+    // ✅ OFFLINE GUARD: block when offline (store also guards)
+    if (offline) return;
     e.stopPropagation();
     const idx  = STATUS_CYCLE.indexOf(liveTask.status as TaskStatus);
     const next = STATUS_CYCLE[(idx === -1 ? 0 : idx + 1) % STATUS_CYCLE.length];
@@ -65,7 +66,6 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
       }}
       onClick={() => onOpen?.(liveTask)}
     >
-      {/* Тонкая полоска цвета эпика сверху */}
       {epicColor && (
         <div
           className="absolute top-0 left-0 right-0 h-px"
@@ -79,8 +79,14 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
         <div className="flex items-center justify-between gap-2">
           <button
             onClick={cycleStatus}
-            className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium hover:opacity-80 transition-opacity shrink-0"
-            style={{ backgroundColor: statusMeta.bg, color: statusMeta.color }}
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-opacity shrink-0"
+            style={{
+              backgroundColor: statusMeta.bg,
+              color: statusMeta.color,
+              cursor: offline ? "not-allowed" : "pointer",
+              opacity: offline ? 0.65 : 1,
+            }}
+            title={offline ? "Смена статуса недоступна офлайн" : undefined}
           >
             <span
               className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -122,7 +128,6 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
         {/* ── Row 4: исполнители + счётчик подзадач ────────────────── */}
         <div className="flex items-center justify-between gap-2">
 
-          {/* Аватары исполнителей */}
           {showAssigneeAvatars && liveTask.assignees.length > 0 && (
             <div className="flex items-center -space-x-1.5 min-w-0">
               {liveTask.assignees.slice(0, 3).map((a, i) => (
@@ -145,7 +150,6 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
             </div>
           )}
 
-          {/* Кнопка раскрытия подзадач */}
           {showSubtaskProgress && liveTask.subtasks.length > 0 && (
             <button
               onClick={(e) => {
@@ -208,19 +212,31 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
               className="px-3.5 pt-2 pb-3 space-y-1"
               style={{ borderTop: "1px solid var(--glass-border)" }}
             >
+              {/* Offline hint above subtask list */}
+              {offline && (
+                <p className="text-[10px] font-mono" style={{ color: "var(--text-muted)", opacity: 0.7 }}>
+                  🔒 Только просмотр
+                </p>
+              )}
               {liveTask.subtasks.map((st) => (
                 <label
                   key={st.id}
-                  className="flex items-center gap-2.5 py-1 cursor-pointer group"
+                  className={cn(
+                    "flex items-center gap-2.5 py-1 group",
+                    offline ? "cursor-default" : "cursor-pointer"
+                  )}
                 >
                   <div
-                    onClick={() => toggleSubtask(liveTask.id, st.id, st.isCompleted)}
+                    onClick={offline ? undefined : () => toggleSubtask(liveTask.id, st.id, st.isCompleted)}
                     className={cn(
                       "w-3.5 h-3.5 rounded flex items-center justify-center shrink-0 border transition-all duration-200",
                       st.isCompleted
                         ? "border-[var(--accent-500)] bg-[var(--accent-500)] shadow-[0_0_6px_var(--accent-glow)]"
-                        : "border-[var(--glass-border-active)] bg-transparent group-hover:border-[var(--accent-500)]"
+                        : offline
+                          ? "border-[var(--glass-border-active)] bg-transparent"
+                          : "border-[var(--glass-border-active)] bg-transparent group-hover:border-[var(--accent-500)]",
                     )}
+                    style={{ cursor: offline ? "not-allowed" : "pointer", opacity: offline ? 0.7 : 1 }}
                   >
                     <AnimatePresence>
                       {st.isCompleted && (
@@ -248,7 +264,7 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
                       "text-xs leading-relaxed transition-colors duration-200",
                       st.isCompleted
                         ? "line-through"
-                        : "group-hover:text-[var(--text-primary)]"
+                        : !offline && "group-hover:text-[var(--text-primary)]"
                     )}
                     style={{
                       color: st.isCompleted ? "var(--text-muted)" : "var(--text-secondary)",

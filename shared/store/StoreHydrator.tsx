@@ -2,22 +2,22 @@
 /**
  * @file StoreHydrator.tsx — shared/store
  *
- * ИСПРАВЛЕНИЕ v3 (откат render-time гидрации для Zustand):
+ * ИСПРАВЛЕНИЕ v4 — правильный порядок инициализации:
  *
- * ПОЧЕМУ render-time setState НЕ РАБОТАЕТ для Zustand:
- *   React docs паттерн "setState during render" применим ТОЛЬКО к локальному
- *   useState в том же компоненте. Zustand set() синхронно оповещает ВСЕХ
- *   подписчиков стора (SyncBadge, Sidebar и т.д.) → React получает обновление
- *   чужого компонента во время рендера StoreHydrator → ошибка:
- *   "Cannot update a component while rendering a different component"
+ * ПРОБЛЕМА v3:
+ *   React выполняет useEffect снизу вверх по дереву компонентов.
+ *   StoreHydrator (в page.tsx) запускает эффект РАНЬШЕ SyncOrchestrator (в
+ *   layout.tsx). Это означало: hydrateEpics() вызывался при
+ *   pendingPatchTaskIds = {} (пустом), и офлайн-изменения статуса/приоритета
+ *   ПЕРЕЗАПИСЫВАЛИСЬ серверными данными.
  *
- * ПРАВИЛО:
- *   ✅ render-time setState → только для useState/useReducer в том же компоненте
- *   ❌ render-time Zustand set() → запрещено, используй useEffect
+ * РЕШЕНИЕ v4:
+ *   Перед вызовом hydrateEpics явно вызываем refreshOfflineQueue() из IDB.
+ *   Это гарантирует, что pendingPatchTaskIds заполнен актуальными данными
+ *   ДО того как серверные эпики смёрджатся с локальным стором.
  *
- * ИТОГ: useEffect для hydrateEpics возвращается — это правильный подход.
- * Разница с оригиналом: разделены два эффекта (гидрация и кеширование)
- * для ясности намерений. useRef(false) защищает от Strict Mode double-invoke.
+ *   Используем useTaskStore.getState() вместо хуков — корректно в
+ *   async-контексте внутри useEffect и не создаёт лишних подписок.
  *
  * ── OfflineHydrator ─────────────────────────────────────────────────────────
  * Без изменений — useEffect здесь всегда был правомерен (async IndexedDB read).
@@ -34,18 +34,23 @@ interface Props {
 }
 
 export function StoreHydrator({ epics }: Props) {
-  const hydrateEpics = useTaskStore((s) => s.hydrateEpics);
-
-  // useEffect ПРАВОМЕРЕН: Zustand set() оповещает других подписчиков →
-  // нельзя вызывать во время рендера (→ "Cannot update a component while
-  // rendering a different component"). Только useEffect гарантирует что
-  // React закончил рендер перед обновлением стора.
   useEffect(() => {
     if (epics.length === 0) return;
-    hydrateEpics(epics);
-  }, [epics, hydrateEpics]);
 
-  // Отдельный effect для async IO — не смешиваем с синхронной гидрацией
+    // КЛЮЧЕВОЙ ПОРЯДОК:
+    // 1. refreshOfflineQueue() — загружает pendingPatchTaskIds из IDB
+    // 2. hydrateEpics(epics)   — мёрджит сервер + локальный стор
+    //
+    // Без шага 1 hydrateEpics не знает какие задачи «защищать» от
+    // перезаписи серверными данными, и офлайн-изменения статуса/
+    // приоритета стираются.
+    const { refreshOfflineQueue, hydrateEpics } = useTaskStore.getState();
+    refreshOfflineQueue().then(() => {
+      hydrateEpics(epics);
+    });
+  }, [epics]);
+
+  // Кеш в IndexedDB — отдельный эффект, не блокирует гидрацию
   useEffect(() => {
     if (epics.length > 0) {
       cacheEpics(epics);
@@ -63,7 +68,6 @@ export function StoreHydrator({ epics }: Props) {
  */
 export function OfflineHydrator() {
   const epicsLength = useTaskStore((s) => s.epics.length);
-  const hydrateEpics = useTaskStore((s) => s.hydrateEpics);
   const attempted = useRef(false);
 
   useEffect(() => {
@@ -72,10 +76,10 @@ export function OfflineHydrator() {
 
     getCachedEpics().then((cached) => {
       if (cached && Array.isArray(cached) && cached.length > 0) {
-        hydrateEpics(cached as EpicWithTasks[]);
+        useTaskStore.getState().hydrateEpics(cached as EpicWithTasks[]);
       }
     });
-  }, [epicsLength, hydrateEpics]);
+  }, [epicsLength]);
 
   return null;
 }

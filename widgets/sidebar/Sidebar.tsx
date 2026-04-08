@@ -233,7 +233,7 @@ export function Sidebar({ epics, users }: Props) {
                       />
                     </svg>
                     <span
-                      className="absolute inset-0 flex items-center justify-center text-[8px] font-mono font-semibold rotate-90"
+                      className="absolute inset-0 flex items-center justify-center text-[8px] font-mono font-semibold"
                       style={{ color: epic.color }}
                     >
                       {pct}

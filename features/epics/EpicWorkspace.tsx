@@ -257,12 +257,12 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
 
   const byStatus = fullEpic
     ? STATUS_ORDER.reduce<Record<TaskStatus, TaskView[]>>(
-        (acc, s) => {
-          acc[s] = fullEpic.tasks.filter((t) => t.status === s);
-          return acc;
-        },
-        { in_progress: [], todo: [], blocked: [], done: [] },
-      )
+      (acc, s) => {
+        acc[s] = fullEpic.tasks.filter((t) => t.status === s);
+        return acc;
+      },
+      { in_progress: [], todo: [], blocked: [], done: [] },
+    )
     : null;
 
   const animPct = useSpring(0, { stiffness: 80, damping: 20 });
@@ -308,11 +308,11 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
             pointerEvents: "auto",
             willChange: "transform",
             boxShadow: `
-              0 0 0 0.5px var(--glass-border),
-              0 4px 24px rgba(0,0,0,0.4),
-              0 24px 80px rgba(0,0,0,0.35),
+              0 0 0 0.5px var(--inset-light),
+              0 4px 24px rgba(0,0,0,0.3),
+              0 24px 64px rgba(0,0,0,0.25),
               0 0 80px ${summary.color}15,
-              inset 0 1px 0 var(--glass-01)
+              inset 0 1px 0 var(--inset-light)
             `,
           }}
           transition={SPRING}
@@ -330,7 +330,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
           <div
             className="absolute top-0 left-0 right-0 h-px pointer-events-none"
             style={{
-              background: `linear-gradient(90deg, transparent 0%, ${summary.color}50 30%, var(--glass-02) 50%, ${summary.color}30 70%, transparent 100%)`,
+              background: `linear-gradient(90deg, transparent 0%, ${summary.color}50 30%, var(--shimmer-line) 50%, ${summary.color}30 70%, transparent 100%)`
             }}
           />
 

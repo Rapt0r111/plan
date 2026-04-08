@@ -50,7 +50,7 @@ function ProgressRing({ done, total, color }: { done: number; total: number; col
   const pct = total > 0 ? done / total : 0;
   return (
     <svg width="36" height="36" viewBox="0 0 36 36" className="-rotate-90 shrink-0">
-      <circle cx="18" cy="18" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="2.5" />
+      <circle cx="18" cy="18" r={R} fill="none" stroke="var(--orb-track)" strokeWidth="2.5" />
       <circle cx="18" cy="18" r={R} fill="none" stroke={color} strokeWidth="2.5"
         strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct)}
         style={{ transition: "stroke-dashoffset 0.5s ease" }} />

@@ -60,9 +60,9 @@ const STATUS_CFG: Record<
 
 const PRIORITY_CFG: Record<string, { color: string; glow: string }> = {
   critical: { color: "#ef4444", glow: "rgba(239,68,68,0.22)" },
-  high:     { color: "#f97316", glow: "rgba(249,115,22,0.18)" },
-  medium:   { color: "#eab308", glow: "rgba(234,179,8,0.14)"  },
-  low:      { color: "#475569", glow: "rgba(71,85,105,0.08)"  },
+  high: { color: "#f97316", glow: "rgba(249,115,22,0.18)" },
+  medium: { color: "#eab308", glow: "rgba(234,179,8,0.14)" },
+  low: { color: "#475569", glow: "rgba(71,85,105,0.08)" },
 };
 
 const STATUS_CYCLE: TaskStatus[] = ["todo", "in_progress", "done", "blocked"];
@@ -92,7 +92,7 @@ function SubtaskRing({
         className="-rotate-90"
         style={{ filter: `drop-shadow(0 0 ${expanded ? 6 : 4}px ${color}${expanded ? "99" : "55"})` }}
       >
-        <circle cx="17" cy="17" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="2.5" />
+        <circle cx="17" cy="17" r={R} fill="none" stroke="var(--orb-track)" strokeWidth="2.5" />
         <motion.circle
           cx="17" cy="17" r={R}
           fill="none" stroke={color}
@@ -208,7 +208,7 @@ function SubtaskList({
     >
       <div
         className="mt-1 pt-2.5 flex flex-col gap-1.5"
-        style={{ borderTop: `1px solid rgba(255,255,255,0.06)` }}
+        style={{ borderTop: `1px solid var(--section-border)` }}
       >
         <div className="flex items-center gap-1.5 mb-0.5">
           <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color }}>
@@ -379,18 +379,18 @@ interface Props {
 }
 
 export function TaskCard({ task, onOpen, isFocused }: Props) {
-  const cardRef            = useRef<HTMLDivElement>(null);
-  const offline            = useIsOffline();
-  const updateTaskStatus   = useTaskStore((s) => s.updateTaskStatus);
-  const toggleSubtask      = useTaskStore((s) => s.toggleSubtask);
-  const liveTask           = useTaskStore((s) => s.getTask(task.id)) ?? task;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const offline = useIsOffline();
+  const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
+  const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
+  const liveTask = useTaskStore((s) => s.getTask(task.id)) ?? task;
   const [subtasksOpen, setSubtasksOpen] = useState(false);
 
-  const mouseX  = useMotionValue(0.5);
-  const mouseY  = useMotionValue(0.5);
-  const glareX  = useTransform(mouseX, [0, 1], ["0%", "100%"]);
-  const glareY  = useTransform(mouseY, [0, 1], ["0%", "100%"]);
-  const glareBg = useMotionTemplate`radial-gradient(130px circle at ${glareX} ${glareY}, rgba(255,255,255,0.055) 0%, transparent 70%)`;
+  const mouseX = useMotionValue(0.5);
+  const mouseY = useMotionValue(0.5);
+  const glareX = useTransform(mouseX, [0, 1], ["0%", "100%"]);
+  const glareY = useTransform(mouseY, [0, 1], ["0%", "100%"]);
+  const glareBg = useMotionTemplate`radial-gradient(130px circle at ${glareX} ${glareY}, var(--specular-spot) 0%, transparent 70%)`;
 
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const r = cardRef.current?.getBoundingClientRect();
@@ -424,7 +424,7 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
     toggleSubtask(liveTask.id, subtaskId, current);
   }
 
-  const pCfg   = PRIORITY_CFG[liveTask.priority] ?? PRIORITY_CFG.low;
+  const pCfg = PRIORITY_CFG[liveTask.priority] ?? PRIORITY_CFG.low;
   const isDone = liveTask.status === "done";
   const hasSubtasks = liveTask.subtasks.length > 0;
 
@@ -440,11 +440,9 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
         isFocused && "focus-heartbeat"
       )}
       style={{
-        background: isDone
-          ? "linear-gradient(155deg, rgba(13,20,28,0.98) 0%, rgba(10,18,22,0.98) 100%)"
-          : "var(--bg-overlay)",
+        background: isDone ? "var(--bg-card-done)" : "var(--bg-overlay)",
         border: isDone
-          ? "1px solid rgba(52,211,153,0.16)"
+          ? "1px solid var(--border-card-done)"
           : subtasksOpen
             ? `1px solid ${pCfg.color}35`
             : "1px solid var(--glass-border)",
@@ -522,7 +520,8 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
 
         {/* Micro progress bar */}
         {hasSubtasks && (
-          <div className="h-px rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.05)" }}>
+          <div className="h-px rounded-full overflow-hidden" style={{ background: "var(--track-bg-sm)"
+ }}>
             <motion.div
               className="h-full rounded-full"
               style={{ backgroundColor: isDone ? "#34d399" : pCfg.color }}

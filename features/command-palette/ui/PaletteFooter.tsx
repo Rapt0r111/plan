@@ -1,7 +1,7 @@
 // features/command-palette/ui/PaletteFooter.tsx
 /**
  * ИСПРАВЛЕНИЕ (light-theme):
- *   - borderTop: "1px solid rgba(255,255,255,0.06)" → var(--glass-border)
+ *   - borderTop: "1px solid var(--section-border)" → var(--glass-border)
  *   - background: "rgba(255,255,255,0.015)" → var(--glass-01)
  */
 

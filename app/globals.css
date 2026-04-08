@@ -123,6 +123,22 @@
   --notification-dismiss-hover: rgba(255, 255, 255, 0.55);
   --notification-border-base: rgba(255, 255, 255, 0.06);
   --notification-surface: rgba(255, 255, 255, 0.015);
+
+  /* === Новые переменные для light/dark адаптации === */
+  --bg-card-done: linear-gradient(155deg, rgba(13, 20, 28, 0.98) 0%, rgba(10, 18, 22, 0.98) 100%);
+  --border-card-done: rgba(52, 211, 153, 0.16);
+  --track-bg: rgba(255, 255, 255, 0.06);
+  --track-bg-sm: rgba(255, 255, 255, 0.05);
+  --gloss-overlay: rgba(255, 255, 255, 0.025);
+  --shimmer-line: rgba(255, 255, 255, 0.45);
+  --inset-light: rgba(255, 255, 255, 0.04);
+  --inset-light-sm: rgba(255, 255, 255, 0.05);
+  --specular-spot: rgba(255, 255, 255, 0.055);
+  --orb-track: rgba(255, 255, 255, 0.07);
+  --orb-ring: rgba(255, 255, 255, 0.08);
+  --panel-border: rgba(255, 255, 255, 0.09);
+  --section-border: rgba(255, 255, 255, 0.06);
+  --fab-backdrop: radial-gradient(ellipse at bottom right, rgba(109, 40, 217, 0.08) 0%, rgba(0, 0, 0, 0.5) 70%);
 }
 
 /* ── Light Theme ───────────────────────────────────────────────────────────── */
@@ -203,6 +219,21 @@ html.light {
   --notification-dismiss-hover: rgba(18, 12, 6, 0.55);
   --notification-border-base: rgba(0, 0, 0, 0.07);
   --notification-surface: rgba(0, 0, 0, 0.02);
+
+  --bg-card-done: linear-gradient(155deg, rgba(232, 248, 241, 0.99) 0%, rgba(221, 241, 232, 0.99) 100%);
+  --border-card-done: rgba(5, 150, 105, 0.25);
+  --track-bg: rgba(0, 0, 0, 0.07);
+  --track-bg-sm: rgba(0, 0, 0, 0.06);
+  --gloss-overlay: rgba(0, 0, 0, 0.015);
+  --shimmer-line: rgba(0, 0, 0, 0.10);
+  --inset-light: rgba(0, 0, 0, 0.02);
+  --inset-light-sm: rgba(0, 0, 0, 0.03);
+  --specular-spot: rgba(0, 0, 0, 0.02);
+  --orb-track: rgba(0, 0, 0, 0.08);
+  --orb-ring: rgba(0, 0, 0, 0.07);
+  --panel-border: rgba(0, 0, 0, 0.08);
+  --section-border: rgba(0, 0, 0, 0.06);
+  --fab-backdrop: radial-gradient(ellipse at bottom right, rgba(109, 40, 217, 0.06) 0%, rgba(100, 90, 80, 0.30) 70%);
 }
 
 /* ── Reset & Base ──────────────────────────────────────────────────────────── */

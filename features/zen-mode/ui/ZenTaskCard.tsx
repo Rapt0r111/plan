@@ -82,7 +82,8 @@ export function ZenTaskCard({ task, onComplete, onSkip, queueLeft }: Props) {
                 <span
                   className="text-xs font-mono px-2 py-0.5 rounded-full"
                   style={{
-                    background: "rgba(255,255,255,0.05)",
+                    background: "var(--track-bg-sm)"
+,
                     color: "rgba(255,255,255,0.25)",
                     border: "1px solid rgba(255,255,255,0.08)",
                   }}
@@ -141,7 +142,8 @@ export function ZenTaskCard({ task, onComplete, onSkip, queueLeft }: Props) {
                   {liveTask.progress.done}/{liveTask.progress.total}
                 </span>
               </div>
-              <div className="h-px rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+              <div className="h-px rounded-full overflow-hidden" style={{ background: "var(--track-bg)" }
+}>
                 <motion.div
                   className="h-full rounded-full"
                   style={{

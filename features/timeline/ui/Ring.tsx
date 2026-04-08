@@ -17,7 +17,7 @@ export function Ring({ pct, color, size = 40 }: RingProps) {
       <svg width={size} height={size} className="absolute inset-0 -rotate-90">
         <circle
           cx={size / 2} cy={size / 2} r={r}
-          fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={3}
+          fill="none" stroke="var(--orb-track)" strokeWidth={3}
         />
         <circle
           cx={size / 2} cy={size / 2} r={r}

@@ -356,7 +356,8 @@ function LivePreview({ prefs }: { prefs: UIPrefs }) {
                     {/* Progress bar */}
                     <div
                         className="h-1 rounded-full overflow-hidden mb-2"
-                        style={{ background: "rgba(255,255,255,0.06)" }}
+                        style={{ background: "var(--track-bg)" }
+}
                     >
                         <div
                             className="h-full rounded-full"

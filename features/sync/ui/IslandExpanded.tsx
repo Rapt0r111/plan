@@ -1,5 +1,11 @@
 // features/sync/ui/IslandExpanded.tsx
 "use client";
+/**
+ * ИСПРАВЛЕНИЕ (light-theme):
+ *   - Текст уведомления: rgba(255,255,255,0.85) → var(--notification-text-primary)
+ *   - Мелкий текст: rgba(255,255,255,0.38) → var(--notification-text-muted)
+ *   - Кнопка закрытия: rgba(255,255,255,0.2/0.55) → var(--notification-dismiss-color/hover)
+ */
 import { motion } from "framer-motion";
 import type { Notification } from "../useNotificationStore";
 
@@ -43,19 +49,15 @@ export function IslandExpanded({ notification, onDismiss }: Props) {
         {notification.icon ?? c.icon}
       </div>
 
-      {/* Content — use CSS vars so text is readable in both themes */}
+      {/* Content */}
       <div className="flex-1 min-w-0">
-        <p
-          className="text-sm font-medium leading-snug"
-          style={{ color: "var(--text-primary)" }}
-        >
+        {/* ИСПРАВЛЕНО: var(--notification-text-primary) вместо rgba(255,255,255,0.85) */}
+        <p className="text-sm font-medium leading-snug" style={{ color: "var(--notification-text-primary)" }}>
           {notification.title}
         </p>
         {notification.body && (
-          <p
-            className="text-xs mt-0.5 leading-relaxed"
-            style={{ color: "var(--text-secondary)" }}
-          >
+          /* ИСПРАВЛЕНО: var(--notification-text-muted) вместо rgba(255,255,255,0.38) */
+          <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "var(--notification-text-muted)" }}>
             {notification.body}
           </p>
         )}
@@ -65,9 +67,11 @@ export function IslandExpanded({ notification, onDismiss }: Props) {
       <button
         onClick={onDismiss}
         className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center transition-colors mt-px"
-        style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+        style={{ background: "none", border: "none", cursor: "pointer",
+          /* ИСПРАВЛЕНО: CSS vars вместо rgba(255,255,255,x) */
+          color: "var(--notification-dismiss-color)" }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--notification-dismiss-hover)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--notification-dismiss-color)"; }}
       >
         <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none"
           stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">

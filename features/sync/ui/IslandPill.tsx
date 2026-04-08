@@ -1,5 +1,11 @@
 // features/sync/ui/IslandPill.tsx
 "use client";
+/**
+ * ИСПРАВЛЕНИЕ (light-theme):
+ *   - Текст пилюли: color: "var(--text-secondary)" — уже использует CSS var ✅
+ *   - --island-bg теперь задан в globals.css для светлой темы
+ *   - border: "var(--glass-border)" вместо hardcoded
+ */
 import { motion } from "framer-motion";
 import type { Notification } from "../useNotificationStore";
 
@@ -8,7 +14,7 @@ const KIND_GLOW: Record<string, string> = {
   error:   "rgba(239,68,68,0.5)",
   sync:    "rgba(56,189,248,0.45)",
   zen:     "rgba(139,92,246,0.5)",
-  info:    "rgba(139,92,246,0.2)",
+  info:    "rgba(0,0,0,0.1)",
 };
 
 const KIND_DOT: Record<string, string> = {
@@ -25,7 +31,7 @@ interface Props {
 }
 
 export function IslandPill({ notification, onClick }: Props) {
-  const glow = notification ? KIND_GLOW[notification.kind] ?? KIND_GLOW.info : "rgba(139,92,246,0.12)";
+  const glow = notification ? KIND_GLOW[notification.kind] ?? KIND_GLOW.info : "var(--glass-border)";
   const dot  = notification ? KIND_DOT[notification.kind]  ?? KIND_DOT.info  : "#94a3b8";
 
   return (
@@ -38,8 +44,9 @@ export function IslandPill({ notification, onClick }: Props) {
         border:       "1px solid var(--glass-border)",
         cursor:       notification ? "pointer" : "default",
         backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
       }}
-      animate={{ boxShadow: `0 0 12px ${glow}, 0 2px 8px rgba(0,0,0,0.2)` }}
+      animate={{ boxShadow: `0 0 12px ${glow}, 0 2px 8px rgba(0,0,0,0.15)` }}
       transition={{ duration: 0.4 }}
       whileHover={notification ? { scale: 1.02 } : {}}
       whileTap={notification ? { scale: 0.98 } : {}}
@@ -54,11 +61,11 @@ export function IslandPill({ notification, onClick }: Props) {
         transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      {/* Label — use CSS var so it reads on both dark and light island bg */}
+      {/* Label */}
       <motion.span
         className="text-xs font-medium font-mono"
         style={{ color: "var(--text-secondary)" }}
-        animate={{ opacity: notification ? 1 : 0.5 }}
+        animate={{ opacity: notification ? 1 : 0.35 }}
       >
         {notification ? notification.title : "в сети"}
       </motion.span>
@@ -68,7 +75,7 @@ export function IslandPill({ notification, onClick }: Props) {
         <motion.div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)",
+            background: "linear-gradient(105deg, transparent 40%, var(--glass-01) 50%, transparent 60%)",
           }}
           animate={{ x: ["-100%", "200%"] }}
           transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.8 }}

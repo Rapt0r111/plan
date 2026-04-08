@@ -2,9 +2,9 @@
 /**
  * @file EpicWorkspace.tsx — features/epics
  *
- * LIGHT THEME FIX v4:
- *   Replaced hardcoded `rgba(4,5,10,0.78)` backdrop with `var(--modal-backdrop)`.
- *   The CSS variable resolves to the correct value for both dark and light themes.
+ * ИСПРАВЛЕНИЯ v4 (light-theme):
+ *  - Backdrop: rgba(4,5,10,0.78) → var(--modal-backdrop) — адаптируется к теме
+ *  - Текстовые цвета везде через CSS-переменные
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -270,7 +270,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
 
   return (
     <>
-      {/* ── Backdrop — FIXED: use var(--modal-backdrop) for light/dark ── */}
+      {/* ── Backdrop — uses CSS var for theme-awareness ─────────────── */}
       <motion.div
         key="ws-backdrop"
         className="fixed inset-0"
@@ -286,6 +286,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
           style={{
             background: "var(--modal-backdrop)",
             backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
           }}
         />
       </motion.div>
@@ -307,11 +308,11 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
             pointerEvents: "auto",
             willChange: "transform",
             boxShadow: `
-              0 0 0 0.5px rgba(255,255,255,0.05),
-              0 4px 24px rgba(0,0,0,0.3),
-              0 24px 80px rgba(0,0,0,0.25),
+              0 0 0 0.5px var(--glass-border),
+              0 4px 24px rgba(0,0,0,0.4),
+              0 24px 80px rgba(0,0,0,0.35),
               0 0 80px ${summary.color}15,
-              inset 0 1px 0 rgba(255,255,255,0.05)
+              inset 0 1px 0 var(--glass-01)
             `,
           }}
           transition={SPRING}
@@ -329,7 +330,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
           <div
             className="absolute top-0 left-0 right-0 h-px pointer-events-none"
             style={{
-              background: `linear-gradient(90deg, transparent 0%, ${summary.color}50 30%, rgba(255,255,255,0.14) 50%, ${summary.color}30 70%, transparent 100%)`,
+              background: `linear-gradient(90deg, transparent 0%, ${summary.color}50 30%, var(--glass-02) 50%, ${summary.color}30 70%, transparent 100%)`,
             }}
           />
 
@@ -481,7 +482,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
                 style={{
                   background: "var(--glass-02)",
                   border: "0.5px solid var(--glass-border)",
-                  color: "var(--text-muted)",
+                  color: "var(--text-secondary)",
                   cursor: "pointer",
                 }}
               >

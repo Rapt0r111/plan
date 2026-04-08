@@ -59,10 +59,10 @@ function isCurrentlyOffline(): boolean {
  */
 function notifyOfflineBlocked(): void {
   useNotificationStore.getState().push({
-    kind:  "error",
+    kind: "error",
     title: "Только просмотр",
-    body:  "Изменения недоступны в офлайн-режиме",
-    icon:  "🔒",
+    body: "Изменения недоступны в офлайн-режиме",
+    icon: "🔒",
   });
 }
 
@@ -196,7 +196,8 @@ interface TaskStore {
   toggleSubtask: (taskId: number, subtaskId: number, current: boolean) => Promise<void>;
   reorderTasks: (epicId: number, orderedIds: number[]) => Promise<void>;
   deleteTask: (taskId: number) => Promise<void>;
-
+  addSubtask: (taskId: number, title: string) => Promise<void>;
+  deleteSubtask: (taskId: number, subtaskId: number) => Promise<void>;
   refreshOfflineQueue: () => Promise<void>;
   replayOfflineQueue: () => Promise<ReplayResult>;
 
@@ -310,7 +311,7 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     _trackMutation: (taskId: number) => {
-      if (taskId <= 0) return () => {};
+      if (taskId <= 0) return () => { };
       set((s) => ({ mutatingTaskIds: addToSet(s.mutatingTaskIds, taskId) }));
       return () => {
         set((s) => ({ mutatingTaskIds: removeFromSet(s.mutatingTaskIds, taskId) }));
@@ -677,7 +678,7 @@ export const useTaskStore = create<TaskStore>()(
             const replayTaskId = taskIdMatch ? Number(taskIdMatch[1]) : 0;
             const stopTrackingPatch = replayTaskId > 0
               ? get()._trackMutation(replayTaskId)
-              : () => {};
+              : () => { };
 
             const res = await apiPatch(url, { ...patch, expectedUpdatedAt });
 
@@ -1633,7 +1634,195 @@ export const useTaskStore = create<TaskStore>()(
         }
       } finally { done(); }
     },
+    addSubtask: async (taskId, title) => {
+      const trimmed = title.trim();
+      if (!trimmed) return;
 
+      const tempId = nextTempId();
+      const now = new Date().toISOString();
+
+      const tempSub: SubtaskView = {
+        id: tempId,
+        taskId,
+        title: trimmed,
+        isCompleted: false,
+        sortOrder: 9999,
+        createdAt: now,
+      };
+
+      // ── Optimistic add ──────────────────────────────────────────────────────
+      set((s) => {
+        const task = s.tasks[taskId];
+        if (!task) return s;
+        const newSubs = [...task.subtasks, tempSub];
+        const updated: TaskView = {
+          ...task,
+          subtasks: newSubs,
+          progress: {
+            done: newSubs.filter((st) => st.isCompleted).length,
+            total: newSubs.length,
+          },
+        };
+        return {
+          tasks: { ...s.tasks, [taskId]: updated },
+          epics: updateEpicsForTask(s.epics, taskId, (ts) =>
+            ts.map((t) => (t.id === taskId ? updated : t))
+          ),
+        };
+      });
+
+      // ── Offline path ────────────────────────────────────────────────────────
+      if (isCurrentlyOffline()) {
+        await enqueuePendingOp({
+          kind: undefined,
+          url: `/api/tasks/${taskId}/subtasks`,
+          method: "POST",
+          body: { title: trimmed },
+        });
+        set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        return;
+      }
+
+      // ── Online path ─────────────────────────────────────────────────────────
+      const done = get()._beginOp();
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/subtasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: trimmed }),
+        });
+
+        if (!res.ok) throw new Error(`status ${res.status}`);
+
+        const data = await res.json();
+        const realId = data.data.id as number;
+
+        // Replace temp ID with real ID
+        set((s) => {
+          const task = s.tasks[taskId];
+          if (!task) return s;
+          const newSubs = task.subtasks.map((st) =>
+            st.id === tempId ? { ...st, id: realId } : st
+          );
+          const updated: TaskView = {
+            ...task,
+            subtasks: newSubs,
+            progress: {
+              done: newSubs.filter((st) => st.isCompleted).length,
+              total: newSubs.length,
+            },
+          };
+          return {
+            tasks: { ...s.tasks, [taskId]: updated },
+            epics: updateEpicsForTask(s.epics, taskId, (ts) =>
+              ts.map((t) => (t.id === taskId ? updated : t))
+            ),
+          };
+        });
+      } catch (err) {
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind: undefined,
+            url: `/api/tasks/${taskId}/subtasks`,
+            method: "POST",
+            body: { title: trimmed },
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        } else {
+          // Rollback: remove the temp subtask
+          set((s) => {
+            const task = s.tasks[taskId];
+            if (!task) return s;
+            const newSubs = task.subtasks.filter((st) => st.id !== tempId);
+            const updated: TaskView = {
+              ...task,
+              subtasks: newSubs,
+              progress: {
+                done: newSubs.filter((st) => st.isCompleted).length,
+                total: newSubs.length,
+              },
+            };
+            return {
+              tasks: { ...s.tasks, [taskId]: updated },
+              epics: updateEpicsForTask(s.epics, taskId, (ts) =>
+                ts.map((t) => (t.id === taskId ? updated : t))
+              ),
+              syncStatus: "error",
+            };
+          });
+        }
+      } finally {
+        done();
+      }
+    },
+    deleteSubtask: async (taskId, subtaskId) => {
+      const task = get().tasks[taskId];
+      if (!task) return;
+      const subtask = task.subtasks.find((s) => s.id === subtaskId);
+      if (!subtask) return;
+
+      // ── Optimistic remove ───────────────────────────────────────────────────
+      set((s) => {
+        const t = s.tasks[taskId];
+        if (!t) return s;
+        const newSubs = t.subtasks.filter((st) => st.id !== subtaskId);
+        const updated: TaskView = {
+          ...t,
+          subtasks: newSubs,
+          progress: {
+            done: newSubs.filter((st) => st.isCompleted).length,
+            total: newSubs.length,
+          },
+        };
+        return {
+          tasks: { ...s.tasks, [taskId]: updated },
+          epics: updateEpicsForTask(s.epics, taskId, (ts) =>
+            ts.map((tt) => (tt.id === taskId ? updated : tt))
+          ),
+        };
+      });
+
+      const done = get()._beginOp();
+      try {
+        const res = await fetch(`/api/subtasks/${subtaskId}`, { method: "DELETE" });
+        if (!res.ok) throw new Error(`status ${res.status}`);
+      } catch (err) {
+        if (isNetworkError(err) || isCurrentlyOffline()) {
+          await enqueuePendingOp({
+            kind: undefined,
+            url: `/api/subtasks/${subtaskId}`,
+            method: "DELETE",
+          });
+          set((s) => ({ offlineQueueSize: s.offlineQueueSize + 1 }));
+        } else {
+          // Rollback: restore the deleted subtask
+          set((s) => {
+            const t = s.tasks[taskId];
+            if (!t) return s;
+            const newSubs = [...t.subtasks, subtask].sort(
+              (a, b) => a.sortOrder - b.sortOrder
+            );
+            const updated: TaskView = {
+              ...t,
+              subtasks: newSubs,
+              progress: {
+                done: newSubs.filter((st) => st.isCompleted).length,
+                total: newSubs.length,
+              },
+            };
+            return {
+              tasks: { ...s.tasks, [taskId]: updated },
+              epics: updateEpicsForTask(s.epics, taskId, (ts) =>
+                ts.map((tt) => (tt.id === taskId ? updated : tt))
+              ),
+              syncStatus: "error",
+            };
+          });
+        }
+      } finally {
+        done();
+      }
+    },
     // ── reorderTasks ──────────────────────────────────────────────────────────
     reorderTasks: async (epicId, orderedIds) => {
       // ✅ OFFLINE GUARD: block all writes when offline

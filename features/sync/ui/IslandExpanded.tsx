@@ -8,7 +8,7 @@ const KIND_COLORS: Record<string, { bg: string; border: string; text: string; ic
   error:   { bg: "rgba(239,68,68,0.08)",   border: "rgba(239,68,68,0.22)",   text: "#f87171", icon: "✕" },
   sync:    { bg: "rgba(56,189,248,0.07)",  border: "rgba(56,189,248,0.2)",   text: "#38bdf8", icon: "⟳" },
   zen:     { bg: "rgba(139,92,246,0.08)",  border: "rgba(139,92,246,0.22)",  text: "#a78bfa", icon: "◈" },
-  info:    { bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.12)", text: "#94a3b8", icon: "i" },
+  info:    { bg: "var(--glass-01)",        border: "var(--glass-border)",    text: "#94a3b8", icon: "i" },
 };
 
 interface Props {
@@ -43,13 +43,19 @@ export function IslandExpanded({ notification, onDismiss }: Props) {
         {notification.icon ?? c.icon}
       </div>
 
-      {/* Content */}
+      {/* Content — use CSS vars so text is readable in both themes */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium leading-snug" style={{ color: "rgba(255,255,255,0.85)" }}>
+        <p
+          className="text-sm font-medium leading-snug"
+          style={{ color: "var(--text-primary)" }}
+        >
           {notification.title}
         </p>
         {notification.body && (
-          <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "rgba(255,255,255,0.38)" }}>
+          <p
+            className="text-xs mt-0.5 leading-relaxed"
+            style={{ color: "var(--text-secondary)" }}
+          >
             {notification.body}
           </p>
         )}
@@ -59,9 +65,9 @@ export function IslandExpanded({ notification, onDismiss }: Props) {
       <button
         onClick={onDismiss}
         className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center transition-colors mt-px"
-        style={{ background: "none", border: "none", color: "rgba(255,255,255,0.2)", cursor: "pointer" }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.55)"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.2)"; }}
+        style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
       >
         <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none"
           stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">

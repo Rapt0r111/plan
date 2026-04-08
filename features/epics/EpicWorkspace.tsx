@@ -2,10 +2,9 @@
 /**
  * @file EpicWorkspace.tsx — features/epics
  *
- * ИСПРАВЛЕНИЯ v3:
- *  1. Заменён <a href="/epics/..."> на Next.js <Link> — нативный anchor
- *     вызывал полную перезагрузку страницы и сбрасывал состояние Zustand.
- *  2. Остальной код без изменений.
+ * LIGHT THEME FIX v4:
+ *   Replaced hardcoded `rgba(4,5,10,0.78)` backdrop with `var(--modal-backdrop)`.
+ *   The CSS variable resolves to the correct value for both dark and light themes.
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -271,6 +270,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
 
   return (
     <>
+      {/* ── Backdrop — FIXED: use var(--modal-backdrop) for light/dark ── */}
       <motion.div
         key="ws-backdrop"
         className="fixed inset-0"
@@ -284,7 +284,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
         <div
           className="absolute inset-0"
           style={{
-            background: "rgba(4,5,10,0.78)",
+            background: "var(--modal-backdrop)",
             backdropFilter: "blur(8px)",
           }}
         />
@@ -308,8 +308,8 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
             willChange: "transform",
             boxShadow: `
               0 0 0 0.5px rgba(255,255,255,0.05),
-              0 4px 24px rgba(0,0,0,0.6),
-              0 24px 80px rgba(0,0,0,0.5),
+              0 4px 24px rgba(0,0,0,0.3),
+              0 24px 80px rgba(0,0,0,0.25),
               0 0 80px ${summary.color}15,
               inset 0 1px 0 rgba(255,255,255,0.05)
             `,
@@ -321,8 +321,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
             style={{
               background: `
                 radial-gradient(ellipse 80% 40% at 10% 0%, ${summary.color}14 0%, transparent 50%),
-                radial-gradient(ellipse 50% 60% at 90% 100%, ${summary.color}0c 0%, transparent 55%),
-                radial-gradient(ellipse 35% 35% at 50% 50%, rgba(255,255,255,0.018) 0%, transparent 70%)
+                radial-gradient(ellipse 50% 60% at 90% 100%, ${summary.color}0c 0%, transparent 55%)
               `,
             }}
           />
@@ -459,11 +458,6 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
             </div>
 
             <div className="flex items-center gap-2">
-              {/*
-               * ИСПРАВЛЕНО v3: <a href> → <Link> для client-side навигации.
-               * Нативный anchor вызывал полную перезагрузку страницы и сбрасывал
-               * состояние Zustand store, прерывая все активные анимации.
-               */}
               <Link
                 href={`/epics/${epicId}`}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"

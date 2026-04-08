@@ -788,3 +788,130 @@ html.light .quick-add-card {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ── Iridescent header: neutralize rainbow sweep on light bg ───────────────── */
+html.light .iridescent-header {
+  animation: none;
+  background: linear-gradient(
+    135deg,
+    transparent 0%,
+    rgba(0, 0, 0, 0.012) 50%,
+    transparent 100%
+  );
+}
+ 
+/* ── Hue-breathe: only run in dark mode (light bg makes it invisible anyway) ─ */
+html.light .hue-breathe {
+  animation: none;
+}
+ 
+/* ── Liquid shimmer: softer in light mode ──────────────────────────────────── */
+html.light .liquid-bar {
+  background: linear-gradient(
+    90deg,
+    currentColor 0%,
+    color-mix(in srgb, currentColor 75%, white 25%) 50%,
+    currentColor 100%
+  );
+  background-size: 200% 100%;
+  animation: liquid-shimmer 4s linear infinite;
+}
+ 
+/* ── Quick-add card: use surface background + light shadow ─────────────────── */
+html.light .quick-add-card {
+  background: var(--bg-surface);
+  border-color: var(--glass-border);
+  box-shadow: var(--shadow-elevated);
+}
+ 
+/* ── Quick-add trigger: use light purple tint on hover ─────────────────────── */
+html.light .quick-add-trigger:hover {
+  border-color: rgba(109, 40, 217, 0.30);
+  color: var(--text-secondary);
+  background: rgba(109, 40, 217, 0.05);
+  box-shadow: 0 0 12px rgba(109, 40, 217, 0.08);
+}
+ 
+/* ── Quick-add priority chip: light mode base ──────────────────────────────── */
+html.light .quick-add-priority-chip {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.10);
+  color: var(--text-secondary);
+}
+ 
+html.light .quick-add-priority-chip:hover {
+  background: rgba(0, 0, 0, 0.07);
+  color: var(--text-primary);
+}
+ 
+/* ── Save button: darker accent in light mode ──────────────────────────────── */
+html.light .quick-add-save-btn {
+  filter: saturate(1.1) brightness(0.92);
+}
+ 
+/* ── KBD hint: light mode readable ────────────────────────────────────────── */
+html.light .quick-add-kbd {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: var(--text-secondary);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+}
+ 
+/* ── Cancel button: light mode ─────────────────────────────────────────────── */
+html.light .quick-add-cancel-btn {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.10);
+  color: var(--text-secondary);
+}
+ 
+html.light .quick-add-cancel-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--text-primary);
+}
+ 
+/* ── Glow border: softer glow in light mode ─────────────────────────────────  */
+html.light .glow-border {
+  box-shadow:
+    0 0 0 1px var(--glass-border),
+    0 0 16px rgba(109, 40, 217, 0.10);
+}
+ 
+html.light .glow-border:hover {
+  box-shadow:
+    0 0 0 1px rgba(109, 40, 217, 0.30),
+    0 0 20px rgba(109, 40, 217, 0.14),
+    0 0 40px rgba(109, 40, 217, 0.07);
+}
+ 
+/* ── Pulse glow animation: softer in light ──────────────────────────────────── */
+@keyframes pulse-glow-light {
+  0%, 100% { box-shadow: 0 0 4px var(--accent-glow); }
+  50%       { box-shadow: 0 0 14px var(--accent-glow-strong), 0 0 28px var(--accent-glow); }
+}
+ 
+html.light .animate-pulse-glow {
+  animation: pulse-glow-light 2.4s ease-in-out infinite;
+}
+ 
+/* ── Native form inputs: ensure light color-scheme ─────────────────────────── */
+html.light input[type="date"],
+html.light input[type="time"],
+html.light input[type="datetime-local"],
+html.light input[type="month"],
+html.light input[type="week"],
+html.light input[type="color"] {
+  color-scheme: light;
+}
+ 
+/* ── Select dropdown options: readable in light mode ───────────────────────── */
+html.light select option {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+}
+ 
+/* ── Glass panels in light mode: improve borders ───────────────────────────── */
+html.light .glass-elevated {
+  box-shadow: var(--shadow-elevated);
+}
+ 
+/* ── Spatial-enter animation: works fine in both modes (no change needed) ──── */

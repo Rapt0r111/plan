@@ -38,9 +38,9 @@ function EpicPreviewCard({
     <div
       className="rounded-2xl overflow-hidden transition-all duration-300"
       style={{
-        background:   "var(--bg-elevated)",
-        border:       "1px solid var(--glass-border)",
-        borderLeft:   `3px solid ${color}`,
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--glass-border)",
+        borderLeft: `3px solid ${color}`,
         backgroundImage: `radial-gradient(ellipse at top left, ${color}12 0%, transparent 50%)`,
       }}
     >
@@ -99,13 +99,13 @@ function EpicPreviewCard({
 export function CreateEpicModal({ open, onClose, onCreated }: Props) {
   const createEpic = useTaskStore((s) => s.createEpic);
 
-  const [title, setTitle]         = useState("");
-  const [description, setDesc]    = useState("");
-  const [color, setColor]         = useState("#8b5cf6");
+  const [title, setTitle] = useState("");
+  const [description, setDesc] = useState("");
+  const [color, setColor] = useState("#8b5cf6");
   const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate]     = useState("");
-  const [saving, setSaving]       = useState(false);
-  const [error, setError]         = useState<string | null>(null);
+  const [endDate, setEndDate] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -122,12 +122,12 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
   // Следим за переключением офлайн/онлайн пока модал открыт
   useEffect(() => {
     if (!open) return;
-    const onOnline  = () => setIsOfflineMode(false);
+    const onOnline = () => setIsOfflineMode(false);
     const onOffline = () => setIsOfflineMode(true);
-    window.addEventListener("online",  onOnline);
+    window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     return () => {
-      window.removeEventListener("online",  onOnline);
+      window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
   }, [open]);
@@ -139,11 +139,11 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
 
     try {
       const result = await createEpic({
-        title:       title.trim(),
+        title: title.trim(),
         description: description.trim() || null,
         color,
-        startDate:   startDate ? `${startDate}T00:00:00.000Z` : null,
-        endDate:     endDate   ? `${endDate}T00:00:00.000Z`   : null,
+        startDate: startDate ? `${startDate}T00:00:00.000Z` : null,
+        endDate: endDate ? `${endDate}T00:00:00.000Z` : null,
       });
 
       if (!result) {
@@ -198,9 +198,9 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
               <div
                 className="flex-1 rounded-3xl overflow-hidden relative"
                 style={{
-                  background:  "var(--modal-bg)",
-                  border:      `1px solid ${color}30`,
-                  boxShadow:   `0 0 0 1px ${color}15, 0 32px 80px rgba(0,0,0,0.7)`,
+                  background: "var(--modal-bg)",
+                  border: `1px solid ${color}30`,
+                  boxShadow: `0 0 0 1px ${color}15, 0 32px 80px rgba(0,0,0,0.7)`,
                 }}
               >
                 <div className="absolute top-0 left-0 right-0 h-px"
@@ -258,8 +258,8 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                         className="px-4 py-3 rounded-xl text-sm flex items-start gap-3"
                         style={{
                           background: "rgba(239,68,68,0.10)",
-                          border:     "1px solid rgba(239,68,68,0.25)",
-                          color:      "#f87171",
+                          border: "1px solid rgba(239,68,68,0.25)",
+                          color: "#f87171",
                         }}>
                         {error}
                       </motion.div>
@@ -280,11 +280,11 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                       maxLength={120}
                       className="w-full px-4 py-3 rounded-xl text-sm font-medium outline-none transition-all"
                       style={{
-                        background:  "var(--glass-01)",
-                        border:      `1px solid ${title ? color + "50" : "var(--glass-border)"}`,
-                        color:       "var(--text-primary)",
-                        caretColor:  color,
-                        boxShadow:   title ? `0 0 0 3px ${color}10` : "none",
+                        background: "var(--glass-01)",
+                        border: `1px solid ${title ? color + "50" : "var(--glass-border)"}`,
+                        color: "var(--text-primary)",
+                        caretColor: color,
+                        boxShadow: title ? `0 0 0 3px ${color}10` : "none",
                       }}
                     />
                     <div className="flex justify-end mt-1">
@@ -307,11 +307,11 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                       maxLength={500}
                       className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all resize-none"
                       style={{
-                        background:  "var(--glass-01)",
-                        border:      "1px solid var(--glass-border)",
-                        color:       "var(--text-secondary)",
-                        caretColor:  color,
-                        fontFamily:  "var(--font-sans)",
+                        background: "var(--glass-01)",
+                        border: "1px solid var(--glass-border)",
+                        color: "var(--text-secondary)",
+                        caretColor: color,
+                        fontFamily: "var(--font-sans)",
                       }}
                     />
                   </div>
@@ -319,8 +319,8 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                   {/* Dates */}
                   <div className="grid grid-cols-2 gap-4">
                     {[
-                      { label: "Дата начала",    value: startDate, onChange: setStartDate },
-                      { label: "Дата окончания", value: endDate,   onChange: setEndDate   },
+                      { label: "Дата начала", value: startDate, onChange: setStartDate },
+                      { label: "Дата окончания", value: endDate, onChange: setEndDate },
                     ].map(({ label, value, onChange }) => (
                       <div key={label}>
                         <label className="text-xs font-semibold uppercase tracking-widest mb-2 block"
@@ -330,10 +330,9 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                         <input type="date" value={value} onChange={(e) => onChange(e.target.value)}
                           className="w-full px-4 py-2.5 rounded-xl text-sm outline-none transition-all"
                           style={{
-                            background:  "var(--glass-01)",
-                            border:      "1px solid var(--glass-border)",
-                            color:       value ? "var(--text-primary)" : "var(--text-muted)",
-                            colorScheme: "dark",
+                            background: "var(--glass-01)",
+                            border: "1px solid var(--glass-border)",
+                            color: value ? "var(--text-primary)" : "var(--text-muted)",
                           }}
                         />
                       </div>
@@ -422,10 +421,10 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                         className="relative px-5 py-2 rounded-xl text-sm font-semibold overflow-hidden"
                         style={{
                           background: title.trim() ? `linear-gradient(135deg, ${color}30, ${color}18)` : "var(--glass-01)",
-                          border:     `1px solid ${title.trim() ? color + "50" : "var(--glass-border)"}`,
-                          color:      title.trim() ? color : "var(--text-muted)",
-                          boxShadow:  title.trim() ? `0 0 20px ${color}20` : "none",
-                          opacity:    saving ? 0.7 : 1,
+                          border: `1px solid ${title.trim() ? color + "50" : "var(--glass-border)"}`,
+                          color: title.trim() ? color : "var(--text-muted)",
+                          boxShadow: title.trim() ? `0 0 20px ${color}20` : "none",
+                          opacity: saving ? 0.7 : 1,
                         }}
                         whileHover={title.trim() && !saving ? { scale: 1.03 } : {}}
                         whileTap={title.trim() && !saving ? { scale: 0.97 } : {}}>

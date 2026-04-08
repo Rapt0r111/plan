@@ -5,15 +5,15 @@ import {
   useMemo, useCallback, useId,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useCommandPaletteStore }     from "./useCommandPaletteStore";
-import { useKeyboardShortcuts }        from "@/shared/lib/hooks/useKeyboardShortcuts";
-import { useDebounce }                 from "@/shared/lib/hooks/useDebounce";
-import { usePaletteCommands }          from "./model/usePaletteCommands";
-import { usePaletteTaskSearch }        from "./model/usePaletteTaskSearch";
+import { useCommandPaletteStore } from "./useCommandPaletteStore";
+import { useKeyboardShortcuts } from "@/shared/lib/hooks/useKeyboardShortcuts";
+import { useDebounce } from "@/shared/lib/hooks/useDebounce";
+import { usePaletteCommands } from "./model/usePaletteCommands";
+import { usePaletteTaskSearch } from "./model/usePaletteTaskSearch";
 import { scoreFuzzy, CATEGORY_ORDER, CATEGORY_LABEL } from "./model/fuzzy";
-import { CommandRow }                  from "./ui/CommandRow";
-import { PaletteFooter }               from "./ui/PaletteFooter";
-import type { CommandCategory }        from "./model/fuzzy";
+import { CommandRow } from "./ui/CommandRow";
+import { PaletteFooter } from "./ui/PaletteFooter";
+import type { CommandCategory } from "./model/fuzzy";
 
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -21,11 +21,11 @@ export function CommandPalette() {
   const { isOpen, initialQuery, close, open } = useCommandPaletteStore();
   const commands = usePaletteCommands();
 
-  const [query, setQuery]                 = useState("");
+  const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const listRef  = useRef<HTMLDivElement>(null);
-  const inputId  = useId();
+  const listRef = useRef<HTMLDivElement>(null);
+  const inputId = useId();
 
   const debouncedQuery = useDebounce(query, SEARCH_DEBOUNCE_MS);
 
@@ -118,7 +118,7 @@ export function CommandPalette() {
             className="fixed inset-0 z-50"
             style={{
               backdropFilter: "blur(12px)",
-              background:     "var(--modal-backdrop)",
+              background: "var(--modal-backdrop)",
             }}
             onClick={close}
             aria-hidden="true"
@@ -131,18 +131,18 @@ export function CommandPalette() {
             aria-label="Command palette"
             aria-modal="true"
             initial={{ opacity: 0, scale: 0.96, y: -12 }}
-            animate={{ opacity: 1, scale: 1,    y: 0   }}
-            exit={{    opacity: 0, scale: 0.96, y: -8  }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: -8 }}
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
             className="fixed left-1/2 top-[18%] z-50 w-full max-w-160 -translate-x-1/2 flex flex-col overflow-hidden"
             style={{
-              borderRadius:  "20px",
-              background:    "var(--modal-bg)",
-              border:        "1px solid var(--glass-border)",
+              borderRadius: "20px",
+              background: "var(--modal-bg)",
+              border: "1px solid var(--glass-border)",
               boxShadow: [
                 "0 0 0 1px rgba(139,92,246,0.15)",
-                "0 32px 80px rgba(0,0,0,0.7)",
-                "0 0 60px rgba(139,92,246,0.08)",
+                "0 32px 80px rgba(0,0,0,0.35)",
+                "0 0 60px rgba(139,92,246,0.06)",
               ].join(", "),
               maxHeight: "min(560px, 70vh)",
             }}
@@ -216,8 +216,8 @@ export function CommandPalette() {
                 className="px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0"
                 style={{
                   background: "var(--glass-02)",
-                  border:     "1px solid var(--glass-border)",
-                  color:      "var(--text-muted)",
+                  border: "1px solid var(--glass-border)",
+                  color: "var(--text-muted)",
                 }}
               >
                 esc
@@ -238,7 +238,7 @@ export function CommandPalette() {
                     className="w-10 h-10 rounded-2xl flex items-center justify-center mb-3"
                     style={{
                       background: "var(--glass-02)",
-                      border:     "1px solid var(--glass-border)",
+                      border: "1px solid var(--glass-border)",
                     }}
                   >
                     <svg
@@ -274,8 +274,8 @@ export function CommandPalette() {
                             className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
                             style={{
                               background: "rgba(139,92,246,0.12)",
-                              color:      "var(--accent-400)",
-                              border:     "1px solid rgba(139,92,246,0.2)",
+                              color: "var(--accent-400)",
+                              border: "1px solid rgba(139,92,246,0.2)",
                             }}
                           >
                             {items.length}

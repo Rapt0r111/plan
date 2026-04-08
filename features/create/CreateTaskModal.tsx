@@ -504,7 +504,6 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                         background: "var(--glass-01)",
                         border: "1px solid var(--glass-border)",
                         color: dueDate ? "var(--text-primary)" : "var(--text-muted)",
-                        colorScheme: "dark",
                       }}
                     />
                   </div>

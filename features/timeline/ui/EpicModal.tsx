@@ -94,7 +94,7 @@ export function EpicModal({ epic, onClose }: Props) {
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
         className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8"
-        style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(8px)" }}
+        style={{ background: "var(--modal-backdrop)", backdropFilter: "blur(8px)" }}
         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       >
         <motion.div

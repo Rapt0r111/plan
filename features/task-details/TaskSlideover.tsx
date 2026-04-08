@@ -26,25 +26,25 @@ import { STATUS_META, PRIORITY_META } from "@/shared/config/task-meta";
 import type { TaskStatus, TaskPriority, TaskView, UserWithMeta } from "@/shared/types";
 
 export interface TaskSlideoverProps {
-  task:     TaskView | null;
-  isOpen?:  boolean;
-  onClose:  () => void;
+  task: TaskView | null;
+  isOpen?: boolean;
+  onClose: () => void;
 }
 
 /* ── UI constants ──────────────────────────────────────────────────────────── */
-const STATUS_OPTIONS:   TaskStatus[]   = ["todo", "in_progress", "done", "blocked"];
+const STATUS_OPTIONS: TaskStatus[] = ["todo", "in_progress", "done", "blocked"];
 const PRIORITY_OPTIONS: TaskPriority[] = ["critical", "high", "medium", "low"];
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
-  todo:        "К работе",
+  todo: "К работе",
   in_progress: "В работе",
-  done:        "Готово",
-  blocked:     "Заблокировано",
+  done: "Готово",
+  blocked: "Заблокировано",
 };
 
 /* ── Animation variants ────────────────────────────────────────────────────── */
 const panelVariants = {
-  hidden:  { x: "100%", rotateY: 8, opacity: 0 },
+  hidden: { x: "100%", rotateY: 8, opacity: 0 },
   visible: {
     x: "0%", rotateY: 0, opacity: 1,
     transition: { type: "spring" as const, stiffness: 260, damping: 28, mass: 0.9 },
@@ -56,9 +56,9 @@ const panelVariants = {
 };
 
 const backdropVariants = {
-  hidden:  { opacity: 0 },
+  hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { duration: 0.2 } },
-  exit:    { opacity: 0, transition: { duration: 0.2 } },
+  exit: { opacity: 0, transition: { duration: 0.2 } },
 };
 
 /* ── Section Header ────────────────────────────────────────────────────────── */
@@ -79,12 +79,12 @@ function InlineTitle({
   isDone,
   onSave,
 }: {
-  value:   string;
-  isDone:  boolean;
-  onSave:  (v: string) => void;
+  value: string;
+  isDone: boolean;
+  onSave: (v: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft,   setDraft]   = useState(value);
+  const [draft, setDraft] = useState(value);
 
   const save = () => {
     setEditing(false);
@@ -119,7 +119,7 @@ function InlineTitle({
       <span
         className="text-base font-semibold leading-snug"
         style={{
-          color:          isDone ? "var(--text-muted)" : "var(--text-primary)",
+          color: isDone ? "var(--text-muted)" : "var(--text-primary)",
           textDecoration: isDone ? "line-through" : "none",
           textDecorationColor: "rgba(52,211,153,0.45)",
         }}
@@ -136,11 +136,11 @@ function InlineDescription({
   value,
   onSave,
 }: {
-  value:  string | null | undefined;
+  value: string | null | undefined;
   onSave: (v: string | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft,   setDraft]   = useState(value ?? "");
+  const [draft, setDraft] = useState(value ?? "");
 
   const save = () => {
     setEditing(false);
@@ -194,7 +194,7 @@ function useUsers() {
     fetch("/api/users")
       .then((r) => r.json())
       .then((d) => { if (d.data) setUsers(d.data); })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   return users;
@@ -205,11 +205,11 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
   const isOpen = isOpenProp ?? task !== null;
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const updateTaskStatus      = useTaskStore((s) => s.updateTaskStatus);
-  const updateTaskPriority    = useTaskStore((s) => s.updateTaskPriority);
-  const updateTaskTitle       = useTaskStore((s) => s.updateTaskTitle);
+  const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
+  const updateTaskPriority = useTaskStore((s) => s.updateTaskPriority);
+  const updateTaskTitle = useTaskStore((s) => s.updateTaskTitle);
   const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription);
-  const updateTaskDueDate     = useTaskStore((s) => s.updateTaskDueDate);
+  const updateTaskDueDate = useTaskStore((s) => s.updateTaskDueDate);
 
   const liveTask = useTaskStore((s) => (task ? s.getTask(task.id) : null)) ?? task;
 
@@ -267,10 +267,10 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
               variants={panelVariants}
               initial="hidden" animate="visible" exit="exit"
               style={{
-                width:      "clamp(360px, 42vw, 520px)",
+                width: "clamp(360px, 42vw, 520px)",
                 background: "var(--modal-bg)",
                 borderLeft: `1px solid ${epicColor}25`,
-                boxShadow:  `-24px 0 64px rgba(0,0,0,0.6), 0 0 0 1px ${epicColor}15`,
+                boxShadow: `-24px 0 64px rgba(0,0,0,0.6), 0 0 0 1px ${epicColor}15`,
                 transformStyle: "preserve-3d",
               }}
             >
@@ -304,13 +304,13 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                   onClick={handleQuickDone}
                   className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold"
                   style={isDone ? {
-                    background:   "rgba(52,211,153,0.15)",
-                    border:       "1px solid rgba(52,211,153,0.35)",
-                    color:        "#34d399",
+                    background: "rgba(52,211,153,0.15)",
+                    border: "1px solid rgba(52,211,153,0.35)",
+                    color: "#34d399",
                   } : {
-                    background:   `${epicColor}18`,
-                    border:       `1px solid ${epicColor}35`,
-                    color:        epicColor,
+                    background: `${epicColor}18`,
+                    border: `1px solid ${epicColor}35`,
+                    color: epicColor,
                   }}
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.96 }}
@@ -338,9 +338,9 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                   className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
                   style={{
                     background: "var(--glass-02)",
-                    border:     "1px solid var(--glass-border)",
-                    color:      "var(--text-muted)",
-                    cursor:     "pointer",
+                    border: "1px solid var(--glass-border)",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
                   }}
                 >
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -366,24 +366,24 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                   <SectionHeader label="Статус" />
                   <div className="flex flex-wrap gap-1.5">
                     {STATUS_OPTIONS.map((s) => {
-                      const meta   = STATUS_META[s];
+                      const meta = STATUS_META[s];
                       const active = liveTask.status === s;
                       return (
                         <button
                           key={s}
                           onClick={() => updateTaskStatus(liveTask.id, s)}
                           style={{
-                            padding:      "4px 12px",
+                            padding: "4px 12px",
                             borderRadius: 99,
-                            fontSize:     11,
-                            fontWeight:   500,
-                            cursor:       "pointer",
-                            outline:      "none",
-                            transition:   "all 0.2s ease",
-                            background:   active ? meta.bg      : "var(--glass-01)",
-                            color:        active ? meta.color   : "var(--text-muted)",
-                            border:       `1px solid ${active ? meta.color + "40" : "var(--glass-border)"}`,
-                            boxShadow:    active ? `0 0 10px ${meta.color}20` : "none",
+                            fontSize: 11,
+                            fontWeight: 500,
+                            cursor: "pointer",
+                            outline: "none",
+                            transition: "all 0.2s ease",
+                            background: active ? meta.bg : "var(--glass-01)",
+                            color: active ? meta.color : "var(--text-muted)",
+                            border: `1px solid ${active ? meta.color + "40" : "var(--glass-border)"}`,
+                            boxShadow: active ? `0 0 10px ${meta.color}20` : "none",
                           }}
                         >
                           {STATUS_LABELS[s]}
@@ -398,7 +398,7 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                   <SectionHeader label="Приоритет" />
                   <div className="flex flex-wrap gap-2">
                     {PRIORITY_OPTIONS.map((p) => {
-                      const meta   = PRIORITY_META[p];
+                      const meta = PRIORITY_META[p];
                       const active = liveTask.priority === p;
                       return (
                         <button
@@ -406,13 +406,13 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                           onClick={() => updateTaskPriority(liveTask.id, p)}
                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
                           style={{
-                            cursor:      "pointer",
-                            outline:     "none",
-                            transition:  "all 0.2s ease",
-                            background:  active ? `${meta.color}20`        : "var(--glass-01)",
-                            color:       active ? meta.color               : "var(--text-muted)",
-                            border:      `1px solid ${active ? meta.color + "40" : "var(--glass-border)"}`,
-                            boxShadow:   active ? `0 0 12px ${meta.color}20` : "none",
+                            cursor: "pointer",
+                            outline: "none",
+                            transition: "all 0.2s ease",
+                            background: active ? `${meta.color}20` : "var(--glass-01)",
+                            color: active ? meta.color : "var(--text-muted)",
+                            border: `1px solid ${active ? meta.color + "40" : "var(--glass-border)"}`,
+                            boxShadow: active ? `0 0 12px ${meta.color}20` : "none",
                           }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.color }} />
@@ -436,10 +436,9 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                       }}
                       className="px-3 py-1.5 rounded-lg text-sm outline-none transition-all"
                       style={{
-                        background:   "var(--glass-01)",
-                        border:       "1px solid var(--glass-border)",
-                        color:        liveTask.dueDate ? "var(--text-primary)" : "var(--text-muted)",
-                        colorScheme:  "dark",
+                        background: "var(--glass-01)",
+                        border: "1px solid var(--glass-border)",
+                        color: liveTask.dueDate ? "var(--text-primary)" : "var(--text-muted)",
                       }}
                     />
                     {liveTask.dueDate && (
@@ -515,9 +514,9 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                   className="text-xs px-3 py-1.5 rounded-lg"
                   style={{
                     background: "var(--glass-02)",
-                    border:     "1px solid var(--glass-border)",
-                    color:      "var(--text-secondary)",
-                    cursor:     "pointer",
+                    border: "1px solid var(--glass-border)",
+                    color: "var(--text-secondary)",
+                    cursor: "pointer",
                   }}
                 >
                   Закрыть{" "}

@@ -2,16 +2,11 @@
 /**
  * @file TaskCard.tsx — entities/task/ui
  *
- * 2027 HOLOGRAPHIC TASK CARD
- * ──────────────────────────
- *  • Inline subtask list — click the ring/counter to expand without opening modal
- *  • Each subtask row has a checkbox to toggle done state
- *  • Cursor-tracking specular highlight (no 3D tilt)
- *  • SVG arc progress ring with animated strokeDashoffset
- *  • Role-coloured assignee avatars with glow halos
- *  • Priority left accent with ambient bloom
- *  • Crystallised DONE state — sweep shimmer + strikethrough title
- *  • Status pill ripple-tap cycles status (todo→in_progress→done→blocked)
+ * OFFLINE GUARD v2:
+ *   - cycleStatus заблокирован при offline (клик на статус-пилюлю не работает)
+ *   - subtask toggle заблокирован при offline
+ *   - кнопка открытия subtask-списка по-прежнему работает (просмотр разрешён)
+ *   - Визуально: статус-пилюля выглядит dimmed + показывает lock cursor
  */
 import { useRef, useCallback, useState } from "react";
 import {
@@ -24,6 +19,7 @@ import {
 import { cn } from "@/shared/lib/utils";
 import { formatDate } from "@/shared/lib/utils";
 import { useTaskStore } from "@/shared/store/useTaskStore";
+import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
 import type { TaskView, TaskStatus } from "@/shared/types";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -71,7 +67,7 @@ const PRIORITY_CFG: Record<string, { color: string; glow: string }> = {
 
 const STATUS_CYCLE: TaskStatus[] = ["todo", "in_progress", "done", "blocked"];
 
-// ── SVG Subtask Ring (clickable) ──────────────────────────────────────────────
+// ── SVG Subtask Ring ──────────────────────────────────────────────────────────
 
 function SubtaskRing({
   done, total, color, expanded, onToggle,
@@ -116,7 +112,6 @@ function SubtaskRing({
         </text>
       </svg>
 
-      {/* Expanded indicator dot */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -135,23 +130,25 @@ function SubtaskRing({
 // ── Subtask row ───────────────────────────────────────────────────────────────
 
 function SubtaskRow({
-  subtask, color, onToggle,
+  subtask, color, onToggle, disabled,
 }: {
   subtask: { id: number; title: string; isCompleted: boolean };
   color: string;
   onToggle: (e: React.MouseEvent) => void;
+  disabled: boolean;
 }) {
   return (
     <motion.div layout className="flex items-start gap-2">
-      {/* Checkbox */}
       <motion.button
-        onClick={onToggle}
-        whileTap={{ scale: 0.85 }}
+        onClick={disabled ? undefined : onToggle}
+        whileTap={disabled ? {} : { scale: 0.85 }}
         className="shrink-0 mt-0.5 w-3.5 h-3.5 rounded flex items-center justify-center"
         style={{
           background: subtask.isCompleted ? color : "transparent",
           border: `1.5px solid ${subtask.isCompleted ? color : "rgba(255,255,255,0.18)"}`,
           boxShadow: subtask.isCompleted ? `0 0 8px ${color}60` : "none",
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.6 : 1,
           transition: "background 0.15s, border-color 0.15s, box-shadow 0.15s",
         }}
       >
@@ -171,7 +168,6 @@ function SubtaskRow({
         </AnimatePresence>
       </motion.button>
 
-      {/* Title */}
       <span
         className="text-[11px] leading-snug flex-1"
         style={{
@@ -191,11 +187,12 @@ function SubtaskRow({
 // ── Inline subtask list ───────────────────────────────────────────────────────
 
 function SubtaskList({
-  task, color, onToggleSubtask,
+  task, color, onToggleSubtask, disabled,
 }: {
   task: TaskView;
   color: string;
   onToggleSubtask: (subtaskId: number, current: boolean, e: React.MouseEvent) => void;
+  disabled: boolean;
 }) {
   const allDone = task.subtasks.length > 0 && task.subtasks.every((s) => s.isCompleted);
 
@@ -213,7 +210,6 @@ function SubtaskList({
         className="mt-1 pt-2.5 flex flex-col gap-1.5"
         style={{ borderTop: `1px solid rgba(255,255,255,0.06)` }}
       >
-        {/* Header */}
         <div className="flex items-center gap-1.5 mb-0.5">
           <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color }}>
             Подзадачи
@@ -221,6 +217,11 @@ function SubtaskList({
           <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
             {task.progress.done}/{task.progress.total}
           </span>
+          {disabled && (
+            <span className="text-[9px] font-mono" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+              🔒
+            </span>
+          )}
           <AnimatePresence>
             {allDone && (
               <motion.span
@@ -236,7 +237,6 @@ function SubtaskList({
           </AnimatePresence>
         </div>
 
-        {/* Rows */}
         {task.subtasks.map((subtask, idx) => (
           <motion.div
             key={subtask.id}
@@ -247,6 +247,7 @@ function SubtaskList({
             <SubtaskRow
               subtask={subtask}
               color={color}
+              disabled={disabled}
               onToggle={(e) => onToggleSubtask(subtask.id, subtask.isCompleted, e)}
             />
           </motion.div>
@@ -298,31 +299,44 @@ function AssigneeStack({ task }: { task: TaskView }) {
 
 // ── Status Pill ───────────────────────────────────────────────────────────────
 
-function StatusPill({ status, onCycle }: { status: TaskStatus; onCycle: (e: React.MouseEvent) => void }) {
+function StatusPill({
+  status,
+  onCycle,
+  disabled,
+}: {
+  status: TaskStatus;
+  onCycle: (e: React.MouseEvent) => void;
+  disabled: boolean;
+}) {
   const cfg = STATUS_CFG[status];
   return (
     <motion.button
-      onClick={onCycle}
-      whileTap={{ scale: 0.88 }}
+      onClick={disabled ? undefined : onCycle}
+      whileTap={disabled ? {} : { scale: 0.88 }}
       className="relative overflow-hidden flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium select-none"
       style={{
         backgroundColor: cfg.bg,
         color: cfg.text,
-        boxShadow: `0 0 10px ${cfg.glow}`,
+        boxShadow: disabled ? "none" : `0 0 10px ${cfg.glow}`,
         border: `1px solid ${cfg.solid}18`,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.7 : 1,
       }}
+      title={disabled ? "Смена статуса недоступна офлайн" : undefined}
     >
-      <motion.span
-        className="absolute inset-0 rounded-full pointer-events-none"
-        initial={{ scale: 0, opacity: 0.5 }}
-        whileTap={{ scale: 3, opacity: 0 }}
-        transition={{ duration: 0.4 }}
-        style={{ backgroundColor: cfg.solid, originX: "50%", originY: "50%" }}
-      />
+      {!disabled && (
+        <motion.span
+          className="absolute inset-0 rounded-full pointer-events-none"
+          initial={{ scale: 0, opacity: 0.5 }}
+          whileTap={{ scale: 3, opacity: 0 }}
+          transition={{ duration: 0.4 }}
+          style={{ backgroundColor: cfg.solid, originX: "50%", originY: "50%" }}
+        />
+      )}
       <motion.span
         className="w-1.5 h-1.5 rounded-full shrink-0 relative z-10"
         style={{ backgroundColor: cfg.solid }}
-        animate={status === "in_progress" ? { scale: [1, 1.6, 1], opacity: [1, 0.4, 1] } : {}}
+        animate={!disabled && status === "in_progress" ? { scale: [1, 1.6, 1], opacity: [1, 0.4, 1] } : {}}
         transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
       />
       <span className="relative z-10">{cfg.label}</span>
@@ -366,12 +380,12 @@ interface Props {
 
 export function TaskCard({ task, onOpen, isFocused }: Props) {
   const cardRef            = useRef<HTMLDivElement>(null);
+  const offline            = useIsOffline();
   const updateTaskStatus   = useTaskStore((s) => s.updateTaskStatus);
   const toggleSubtask      = useTaskStore((s) => s.toggleSubtask);
   const liveTask           = useTaskStore((s) => s.getTask(task.id)) ?? task;
   const [subtasksOpen, setSubtasksOpen] = useState(false);
 
-  // Specular cursor glow — no 3D tilt (preserve-3d causes text blur + broken hit-testing)
   const mouseX  = useMotionValue(0.5);
   const mouseY  = useMotionValue(0.5);
   const glareX  = useTransform(mouseX, [0, 1], ["0%", "100%"]);
@@ -391,6 +405,8 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
   }, [mouseX, mouseY]);
 
   function cycleStatus(e: React.MouseEvent) {
+    // ✅ OFFLINE GUARD: status cycling blocked when offline (store also guards)
+    if (offline) return;
     e.stopPropagation();
     const idx = STATUS_CYCLE.indexOf(liveTask.status as TaskStatus);
     updateTaskStatus(liveTask.id, STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]);
@@ -402,6 +418,8 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
   }
 
   function handleToggleSubtask(subtaskId: number, current: boolean, e: React.MouseEvent) {
+    // ✅ OFFLINE GUARD: subtask toggle blocked when offline (store also guards)
+    if (offline) return;
     e.stopPropagation();
     toggleSubtask(liveTask.id, subtaskId, current);
   }
@@ -450,7 +468,6 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
         style={{ backgroundColor: pCfg.color, boxShadow: `3px 0 14px ${pCfg.glow}` }}
       />
 
-      {/* Done crystal overlay */}
       <AnimatePresence>{isDone && <DoneOverlay />}</AnimatePresence>
 
       {/* Cursor specular highlight */}
@@ -462,7 +479,7 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
       <div className="pl-4 pr-3.5 py-3 flex flex-col gap-2.5">
         {/* Row 1: status pill + due date */}
         <div className="flex items-center justify-between gap-2">
-          <StatusPill status={liveTask.status} onCycle={cycleStatus} />
+          <StatusPill status={liveTask.status} onCycle={cycleStatus} disabled={offline} />
           {liveTask.dueDate && (
             <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
               {formatDate(liveTask.dueDate)}
@@ -522,6 +539,7 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
             <SubtaskList
               task={liveTask}
               color={isDone ? "#34d399" : pCfg.color}
+              disabled={offline}
               onToggleSubtask={handleToggleSubtask}
             />
           )}

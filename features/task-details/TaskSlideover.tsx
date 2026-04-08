@@ -2,34 +2,37 @@
 /**
  * @file TaskSlideover.tsx — features/task-details
  *
- * ИСПРАВЛЕНИЯ v2:
+ * ОБНОВЛЕНИЯ v3 — полный inline-редактор задачи:
+ *  1. Инлайн-редактирование заголовка (клик → input → Enter/blur)
+ *  2. Инлайн-редактирование описания (textarea)
+ *  3. Кнопка "Выполнено" / "Вернуть" для быстрой смены статуса
+ *  4. Дедлайн — date picker прямо в slideover
+ *  5. Исполнители — AssigneeManager
+ *  6. Подзадачи — SubtaskList с добавлением/удалением (v2)
+ *  7. epicColor — из Zustand store по epicId
  *
- * 1. epicColor хардкод "#7c3aed" → динамически из Zustand store
- *    БЫЛО: const epicColor = "#7c3aed"; // захардкоженный фиолетовый всегда
- *    СТАЛО: читаем эпик из стора по task.epicId → берём его color
- *    Fallback: "#7c3aed" если эпик не найден в сторе (первый рендер до гидрации)
- *
- * 2. Дублированный useEffect для scroll lock → useBodyScrollLock хук
- *    Был одинаковый useEffect в TaskSlideover.tsx и EpicWorkspace.tsx.
- *    Теперь оба используют shared хук из shared/lib/hooks/useBodyScrollLock.ts.
- *    Бонус: правильная работа при вложенных модалах (счётчик блокировок).
+ * ИСПРАВЛЕНО из v2:
+ *  - epicColor хардкод "#7c3aed" → динамически из стора
+ *  - scroll lock через useBodyScrollLock
  */
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { useBodyScrollLock } from "@/shared/lib/hooks/useBodyScrollLock";
 import { SubtaskList } from "./SubtaskList";
-import { formatDate } from "@/shared/lib/utils";
-import type { TaskStatus, TaskPriority, TaskView } from "@/shared/types";
+import { AssigneeManager } from "@/shared/ui/AssigneeManager";
+import { formatDate, formatDateInput } from "@/shared/lib/utils";
+import { STATUS_META, PRIORITY_META } from "@/shared/config/task-meta";
+import type { TaskStatus, TaskPriority, TaskView, UserWithMeta } from "@/shared/types";
 
 export interface TaskSlideoverProps {
-  task: TaskView | null;
-  isOpen?: boolean;
-  onClose: () => void;
+  task:     TaskView | null;
+  isOpen?:  boolean;
+  onClose:  () => void;
 }
 
 /* ── UI constants ──────────────────────────────────────────────────────────── */
-const STATUS_OPTIONS: TaskStatus[]     = ["todo", "in_progress", "done", "blocked"];
+const STATUS_OPTIONS:   TaskStatus[]   = ["todo", "in_progress", "done", "blocked"];
 const PRIORITY_OPTIONS: TaskPriority[] = ["critical", "high", "medium", "low"];
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -37,27 +40,6 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
   in_progress: "В работе",
   done:        "Готово",
   blocked:     "Заблокировано",
-};
-
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  todo:        "var(--status-todo-text)",
-  in_progress: "var(--status-progress-text)",
-  done:        "var(--status-done-text)",
-  blocked:     "var(--status-blocked-text)",
-};
-
-const STATUS_BG: Record<TaskStatus, string> = {
-  todo:        "var(--status-todo-bg)",
-  in_progress: "var(--status-progress-bg)",
-  done:        "var(--status-done-bg)",
-  blocked:     "var(--status-blocked-bg)",
-};
-
-const PRIORITY_COLORS: Record<TaskPriority, string> = {
-  critical: "var(--priority-critical)",
-  high:     "var(--priority-high)",
-  medium:   "var(--priority-medium)",
-  low:      "var(--priority-low)",
 };
 
 /* ── Animation variants ────────────────────────────────────────────────────── */
@@ -91,32 +73,172 @@ function SectionHeader({ label }: { label: string }) {
   );
 }
 
+/* ── Inline editable title ─────────────────────────────────────────────────── */
+function InlineTitle({
+  value,
+  isDone,
+  onSave,
+}: {
+  value:   string;
+  isDone:  boolean;
+  onSave:  (v: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft,   setDraft]   = useState(value);
+
+  const save = () => {
+    setEditing(false);
+    if (draft.trim() && draft.trim() !== value) onSave(draft.trim());
+    else setDraft(value);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+          if (e.key === "Escape") { setDraft(value); setEditing(false); }
+        }}
+        maxLength={200}
+        className="w-full text-base font-semibold leading-snug bg-[var(--glass-01)] border border-[var(--accent-500)] rounded-lg px-2 py-1 outline-none"
+        style={{ color: "var(--text-primary)" }}
+      />
+    );
+  }
+
+  return (
+    <button
+      onClick={() => { setDraft(value); setEditing(true); }}
+      className="w-full text-left group flex items-start gap-1"
+      title="Нажмите для редактирования"
+    >
+      <span
+        className="text-base font-semibold leading-snug"
+        style={{
+          color:          isDone ? "var(--text-muted)" : "var(--text-primary)",
+          textDecoration: isDone ? "line-through" : "none",
+          textDecorationColor: "rgba(52,211,153,0.45)",
+        }}
+      >
+        {value}
+      </span>
+      <span className="shrink-0 opacity-0 group-hover:opacity-40 text-xs mt-1">✎</span>
+    </button>
+  );
+}
+
+/* ── Inline editable description ───────────────────────────────────────────── */
+function InlineDescription({
+  value,
+  onSave,
+}: {
+  value:  string | null | undefined;
+  onSave: (v: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft,   setDraft]   = useState(value ?? "");
+
+  const save = () => {
+    setEditing(false);
+    const v = draft.trim() || null;
+    if (v !== (value ?? null)) onSave(v);
+  };
+
+  if (editing) {
+    return (
+      <textarea
+        autoFocus
+        value={draft}
+        rows={4}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { setDraft(value ?? ""); setEditing(false); }
+        }}
+        placeholder="Добавить описание..."
+        maxLength={2000}
+        className="w-full text-sm bg-[var(--glass-01)] border border-[var(--accent-500)] rounded-lg px-3 py-2 outline-none resize-none leading-relaxed"
+        style={{ color: "var(--text-primary)", fontFamily: "var(--font-sans)" }}
+      />
+    );
+  }
+
+  return (
+    <button
+      onClick={() => { setDraft(value ?? ""); setEditing(true); }}
+      className="w-full text-left group flex items-start gap-1"
+    >
+      <span
+        className="text-sm leading-relaxed flex-1"
+        style={{ color: value ? "var(--text-secondary)" : "var(--text-muted)" }}
+      >
+        {value || "Добавить описание..."}
+      </span>
+      <span className="shrink-0 opacity-0 group-hover:opacity-40 text-xs mt-0.5">✎</span>
+    </button>
+  );
+}
+
+/* ── Users fetcher (lazy) ──────────────────────────────────────────────────── */
+function useUsers() {
+  const [users, setUsers] = useState<UserWithMeta[]>([]);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((d) => { if (d.data) setUsers(d.data); })
+      .catch(() => {});
+  }, []);
+
+  return users;
+}
+
 /* ── Main Component ────────────────────────────────────────────────────────── */
 export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideoverProps) {
   const isOpen = isOpenProp ?? task !== null;
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const updateTaskStatus   = useTaskStore((s) => s.updateTaskStatus);
-  const updateTaskPriority = useTaskStore((s) => s.updateTaskPriority);
+  const updateTaskStatus      = useTaskStore((s) => s.updateTaskStatus);
+  const updateTaskPriority    = useTaskStore((s) => s.updateTaskPriority);
+  const updateTaskTitle       = useTaskStore((s) => s.updateTaskTitle);
+  const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription);
+  const updateTaskDueDate     = useTaskStore((s) => s.updateTaskDueDate);
+
   const liveTask = useTaskStore((s) => (task ? s.getTask(task.id) : null)) ?? task;
 
-  // ИСПРАВЛЕНО: epicColor теперь берётся из стора по epicId задачи
-  // Было: const epicColor = "#7c3aed"; (всегда один хардкод)
+  // epicColor from store
   const epicColor = useTaskStore((s) => {
     if (!liveTask) return "#7c3aed";
     const epic = s.epics.find((e) => e.id === liveTask.epicId);
     return epic?.color ?? "#7c3aed";
   });
 
-  // Escape key listener — useEffect правомерен: DOM event subscription
+  const users = useUsers();
+
+  const isDone = liveTask?.status === "done";
+
+  const handleQuickDone = useCallback(() => {
+    if (!liveTask) return;
+    updateTaskStatus(liveTask.id, isDone ? "todo" : "done");
+  }, [liveTask, isDone, updateTaskStatus]);
+
+  // Escape key
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [isOpen, onClose]);
 
-  // ИСПРАВЛЕНО: scroll lock через общий хук вместо дублированного useEffect
   useBodyScrollLock(isOpen);
 
   return (
@@ -145,14 +267,14 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
               variants={panelVariants}
               initial="hidden" animate="visible" exit="exit"
               style={{
-                width: "clamp(360px, 42vw, 520px)",
+                width:      "clamp(360px, 42vw, 520px)",
                 background: "var(--modal-bg)",
                 borderLeft: `1px solid ${epicColor}25`,
-                boxShadow: `-24px 0 64px rgba(0,0,0,0.6), 0 0 0 1px ${epicColor}15`,
+                boxShadow:  `-24px 0 64px rgba(0,0,0,0.6), 0 0 0 1px ${epicColor}15`,
                 transformStyle: "preserve-3d",
               }}
             >
-              {/* Top color line — теперь цвет эпика, а не хардкод */}
+              {/* Top accent line */}
               <div
                 className="absolute top-0 left-0 right-0 h-px pointer-events-none"
                 style={{ background: `linear-gradient(90deg, ${epicColor} 0%, transparent 60%)` }}
@@ -167,19 +289,58 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                   className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5"
                   style={{ background: epicColor, boxShadow: `0 0 8px ${epicColor}80` }}
                 />
+
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-base font-semibold leading-snug" style={{ color: "var(--text-primary)" }}>
-                    {liveTask.title}
-                  </h2>
+                  {/* Editable title */}
+                  <InlineTitle
+                    value={liveTask.title}
+                    isDone={isDone}
+                    onSave={(v) => updateTaskTitle(liveTask.id, v)}
+                  />
                 </div>
+
+                {/* Quick done button */}
+                <motion.button
+                  onClick={handleQuickDone}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold"
+                  style={isDone ? {
+                    background:   "rgba(52,211,153,0.15)",
+                    border:       "1px solid rgba(52,211,153,0.35)",
+                    color:        "#34d399",
+                  } : {
+                    background:   `${epicColor}18`,
+                    border:       `1px solid ${epicColor}35`,
+                    color:        epicColor,
+                  }}
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.96 }}
+                  title={isDone ? "Вернуть в работу" : "Отметить выполненным"}
+                >
+                  {isDone ? (
+                    <>
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                        <path d="M2 7l4 4 6-6" />
+                      </svg>
+                      Готово
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                        <path d="M2 7l4 4 6-6" />
+                      </svg>
+                      Выполнить
+                    </>
+                  )}
+                </motion.button>
+
                 <button
                   onClick={onClose}
                   className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
                   style={{
                     background: "var(--glass-02)",
-                    border: "1px solid var(--glass-border)",
-                    color: "var(--text-muted)",
-                    cursor: "pointer",
+                    border:     "1px solid var(--glass-border)",
+                    color:      "var(--text-muted)",
+                    cursor:     "pointer",
                   }}
                 >
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -191,124 +352,153 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
               {/* ── Body ── */}
               <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
 
+                {/* Description */}
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+                  <SectionHeader label="Описание" />
+                  <InlineDescription
+                    value={liveTask.description}
+                    onSave={(v) => updateTaskDescription(liveTask.id, v)}
+                  />
+                </motion.div>
+
                 {/* Status */}
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
                   <SectionHeader label="Статус" />
                   <div className="flex flex-wrap gap-1.5">
-                    {STATUS_OPTIONS.map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => updateTaskStatus(liveTask.id, s)}
-                        style={{
-                          padding: "4px 12px",
-                          borderRadius: 99,
-                          fontSize: 11,
-                          fontWeight: 500,
-                          cursor: "pointer",
-                          outline: "none",
-                          transition: "all 0.2s ease",
-                          background:  liveTask.status === s ? STATUS_BG[s]     : "var(--glass-01)",
-                          color:       liveTask.status === s ? STATUS_COLORS[s] : "var(--text-muted)",
-                          border:      `1px solid ${liveTask.status === s ? STATUS_COLORS[s] + "40" : "var(--glass-border)"}`,
-                        }}
-                      >
-                        {STATUS_LABELS[s]}
-                      </button>
-                    ))}
+                    {STATUS_OPTIONS.map((s) => {
+                      const meta   = STATUS_META[s];
+                      const active = liveTask.status === s;
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => updateTaskStatus(liveTask.id, s)}
+                          style={{
+                            padding:      "4px 12px",
+                            borderRadius: 99,
+                            fontSize:     11,
+                            fontWeight:   500,
+                            cursor:       "pointer",
+                            outline:      "none",
+                            transition:   "all 0.2s ease",
+                            background:   active ? meta.bg      : "var(--glass-01)",
+                            color:        active ? meta.color   : "var(--text-muted)",
+                            border:       `1px solid ${active ? meta.color + "40" : "var(--glass-border)"}`,
+                            boxShadow:    active ? `0 0 10px ${meta.color}20` : "none",
+                          }}
+                        >
+                          {STATUS_LABELS[s]}
+                        </button>
+                      );
+                    })}
                   </div>
                 </motion.div>
 
                 {/* Priority */}
-                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
                   <SectionHeader label="Приоритет" />
                   <div className="flex flex-wrap gap-2">
-                    {PRIORITY_OPTIONS.map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => updateTaskPriority(liveTask.id, p)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
-                        style={{
-                          cursor: "pointer",
-                          outline: "none",
-                          transition: "all 0.2s ease",
-                          background:  liveTask.priority === p ? PRIORITY_COLORS[p] + "20" : "var(--glass-01)",
-                          color:       liveTask.priority === p ? PRIORITY_COLORS[p]        : "var(--text-muted)",
-                          border:      `1px solid ${liveTask.priority === p ? PRIORITY_COLORS[p] + "40" : "var(--glass-border)"}`,
-                          boxShadow:   liveTask.priority === p ? `0 0 12px ${PRIORITY_COLORS[p]}20` : "none",
-                        }}
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: PRIORITY_COLORS[p] }} />
-                        {p.charAt(0).toUpperCase() + p.slice(1)}
-                      </button>
-                    ))}
+                    {PRIORITY_OPTIONS.map((p) => {
+                      const meta   = PRIORITY_META[p];
+                      const active = liveTask.priority === p;
+                      return (
+                        <button
+                          key={p}
+                          onClick={() => updateTaskPriority(liveTask.id, p)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+                          style={{
+                            cursor:      "pointer",
+                            outline:     "none",
+                            transition:  "all 0.2s ease",
+                            background:  active ? `${meta.color}20`        : "var(--glass-01)",
+                            color:       active ? meta.color               : "var(--text-muted)",
+                            border:      `1px solid ${active ? meta.color + "40" : "var(--glass-border)"}`,
+                            boxShadow:   active ? `0 0 12px ${meta.color}20` : "none",
+                          }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.color }} />
+                          {meta.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </motion.div>
 
-                {/* Description */}
-                {liveTask.description && (
-                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-                    <SectionHeader label="Описание" />
-                    <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                      {liveTask.description}
-                    </p>
-                  </motion.div>
-                )}
+                {/* Due date */}
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
+                  <SectionHeader label="Дедлайн" />
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="date"
+                      value={formatDateInput(liveTask.dueDate)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        updateTaskDueDate(liveTask.id, val ? `${val}T00:00:00.000Z` : null);
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-sm outline-none transition-all"
+                      style={{
+                        background:   "var(--glass-01)",
+                        border:       "1px solid var(--glass-border)",
+                        color:        liveTask.dueDate ? "var(--text-primary)" : "var(--text-muted)",
+                        colorScheme:  "dark",
+                      }}
+                    />
+                    {liveTask.dueDate && (
+                      <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                        {formatDate(liveTask.dueDate)}
+                      </span>
+                    )}
+                    {liveTask.dueDate && (
+                      <button
+                        onClick={() => updateTaskDueDate(liveTask.id, null)}
+                        className="text-xs transition-colors"
+                        style={{ color: "var(--text-muted)" }}
+                        title="Снять дедлайн"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
 
                 {/* Subtasks */}
-                {liveTask.subtasks.length > 0 && (
-                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
-                    <SectionHeader
-                      label={`Подзадачи (${liveTask.subtasks.filter((s) => s.isCompleted).length}/${liveTask.subtasks.length})`}
-                    />
-                    <SubtaskList taskId={liveTask.id} subtasks={liveTask.subtasks} />
-                  </motion.div>
-                )}
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}>
+                  <SectionHeader
+                    label={`Подзадачи ${liveTask.subtasks.length > 0 ? `(${liveTask.subtasks.filter((s) => s.isCompleted).length}/${liveTask.subtasks.length})` : ""}`}
+                  />
+                  <SubtaskList taskId={liveTask.id} subtasks={liveTask.subtasks} />
+                </motion.div>
 
                 {/* Assignees */}
-                {liveTask.assignees.length > 0 && (
-                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.21 }}>
-                    <SectionHeader label="Исполнители" />
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {liveTask.assignees.map((a) => (
-                        <div
-                          key={a.id}
-                          className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
-                          style={{ background: `${a.roleMeta.hex}15`, border: `1px solid ${a.roleMeta.hex}25` }}
-                        >
-                          <div
-                            className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
-                            style={{ backgroundColor: a.roleMeta.hex }}
-                          >
-                            {a.initials}
-                          </div>
-                          <span className="text-xs" style={{ color: a.roleMeta.hex }}>{a.roleMeta.short}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}>
+                  <SectionHeader label={`Исполнители (${liveTask.assignees.length})`} />
+                  <AssigneeManager
+                    taskId={liveTask.id}
+                    assignees={liveTask.assignees}
+                    users={users}
+                  />
+                </motion.div>
 
                 {/* Meta */}
                 <motion.div
                   className="flex flex-wrap gap-x-5 gap-y-2"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ delay: 0.24 }}
+                  transition={{ delay: 0.2 }}
                 >
-                  {liveTask.dueDate && (
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>Срок</span>
-                      <span className="text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
-                        {formatDate(liveTask.dueDate)}
-                      </span>
-                    </div>
-                  )}
                   <div className="flex flex-col gap-0.5">
                     <span className="text-xs" style={{ color: "var(--text-muted)" }}>Создана</span>
                     <span className="text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
                       {new Date(liveTask.createdAt).toLocaleDateString("ru-RU")}
                     </span>
                   </div>
+                  {liveTask.updatedAt && liveTask.updatedAt !== liveTask.createdAt && (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>Обновлена</span>
+                      <span className="text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
+                        {new Date(liveTask.updatedAt).toLocaleDateString("ru-RU")}
+                      </span>
+                    </div>
+                  )}
                 </motion.div>
               </div>
 
@@ -325,9 +515,9 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                   className="text-xs px-3 py-1.5 rounded-lg"
                   style={{
                     background: "var(--glass-02)",
-                    border: "1px solid var(--glass-border)",
-                    color: "var(--text-secondary)",
-                    cursor: "pointer",
+                    border:     "1px solid var(--glass-border)",
+                    color:      "var(--text-secondary)",
+                    cursor:     "pointer",
                   }}
                 >
                   Закрыть{" "}

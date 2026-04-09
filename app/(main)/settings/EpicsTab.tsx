@@ -35,22 +35,22 @@ interface Props {
 
 function deriveStatus(epic: EpicWithTasks): { label: string; color: string; bg: string } {
   const { total, done } = epic.progress;
-  if (total > 0 && done === total) return { label: "Завершён",     color: "#34d399", bg: "rgba(52,211,153,0.12)"  };
-  if (total > 0 && done > 0)       return { label: "В работе",     color: "#38bdf8", bg: "rgba(56,189,248,0.12)"  };
+  if (total > 0 && done === total) return { label: "Завершён", color: "#34d399", bg: "rgba(52,211,153,0.12)" };
+  if (total > 0 && done > 0) return { label: "В работе", color: "#38bdf8", bg: "rgba(56,189,248,0.12)" };
   if (epic.startDate && new Date(epic.startDate) <= new Date())
-                                   return { label: "В работе",     color: "#38bdf8", bg: "rgba(56,189,248,0.12)"  };
-  return                                  { label: "Планирование", color: "#94a3b8", bg: "rgba(100,116,139,0.12)" };
+    return { label: "В работе", color: "#38bdf8", bg: "rgba(56,189,248,0.12)" };
+  return { label: "Планирование", color: "#94a3b8", bg: "rgba(100,116,139,0.12)" };
 }
 
 // ─── ProgressRing ─────────────────────────────────────────────────────────────
 
 function ProgressRing({ done, total, color }: { done: number; total: number; color: string }) {
-  const R   = 14;
-  const C   = 2 * Math.PI * R;
+  const R = 14;
+  const C = 2 * Math.PI * R;
   const pct = total > 0 ? done / total : 0;
   return (
     <svg width="36" height="36" viewBox="0 0 36 36" className="-rotate-90 shrink-0">
-      <circle cx="18" cy="18" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="2.5" />
+      <circle cx="18" cy="18" r={R} fill="none" stroke="var(--orb-track)" strokeWidth="2.5" />
       <circle cx="18" cy="18" r={R} fill="none" stroke={color} strokeWidth="2.5"
         strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct)}
         style={{ transition: "stroke-dashoffset 0.5s ease" }} />
@@ -75,7 +75,7 @@ function InlineText({
   multiline?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft]     = useState(value);
+  const [draft, setDraft] = useState(value);
 
   const save = () => {
     setEditing(false);
@@ -158,9 +158,9 @@ function EpicCard({
       animate={{ opacity: isPending ? 0.6 : 1, y: 0 }}
       className="rounded-xl overflow-hidden group"
       style={{
-        background:  "var(--bg-elevated)",
-        border:      "1px solid var(--glass-border)",
-        borderLeft:  `3px solid ${epic.color}`,
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--glass-border)",
+        borderLeft: `3px solid ${epic.color}`,
       }}
     >
       <div
@@ -209,7 +209,7 @@ function EpicCard({
               type="date"
               value={formatDateInput(epic.startDate)}
               onChange={(e) => onUpdate({ startDate: e.target.value ? `${e.target.value}T00:00:00.000Z` : null })}
-              style={{ colorScheme: "dark", color: "var(--text-secondary)" }}
+              style={{ color: "var(--text-secondary)" }}
               className="w-full bg-[var(--glass-01)] border border-[var(--glass-border)] rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[var(--accent-500)] transition-colors"
             />
             <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
@@ -224,7 +224,6 @@ function EpicCard({
               type="date"
               value={formatDateInput(epic.endDate)}
               onChange={(e) => onUpdate({ endDate: e.target.value ? `${e.target.value}T00:00:00.000Z` : null })}
-              style={{ colorScheme: "dark" }}
               className="w-full bg-[var(--glass-01)] border border-[var(--glass-border)] rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[var(--accent-500)] transition-colors"
             />
             <p className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>
@@ -279,7 +278,7 @@ function EpicCard({
             className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
             style={{ color: "var(--text-muted)" }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "#f87171"; e.currentTarget.style.background = "rgba(239,68,68,0.1)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)";   e.currentTarget.style.background = "transparent"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "transparent"; }}
             title="Удалить эпик"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -314,15 +313,15 @@ function CreateEpicForm({
     startTransition(async () => {
       try {
         const data = await createEpicAction({
-          title:       form.title.trim(),
+          title: form.title.trim(),
           description: form.description.trim() || null,
-          color:       form.color,
-          startDate:   form.startDate ? `${form.startDate}T00:00:00.000Z` : null,
-          endDate:     form.endDate   ? `${form.endDate}T00:00:00.000Z`   : null,
+          color: form.color,
+          startDate: form.startDate ? `${form.startDate}T00:00:00.000Z` : null,
+          endDate: form.endDate ? `${form.endDate}T00:00:00.000Z` : null,
         });
         const newEpic: EpicWithTasks = {
           ...data,
-          tasks:    [],
+          tasks: [],
           progress: { done: 0, total: 0 },
         };
         onCreated(newEpic);
@@ -422,8 +421,8 @@ function CreateEpicForm({
 
 export function EpicsTab({ initialEpics }: Props) {
   const [isPending, startTransition] = useTransition();
-  const [creating, setCreating]       = useState(false);
-  const [error, setError]             = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // useOptimistic:
   //   - первый аргумент: реальное состояние (обновляется сервером через revalidateTag)
@@ -481,7 +480,7 @@ export function EpicsTab({ initialEpics }: Props) {
   };
 
   const totalTasks = optimisticEpics.reduce((s, e) => s + e.progress.total, 0);
-  const doneTasks  = optimisticEpics.reduce((s, e) => s + e.progress.done,  0);
+  const doneTasks = optimisticEpics.reduce((s, e) => s + e.progress.done, 0);
 
   return (
     <div className="max-w-3xl space-y-4">

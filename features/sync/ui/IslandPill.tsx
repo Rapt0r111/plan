@@ -1,5 +1,11 @@
 // features/sync/ui/IslandPill.tsx
 "use client";
+/**
+ * ИСПРАВЛЕНИЕ (light-theme):
+ *   - Текст пилюли: color: "var(--text-secondary)" — уже использует CSS var ✅
+ *   - --island-bg теперь задан в globals.css для светлой темы
+ *   - border: "var(--glass-border)" вместо hardcoded
+ */
 import { motion } from "framer-motion";
 import type { Notification } from "../useNotificationStore";
 
@@ -8,7 +14,7 @@ const KIND_GLOW: Record<string, string> = {
   error:   "rgba(239,68,68,0.5)",
   sync:    "rgba(56,189,248,0.45)",
   zen:     "rgba(139,92,246,0.5)",
-  info:    "rgba(255,255,255,0.2)",
+  info:    "rgba(0,0,0,0.1)",
 };
 
 const KIND_DOT: Record<string, string> = {
@@ -25,7 +31,7 @@ interface Props {
 }
 
 export function IslandPill({ notification, onClick }: Props) {
-  const glow = notification ? KIND_GLOW[notification.kind] ?? KIND_GLOW.info : "rgba(255,255,255,0.12)";
+  const glow = notification ? KIND_GLOW[notification.kind] ?? KIND_GLOW.info : "var(--glass-border)";
   const dot  = notification ? KIND_DOT[notification.kind]  ?? KIND_DOT.info  : "#94a3b8";
 
   return (
@@ -34,13 +40,13 @@ export function IslandPill({ notification, onClick }: Props) {
       className="relative flex items-center gap-2 px-3 py-1.5 overflow-hidden"
       style={{
         borderRadius: "20px",
-        /* was: "rgba(0,0,0,0.85)" — now: var(--island-bg) */
         background:   "var(--island-bg)",
         border:       "1px solid var(--glass-border)",
         cursor:       notification ? "pointer" : "default",
         backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
       }}
-      animate={{ boxShadow: `0 0 12px ${glow}, 0 2px 8px rgba(0,0,0,0.4)` }}
+      animate={{ boxShadow: `0 0 12px ${glow}, 0 2px 8px rgba(0,0,0,0.15)` }}
       transition={{ duration: 0.4 }}
       whileHover={notification ? { scale: 1.02 } : {}}
       whileTap={notification ? { scale: 0.98 } : {}}
@@ -69,7 +75,7 @@ export function IslandPill({ notification, onClick }: Props) {
         <motion.div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.07) 50%, transparent 60%)",
+            background: "linear-gradient(105deg, transparent 40%, var(--glass-01) 50%, transparent 60%)",
           }}
           animate={{ x: ["-100%", "200%"] }}
           transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.8 }}

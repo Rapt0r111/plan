@@ -91,11 +91,11 @@ function TaskCard({
     const [cyclePriority, setCyclePriority] = useState(false);
 
     // ── Store actions (offline-safe) ──────────────────────────────────────────
-    const updateTaskStatus      = useTaskStore((s) => s.updateTaskStatus);
-    const updateTaskPriority    = useTaskStore((s) => s.updateTaskPriority);
-    const updateTaskTitle       = useTaskStore((s) => s.updateTaskTitle);
+    const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
+    const updateTaskPriority = useTaskStore((s) => s.updateTaskPriority);
+    const updateTaskTitle = useTaskStore((s) => s.updateTaskTitle);
     const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription);
-    const updateTaskDueDate     = useTaskStore((s) => s.updateTaskDueDate);
+    const updateTaskDueDate = useTaskStore((s) => s.updateTaskDueDate);
 
     const saveTitle = () => {
         setEditingTitle(false);
@@ -304,7 +304,7 @@ function TaskCard({
                                             const val = e.target.value;
                                             updateTaskDueDate(task.id, val ? `${val}T00:00:00.000Z` : null);
                                         }}
-                                        style={{ colorScheme: "dark", color: "var(--text-primary)" }}
+                                        style={{ color: "var(--text-primary)" }}
                                         className="w-full bg-(--glass-01) border border-(--glass-border) rounded-lg px-2 py-1 text-xs outline-none focus:border-(--accent-500) transition-colors"
                                     />
                                     {task.dueDate && (

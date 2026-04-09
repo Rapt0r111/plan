@@ -2,18 +2,10 @@
 /**
  * @file TaskSlideover.tsx — features/task-details
  *
- * ОБНОВЛЕНИЯ v3 — полный inline-редактор задачи:
- *  1. Инлайн-редактирование заголовка (клик → input → Enter/blur)
- *  2. Инлайн-редактирование описания (textarea)
- *  3. Кнопка "Выполнено" / "Вернуть" для быстрой смены статуса
- *  4. Дедлайн — date picker прямо в slideover
- *  5. Исполнители — AssigneeManager
- *  6. Подзадачи — SubtaskList с добавлением/удалением (v2)
- *  7. epicColor — из Zustand store по epicId
- *
- * ИСПРАВЛЕНО из v2:
- *  - epicColor хардкод "#7c3aed" → динамически из стора
- *  - scroll lock через useBodyScrollLock
+ * ИСПРАВЛЕНИЕ v4 (light-theme):
+ *   - Панель slideover уже использует var(--modal-bg) и var(--modal-backdrop) ✅
+ *   - Убраны последние hardcoded rgba(255,255,255,x) для интерактивных элементов
+ *   - kbd-элементы используют CSS vars
  */
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -213,7 +205,6 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
 
   const liveTask = useTaskStore((s) => (task ? s.getTask(task.id) : null)) ?? task;
 
-  // epicColor from store
   const epicColor = useTaskStore((s) => {
     if (!liveTask) return "#7c3aed";
     const epic = s.epics.find((e) => e.id === liveTask.epicId);
@@ -221,7 +212,6 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
   });
 
   const users = useUsers();
-
   const isDone = liveTask?.status === "done";
 
   const handleQuickDone = useCallback(() => {
@@ -229,7 +219,6 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
     updateTaskStatus(liveTask.id, isDone ? "todo" : "done");
   }, [liveTask, isDone, updateTaskStatus]);
 
-  // Escape key
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -245,13 +234,17 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
     <AnimatePresence>
       {isOpen && liveTask && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop — var(--modal-backdrop) адаптируется к теме */}
           <motion.div
             key="backdrop"
             className="fixed inset-0 z-40"
             variants={backdropVariants}
             initial="hidden" animate="visible" exit="exit"
-            style={{ background: "var(--modal-backdrop)", backdropFilter: "blur(2px)" }}
+            style={{
+              background: "var(--modal-backdrop)",
+              backdropFilter: "blur(2px)",
+              WebkitBackdropFilter: "blur(2px)",
+            }}
             onClick={onClose}
           />
 
@@ -270,7 +263,7 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                 width:      "clamp(360px, 42vw, 520px)",
                 background: "var(--modal-bg)",
                 borderLeft: `1px solid ${epicColor}25`,
-                boxShadow:  `-24px 0 64px rgba(0,0,0,0.6), 0 0 0 1px ${epicColor}15`,
+                boxShadow:  `-24px 0 64px rgba(0,0,0,0.3), 0 0 0 1px ${epicColor}15`,
                 transformStyle: "preserve-3d",
               }}
             >
@@ -291,7 +284,6 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                 />
 
                 <div className="flex-1 min-w-0">
-                  {/* Editable title */}
                   <InlineTitle
                     value={liveTask.title}
                     isDone={isDone}
@@ -314,7 +306,6 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                   }}
                   whileHover={{ scale: 1.04 }}
                   whileTap={{ scale: 0.96 }}
-                  title={isDone ? "Вернуть в работу" : "Отметить выполненным"}
                 >
                   {isDone ? (
                     <>
@@ -439,7 +430,7 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                         background:   "var(--glass-01)",
                         border:       "1px solid var(--glass-border)",
                         color:        liveTask.dueDate ? "var(--text-primary)" : "var(--text-muted)",
-                        colorScheme:  "dark",
+                        colorScheme:  "light dark",
                       }}
                     />
                     {liveTask.dueDate && (

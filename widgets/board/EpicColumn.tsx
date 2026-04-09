@@ -36,7 +36,7 @@ function ProgressRing({ pct, color }: { pct: number; color: string }) {
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <circle
         cx={size / 2} cy={size / 2} r={R}
-        fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2.5"
+        fill="none" stroke="var(--orb-track)" strokeWidth="2.5"
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
       />
       <motion.circle
@@ -262,7 +262,7 @@ export function EpicColumn({
         animate={{
           boxShadow: hovered
             ? `0 0 0 1px ${epic.color}45, 0 24px 64px rgba(0,0,0,0.55), 0 0 48px ${epic.color}14`
-            : `0 0 0 1px rgba(255,255,255,0.06), 0 4px 20px rgba(0,0,0,0.3)`,
+            : `0 0 0 1px var(--section-border), 0 4px 20px rgba(0,0,0,0.3)`,
         }}
         transition={{ duration: 0.35 }}
         style={{
@@ -300,7 +300,7 @@ export function EpicColumn({
           <div
             className="absolute inset-0 pointer-events-none"
             style={{
-              background: `linear-gradient(155deg, rgba(255,255,255,0.025) 0%, transparent 50%)`,
+              background: `linear-gradient(155deg, var(--gloss-overlay) 0%, transparent 50%)`
             }}
           />
 
@@ -346,7 +346,9 @@ export function EpicColumn({
               {/* Progress bar */}
               <div
                 className="relative h-1 rounded-full overflow-hidden"
-                style={{ background: "rgba(255,255,255,0.05)" }}
+                style={{
+                  background: "var(--track-bg-sm)"
+                }}
               >
                 <motion.div
                   className="h-full rounded-full relative overflow-hidden"
@@ -359,10 +361,7 @@ export function EpicColumn({
                 >
                   <motion.div
                     className="absolute inset-0"
-                    style={{
-                      background:
-                        "linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.45) 50%, transparent 75%)",
-                    }}
+                    style={{ background: `linear-gradient(90deg, transparent 25%, var(--shimmer-line) 50%, transparent 75%)` }}
                     animate={{ x: ["-100%", "200%"] }}
                     transition={{
                       duration: 2.5,

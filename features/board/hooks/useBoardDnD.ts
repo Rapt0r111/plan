@@ -40,7 +40,7 @@ function createGhostElement(task: TaskView, isDark: boolean): HTMLElement {
   const textColor = isDark ? "rgba(255,255,255,0.88)" : "rgba(20,15,8,0.88)";
   const mutedColor = isDark ? "rgba(255,255,255,0.30)" : "rgba(20,15,8,0.38)";
   const borderColor = isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)";
-  const trackBg = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)";
+  const trackBg = isDark ? "var(--section-border)" : "rgba(0,0,0,0.06)";
 
   const priorityColor = PRIORITY_COLOR[task.priority] ?? "#475569";
   const statusLabel = STATUS_LABEL[task.status] ?? task.status;
@@ -72,7 +72,7 @@ function createGhostElement(task: TaskView, isDark: boolean): HTMLElement {
   status.style.cssText = `
     display:inline-flex;align-items:center;gap:5px;
     padding:2px 8px;border-radius:99px;
-    background:${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"};
+    background:${isDark ? "var(--section-border)" : "rgba(0,0,0,0.06)"};
     font-size:10px;font-weight:500;color:${mutedColor};
   `;
 

@@ -115,6 +115,30 @@
 
   /* Focus ring color */
   --focus-ring-color: hsl(var(--accent-h), var(--accent-s), 65%);
+
+  /* Notification/island text colors */
+  --notification-text-primary: rgba(255, 255, 255, 0.85);
+  --notification-text-muted: rgba(255, 255, 255, 0.38);
+  --notification-dismiss-color: rgba(255, 255, 255, 0.2);
+  --notification-dismiss-hover: rgba(255, 255, 255, 0.55);
+  --notification-border-base: rgba(255, 255, 255, 0.06);
+  --notification-surface: rgba(255, 255, 255, 0.015);
+
+  /* === Новые переменные для light/dark адаптации === */
+  --bg-card-done: linear-gradient(155deg, rgba(13, 20, 28, 0.98) 0%, rgba(10, 18, 22, 0.98) 100%);
+  --border-card-done: rgba(52, 211, 153, 0.16);
+  --track-bg: rgba(255, 255, 255, 0.06);
+  --track-bg-sm: rgba(255, 255, 255, 0.05);
+  --gloss-overlay: rgba(255, 255, 255, 0.025);
+  --shimmer-line: rgba(255, 255, 255, 0.45);
+  --inset-light: rgba(255, 255, 255, 0.04);
+  --inset-light-sm: rgba(255, 255, 255, 0.05);
+  --specular-spot: rgba(255, 255, 255, 0.055);
+  --orb-track: rgba(255, 255, 255, 0.07);
+  --orb-ring: rgba(255, 255, 255, 0.08);
+  --panel-border: rgba(255, 255, 255, 0.09);
+  --section-border: rgba(255, 255, 255, 0.06);
+  --fab-backdrop: radial-gradient(ellipse at bottom right, rgba(109, 40, 217, 0.08) 0%, rgba(0, 0, 0, 0.5) 70%);
 }
 
 /* ── Light Theme ───────────────────────────────────────────────────────────── */
@@ -187,6 +211,29 @@ html.light {
     0 12px 40px rgba(60, 40, 10, 0.16),
     0 4px 12px rgba(60, 40, 10, 0.10),
     0 0 0 1px rgba(60, 40, 10, 0.06);
+
+  /* Notification/island text colors — adapted for light bg */
+  --notification-text-primary: rgba(18, 12, 6, 0.88);
+  --notification-text-muted: rgba(18, 12, 6, 0.44);
+  --notification-dismiss-color: rgba(18, 12, 6, 0.22);
+  --notification-dismiss-hover: rgba(18, 12, 6, 0.55);
+  --notification-border-base: rgba(0, 0, 0, 0.07);
+  --notification-surface: rgba(0, 0, 0, 0.02);
+
+  --bg-card-done: linear-gradient(155deg, rgba(232, 248, 241, 0.99) 0%, rgba(221, 241, 232, 0.99) 100%);
+  --border-card-done: rgba(5, 150, 105, 0.25);
+  --track-bg: rgba(0, 0, 0, 0.07);
+  --track-bg-sm: rgba(0, 0, 0, 0.06);
+  --gloss-overlay: rgba(0, 0, 0, 0.015);
+  --shimmer-line: rgba(0, 0, 0, 0.10);
+  --inset-light: rgba(0, 0, 0, 0.02);
+  --inset-light-sm: rgba(0, 0, 0, 0.03);
+  --specular-spot: rgba(0, 0, 0, 0.02);
+  --orb-track: rgba(0, 0, 0, 0.08);
+  --orb-ring: rgba(0, 0, 0, 0.07);
+  --panel-border: rgba(0, 0, 0, 0.08);
+  --section-border: rgba(0, 0, 0, 0.06);
+  --fab-backdrop: radial-gradient(ellipse at bottom right, rgba(109, 40, 217, 0.06) 0%, rgba(100, 90, 80, 0.30) 70%);
 }
 
 /* ── Reset & Base ──────────────────────────────────────────────────────────── */
@@ -684,9 +731,8 @@ html.light .quick-add-card {
 }
 
 /* ── QuickAddTask component utilities ───────────────────────────────────────
-   Используются в widgets/board/QuickAddTask.tsx.
-   Без этих определений все .quick-add-* классы бесполезны.                 */
- 
+   Используются в widgets/board/QuickAddTask.tsx.                           */
+
 .quick-add-priority-chip {
   display: inline-flex;
   align-items: center;
@@ -702,12 +748,12 @@ html.light .quick-add-card {
   outline: none;
   transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
- 
+
 .quick-add-priority-chip:hover {
   color: var(--text-primary);
   background: var(--glass-02);
 }
- 
+
 .quick-add-trigger-icon {
   display: inline-flex;
   align-items: center;
@@ -717,11 +763,11 @@ html.light .quick-add-card {
   color: var(--text-muted);
   transition: color 0.2s;
 }
- 
+
 .quick-add-trigger:hover .quick-add-trigger-icon {
   color: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 80%, transparent);
 }
- 
+
 .quick-add-accent-line {
   position: absolute;
   top: 0;
@@ -732,7 +778,7 @@ html.light .quick-add-card {
   background: var(--quick-add-accent, var(--accent-500));
   transform-origin: left;
 }
- 
+
 .quick-add-kbd {
   display: inline-flex;
   align-items: center;
@@ -745,7 +791,7 @@ html.light .quick-add-card {
   color: var(--text-muted);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 }
- 
+
 .quick-add-cancel-btn {
   padding: 5px 12px;
   border-radius: 10px;
@@ -758,12 +804,12 @@ html.light .quick-add-card {
   outline: none;
   transition: background 0.15s, color 0.15s;
 }
- 
+
 .quick-add-cancel-btn:hover {
   background: var(--glass-02);
   color: var(--text-secondary);
 }
- 
+
 .quick-add-save-btn {
   position: relative;
   overflow: hidden;
@@ -778,12 +824,12 @@ html.light .quick-add-card {
   outline: none;
   transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
 }
- 
+
 .quick-add-save-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 28%, transparent);
   box-shadow: 0 0 12px color-mix(in srgb, var(--quick-add-accent, var(--accent-500)) 30%, transparent);
 }
- 
+
 .quick-add-save-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;

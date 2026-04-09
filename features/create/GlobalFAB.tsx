@@ -2,10 +2,8 @@
 /**
  * @file GlobalFAB.tsx — features/create
  *
- * v2 — Offline read-only guard:
- *   При офлайн-режиме FAB показывает иконку замка вместо «+».
- *   Меню действий не открывается. Пользователь видит,
- *   что создание/редактирование недоступно.
+ * LIGHT THEME FIX:
+ *   - Backdrop `rgba(0,0,0,0.5)` → `var(--modal-backdrop)` for theme-aware overlay
  */
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useSpring, useMotionValue } from "framer-motion";
@@ -121,8 +119,8 @@ function ActionButton({
             border: `1px solid ${action.color}35`,
             backdropFilter: "blur(20px)",
             boxShadow: hovered
-              ? `0 0 32px ${action.glow}55, 0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12)`
-              : `0 0 16px ${action.glow}22, 0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.07)`,
+              ? `0 0 32px ${action.glow}55, 0 8px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.12)`
+              : `0 0 16px ${action.glow}22, 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.07)`,
             transition: "box-shadow 0.25s ease",
           }}
         />
@@ -161,7 +159,7 @@ export function GlobalFAB() {
   const [taskOpen, setTaskOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const safeOpen = open && !offline;
-  // Magnetic effect
+
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
   const springX = useSpring(mx, { stiffness: 200, damping: 20 });
@@ -189,10 +187,7 @@ export function GlobalFAB() {
     };
   }, []);
 
-  // Close menu if going offline
-
   const handleFabClick = () => {
-    // ✅ OFFLINE GUARD: don't open action menu when offline
     if (offline) return;
     setOpen((v) => !v);
     mx.set(0);
@@ -208,7 +203,7 @@ export function GlobalFAB() {
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — FIXED: use var(--modal-backdrop) instead of rgba(0,0,0,0.5) */}
       <AnimatePresence>
         {safeOpen && (
           <motion.div
@@ -218,7 +213,7 @@ export function GlobalFAB() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
             style={{
-              background: "radial-gradient(ellipse at bottom right, rgba(109,40,217,0.08) 0%, rgba(0,0,0,0.5) 70%)",
+              background: "var(--modal-backdrop)",
               backdropFilter: "blur(3px)",
             }}
           />
@@ -270,7 +265,6 @@ export function GlobalFAB() {
             whileTap={offline ? {} : { scale: 0.88 }}
             title={offline ? "Недоступно в офлайн-режиме" : undefined}
           >
-            {/* Multi-layer background */}
             <div
               className="absolute inset-0 rounded-2xl"
               style={{
@@ -280,10 +274,10 @@ export function GlobalFAB() {
                     ? "linear-gradient(135deg, rgba(239,68,68,0.9) 0%, rgba(220,38,38,0.7) 100%)"
                     : "linear-gradient(135deg, rgba(109,40,217,0.95) 0%, rgba(124,58,237,0.8) 50%, rgba(139,92,246,0.7) 100%)",
                 boxShadow: offline
-                  ? "0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08)"
+                  ? "0 4px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.08)"
                   : open
-                    ? "0 0 40px rgba(239,68,68,0.6), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.2)"
-                    : "0 0 40px rgba(109,40,217,0.7), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15)",
+                    ? "0 0 40px rgba(239,68,68,0.6), 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2)"
+                    : "0 0 40px rgba(109,40,217,0.7), 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.15)",
                 border: offline
                   ? "1px solid rgba(100,116,139,0.4)"
                   : open
@@ -292,7 +286,6 @@ export function GlobalFAB() {
                 transition: "all 0.35s ease",
               }}
             />
-            {/* Top shimmer */}
             {!offline && (
               <div
                 className="absolute top-0 left-2 right-2 h-px rounded-full"
@@ -300,10 +293,8 @@ export function GlobalFAB() {
               />
             )}
 
-            {/* Icon */}
             <div className="relative z-10">
               {offline ? (
-                /* Lock icon — read-only mode indicator */
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeLinecap="round">
                   <rect x="3" y="11" width="18" height="11" rx="2" />
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -311,14 +302,8 @@ export function GlobalFAB() {
               ) : (
                 <motion.div animate={{ rotate: open ? 45 : 0 }} transition={{ type: "spring", stiffness: 320, damping: 24 }}>
                   <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                    <motion.line
-                      x1="11" y1="4" x2="11" y2="18"
-                      stroke="white" strokeWidth="2.2" strokeLinecap="round"
-                    />
-                    <motion.line
-                      x1="4" y1="11" x2="18" y2="11"
-                      stroke="white" strokeWidth="2.2" strokeLinecap="round"
-                    />
+                    <motion.line x1="11" y1="4" x2="11" y2="18" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
+                    <motion.line x1="4" y1="11" x2="18" y2="11" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
                   </svg>
                 </motion.div>
               )}
@@ -337,9 +322,9 @@ export function GlobalFAB() {
               className="absolute bottom-full mb-3 right-0 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap"
               style={{
                 background: "var(--bg-elevated)",
-                border: "1px solid rgba(100,116,139,0.3)",
+                border: "1px solid var(--glass-border)",
                 color: "var(--text-muted)",
-                boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+                boxShadow: "var(--shadow-elevated)",
                 pointerEvents: "none",
               }}
             >

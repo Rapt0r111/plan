@@ -75,7 +75,8 @@ function LiquidOrb({ progress, color, size = 60 }: OrbProps) {
           <circle cx={cx} cy={cx} r={R} />
         </clipPath>
         <radialGradient id={`lgrad-${uid}`} cx="40%" cy="35%" r="65%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.22)" />
+          <stop offset="0%" stopColor="white" stopOpacity="0.22" />
+
           <stop offset="100%" stopColor="rgba(0,0,0,0.0)" />
         </radialGradient>
         <radialGradient id={`glow-${uid}`} cx="50%" cy="50%" r="50%">
@@ -246,10 +247,10 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
             border: `0.5px solid ${epic.color}30`,
             borderLeft: `2.5px solid ${epic.color}`,
             boxShadow: `
-              0 0 0 0.5px rgba(255,255,255,0.04),
-              0 2px 4px rgba(0,0,0,0.5),
-              0 8px 24px rgba(0,0,0,0.35),
-              inset 0 1px 0 rgba(255,255,255,0.05)
+              0 0 0 0.5px var(--inset-light),
+              0 2px 4px rgba(0,0,0,0.25),
+              0 8px 24px rgba(0,0,0,0.15),
+              inset 0 1px 0 var(--inset-light)
             `,
           }}
         >
@@ -259,7 +260,7 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
           <div
             className="absolute top-0 left-0 right-0 h-px pointer-events-none"
             style={{
-              background: `linear-gradient(90deg, transparent 0%, ${epic.color}40 30%, rgba(255,255,255,0.12) 50%, ${epic.color}20 70%, transparent 100%)`,
+              background: `linear-gradient(90deg, transparent 0%, ${epic.color}40 30%, var(--shimmer-line) 50%, ${epic.color}20 70%, transparent 100%)`
             }}
           />
 

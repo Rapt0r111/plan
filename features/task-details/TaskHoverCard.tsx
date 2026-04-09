@@ -2,13 +2,10 @@
 /**
  * @file TaskHoverCard.tsx — features/task-details
  *
- * ИСПРАВЛЕНИЕ:
- *   БЫЛО: if (typeof document === "undefined") return null — антипаттерн,
- *         вызывает hydration mismatch: сервер рендерит одно, клиент другое.
- *   СТАЛО: useSyncExternalStore с разными server/client snapshot'ами.
- *          server snapshot → false (портал не рендерится на сервере)
- *          client snapshot → true  (портал рендерится после гидрации)
- *          Нет hydration mismatch, нет прямых проверок window/document.
+ * ИСПРАВЛЕНИЕ v2 (light-theme):
+ *   - border: rgba(255,255,255,0.09) → var(--glass-border)
+ *   - box-shadow использует var(--shadow-elevated) вместо жёстких rgba
+ *   - Убраны hardcoded rgba(255,255,255,x) для текста — теперь CSS vars
  */
 import { useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
@@ -17,14 +14,13 @@ import { formatDate } from "@/shared/lib/utils";
 import type { TaskView } from "@/shared/types";
 
 // ── SSR-safe client gate ──────────────────────────────────────────────────────
-// Стабильные ссылки на уровне модуля — не пересоздаются при каждом рендере.
 const emptySubscribe = () => () => {};
 
 function useIsClient(): boolean {
   return useSyncExternalStore(
     emptySubscribe,
-    () => true,  // client snapshot — мы на клиенте
-    () => false, // server snapshot — не рендерим портал на сервере
+    () => true,
+    () => false,
   );
 }
 
@@ -58,10 +54,8 @@ interface Props {
 export function TaskHoverCard({ task, anchorEl, visible }: Props) {
   const isClient = useIsClient();
 
-  // Не рендерим ничего на сервере и когда карточка не видна
   if (!isClient || !visible) return null;
 
-  // Позиционирование — выполняется только на клиенте
   let pos = { left: 0, top: 0, fromRight: false };
 
   if (anchorEl) {
@@ -97,15 +91,12 @@ export function TaskHoverCard({ task, anchorEl, visible }: Props) {
           top:          pos.top,
           width:        CARD_W,
           zIndex:       9997,
+          /* ── ИСПРАВЛЕНО: CSS vars вместо hardcoded dark colors ── */
           background:   "var(--bg-elevated)",
-          border:       "1px solid rgba(255,255,255,0.09)",
+          border:       `1px solid var(--glass-border)`,
           borderLeft:   `3px solid ${priorityColor}`,
           borderRadius: 14,
-          boxShadow: [
-            "0 24px 64px rgba(0,0,0,0.72)",
-            "0 0 0 1px rgba(255,255,255,0.03)",
-            `0 0 20px ${priorityColor}14`,
-          ].join(", "),
+          boxShadow: `var(--shadow-overlay), 0 0 20px ${priorityColor}14`,
           padding: "12px 14px",
         }}
       >
@@ -180,7 +171,7 @@ export function TaskHoverCard({ task, anchorEl, visible }: Props) {
                 {done}/{total} · {pct}%
               </span>
             </div>
-            <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+            <div className="h-1 rounded-full overflow-hidden" style={{ background: "var(--glass-02)" }}>
               <div
                 className="h-full rounded-full transition-all duration-300"
                 style={{

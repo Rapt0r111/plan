@@ -183,7 +183,8 @@ export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen
       {showSubtaskProgress && liveTask.subtasks.length > 0 && (
         <div
           className="mx-3.5 mb-2 h-0.5 rounded-full overflow-hidden"
-          style={{ background: "rgba(255,255,255,0.06)" }}
+          style={{ background: "var(--track-bg)" }
+}
         >
           <motion.div
             className="h-full rounded-full"

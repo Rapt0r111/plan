@@ -1,4 +1,9 @@
 // features/command-palette/ui/PaletteFooter.tsx
+/**
+ * ИСПРАВЛЕНИЕ (light-theme):
+ *   - borderTop: "1px solid var(--section-border)" → var(--glass-border)
+ *   - background: "rgba(255,255,255,0.015)" → var(--glass-01)
+ */
 
 function KbdHint({ children }: { children: React.ReactNode }) {
   return (
@@ -15,8 +20,8 @@ export function PaletteFooter() {
     <div
       className="flex items-center gap-3 px-4 py-2.5"
       style={{
-        borderTop: "1px solid rgba(255,255,255,0.06)",
-        background: "rgba(255,255,255,0.015)",
+        borderTop: "1px solid var(--glass-border)",
+        background: "var(--glass-01)",
       }}
     >
       <div className="flex items-center gap-1.5 text-xs text-(--text-muted)">

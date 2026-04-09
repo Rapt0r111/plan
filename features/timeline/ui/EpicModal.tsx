@@ -2,12 +2,10 @@
 /**
  * @file EpicModal.tsx — features/timeline/ui
  *
- * ИСПРАВЛЕНИЕ:
- *   БЫЛО: if (typeof document === "undefined") return null — антипаттерн,
- *         вызывает hydration mismatch.
- *   СТАЛО: useSyncExternalStore — React-благословлённый способ читать
- *          клиентское состояние с корректным SSR/гидрацией поведением.
- *          Идентичный паттерн используется в EpicInteractionLayer.tsx.
+ * ИСПРАВЛЕНИЕ v2 (light-theme):
+ *   - Backdrop: rgba(0,0,0,0.65) → var(--modal-backdrop)
+ *   - Footer bg: rgba(255,255,255,0.012) → var(--glass-01)
+ *   - Текстовые цвета используют CSS-переменные
  */
 import { useState, useMemo, useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
@@ -25,8 +23,8 @@ const emptySubscribe = () => () => {};
 function useIsClient(): boolean {
   return useSyncExternalStore(
     emptySubscribe,
-    () => true,  // client snapshot
-    () => false, // server snapshot — портал не рендерится на сервере
+    () => true,
+    () => false,
   );
 }
 
@@ -84,7 +82,6 @@ export function EpicModal({ epic, onClose }: Props) {
     return () => window.removeEventListener("keydown", fn);
   }, [onClose]);
 
-  // Не рендерим портал на сервере — нет hydration mismatch
   if (!isClient) return null;
 
   return createPortal(
@@ -94,7 +91,12 @@ export function EpicModal({ epic, onClose }: Props) {
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
         className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8"
-        style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(8px)" }}
+        style={{
+          /* ── ИСПРАВЛЕНО: var(--modal-backdrop) вместо rgba(0,0,0,0.65) ── */
+          background: "var(--modal-backdrop)",
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+        }}
         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       >
         <motion.div
@@ -111,7 +113,7 @@ export function EpicModal({ epic, onClose }: Props) {
             background:   "var(--bg-elevated)",
             border:       "1px solid var(--glass-border)",
             borderRadius: 20,
-            boxShadow: `0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px ${liveEpic.color}18`,
+            boxShadow: `0 32px 80px rgba(0,0,0,0.4), 0 0 0 1px ${liveEpic.color}18`,
           }}
         >
           {/* Header */}
@@ -229,7 +231,7 @@ export function EpicModal({ epic, onClose }: Props) {
           {/* Task list */}
           <div
             className="flex-1 overflow-y-auto px-4 py-3"
-            style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.08) transparent" }}
+            style={{ scrollbarWidth: "thin", scrollbarColor: "var(--glass-border) transparent" }}
           >
             <LayoutGroup id={`epic-tasks-${liveEpic.id}`}>
               <motion.div layout className="space-y-2">
@@ -289,13 +291,13 @@ export function EpicModal({ epic, onClose }: Props) {
             </LayoutGroup>
           </div>
 
-          {/* Footer */}
+          {/* Footer — ИСПРАВЛЕНО: var(--glass-01) вместо rgba(255,255,255,0.012) */}
           <div
             className="shrink-0 px-5 py-3 flex justify-between items-center"
             style={{
               borderTop:    "1px solid var(--glass-border)",
               borderRadius: "0 0 20px 20px",
-              background:   "rgba(255,255,255,0.012)",
+              background:   "var(--glass-01)",
             }}
           >
             <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>

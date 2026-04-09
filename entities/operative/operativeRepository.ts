@@ -1,10 +1,11 @@
 /**
  * @file operativeRepository.ts — entities/operative
  *
- * ОБНОВЛЕНИЕ v2 — Дедлайн оперативных задач:
- *   - Добавлен `dueDate` в `createOperativeTask` (опционально)
- *   - Добавлена `updateOperativeTaskDueDate` для PATCH /[id]
- *   - OperativeTaskView получает dueDate автоматически через DbOperativeTask
+ * v3 — Дедлайн оперативных задач (схема исправлена — dueDate в таблице):
+ *   - Миграция 0004_operative_due_date.sql добавляет due_date в БД
+ *   - createOperativeTask поддерживает dueDate
+ *   - updateOperativeTaskDueDate обновляет дедлайн
+ *   - OperativeTaskView наследует dueDate из DbOperativeTask автоматически
  *
  * Оперативные задачи привязаны к пользователям. Удаление запрещено.
  */
@@ -17,8 +18,8 @@ import type { UserWithMeta } from "@/shared/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type DbOperativeTask     = InferSelectModel<typeof operativeTasks>;
-export type DbOperativeSubtask  = InferSelectModel<typeof operativeSubtasks>;
+export type DbOperativeTask    = InferSelectModel<typeof operativeTasks>;
+export type DbOperativeSubtask = InferSelectModel<typeof operativeSubtasks>;
 export type OperativeTaskStatus = DbOperativeTask["status"];
 
 export interface OperativeSubtaskView {
@@ -43,8 +44,8 @@ export interface UserWithOperativeTasks {
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 /**
- * getAllUsersWithOperativeTasks — возвращает ВСЕХ пользователей (в том числе
- * без задач), чтобы отображать блок для каждого, даже если задач ещё нет.
+ * getAllUsersWithOperativeTasks — возвращает ВСЕХ пользователей (включая
+ * без задач), чтобы каждый получил свой блок.
  */
 export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperativeTasks[]> {
   // 1. Все пользователи с ролями
@@ -74,17 +75,17 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
 
   if (!userRows.length) return [];
 
-  const userIds = userRows.map((u) => u.id);
+  const userIds = userRows.map(u => u.id);
 
-  // 2. Все оперативные задачи для этих пользователей
+  // 2. Все оперативные задачи
   const taskRows = await db
     .select()
     .from(operativeTasks)
     .where(inArray(operativeTasks.userId, userIds))
     .orderBy(operativeTasks.userId, operativeTasks.sortOrder, operativeTasks.createdAt);
 
-  // 3. Все подзадачи для этих задач
-  const taskIds = taskRows.map((t) => t.id);
+  // 3. Все подзадачи
+  const taskIds = taskRows.map(t => t.id);
   const subtaskRows = taskIds.length
     ? await db
         .select()
@@ -108,25 +109,21 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
     tasksByUser.set(t.userId, arr);
   }
 
-  // 5. Сборка результата
-  return userRows.map((row) => {
+  // 5. Сборка
+  return userRows.map(row => {
     const userMeta: UserWithMeta = {
-      id:        row.id,
-      name:      row.name,
-      login:     row.login,
-      roleId:    row.roleId,
-      initials:  row.initials,
-      createdAt: row.createdAt,
-      roleMeta:  row.role,
+      id: row.id, name: row.name, login: row.login,
+      roleId: row.roleId, initials: row.initials, createdAt: row.createdAt,
+      roleMeta: row.role,
     };
 
-    const userTasks: OperativeTaskView[] = (tasksByUser.get(row.id) ?? []).map((t) => {
+    const userTasks: OperativeTaskView[] = (tasksByUser.get(row.id) ?? []).map(t => {
       const subs = (subtasksByTask.get(t.id) ?? []) as OperativeSubtaskView[];
       return {
         ...t,
         subtasks: subs,
         progress: {
-          done:  subs.filter((s) => s.isCompleted).length,
+          done: subs.filter(s => s.isCompleted).length,
           total: subs.length,
         },
       };
@@ -137,11 +134,7 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
 }
 
 export async function getOperativeTaskById(id: number): Promise<OperativeTaskView | null> {
-  const [task] = await db
-    .select()
-    .from(operativeTasks)
-    .where(eq(operativeTasks.id, id));
-
+  const [task] = await db.select().from(operativeTasks).where(eq(operativeTasks.id, id));
   if (!task) return null;
 
   const subs = (await db
@@ -153,7 +146,7 @@ export async function getOperativeTaskById(id: number): Promise<OperativeTaskVie
   return {
     ...task,
     subtasks: subs,
-    progress: { done: subs.filter((s) => s.isCompleted).length, total: subs.length },
+    progress: { done: subs.filter(s => s.isCompleted).length, total: subs.length },
   };
 }
 
@@ -208,11 +201,10 @@ export async function updateOperativeTaskDueDate(
 // ─── Write — Subtasks ─────────────────────────────────────────────────────────
 
 export async function createOperativeSubtask(data: {
-  taskId:    number;
-  title:     string;
+  taskId:     number;
+  title:      string;
   sortOrder?: number;
 }): Promise<DbOperativeSubtask> {
-  // Вычисляем следующий sortOrder
   const existing = await db
     .select({ sortOrder: operativeSubtasks.sortOrder })
     .from(operativeSubtasks)

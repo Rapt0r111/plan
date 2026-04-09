@@ -1,0 +1,1 @@
+ALTER TABLE `operative_tasks` ADD `due_date` text;

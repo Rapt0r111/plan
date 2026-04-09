@@ -2,16 +2,15 @@
 /**
  * @file useOperativeStore.ts — shared/store
  *
- * Zustand store для оперативных задач.
+ * ОБНОВЛЕНИЕ v2 — Дедлайн оперативных задач:
+ *   - addTask() теперь принимает опциональный dueDate
+ *   - Добавлен updateDueDate() — оптимистичное обновление + rollback
  *
  * ПРАВИЛА STORE:
- *  - Удаление задач и подзадач запрещено — методы не реализованы.
- *  - Поддерживаются: создание задач, смена статуса, добавление подзадач, toggle.
- *  - Оптимистичные обновления с rollback при ошибке сервера.
- *  - Offline-guard: при отсутствии сети показываем уведомление и блокируем мутации.
- *
- * СТРУКТУРА:
- *  userBlocks: UserWithOperativeTasks[]  — главный список, упорядоченный по role.sortOrder
+ *  - Удаление задач и подзадач запрещено.
+ *  - Поддерживаются: создание задач (с дедлайном), смена статуса,
+ *    обновление дедлайна, добавление подзадач, toggle.
+ *  - Offline-guard: при отсутствии сети показываем уведомление.
  */
 import { create } from "zustand";
 import { useNotificationStore } from "@/features/sync/useNotificationStore";
@@ -56,10 +55,11 @@ interface OperativeStore {
   getTask:          (taskId: number) => OperativeTaskView | undefined;
 
   // Mutations
-  addTask:        (params: { userId: number; title: string; description?: string | null }) => Promise<OperativeTaskView | null>;
-  updateStatus:   (taskId: number, userId: number, status: OperativeTaskStatus) => Promise<void>;
-  addSubtask:     (taskId: number, userId: number, title: string) => Promise<OperativeSubtaskView | null>;
-  toggleSubtask:  (taskId: number, userId: number, subtaskId: number, current: boolean) => Promise<void>;
+  addTask:       (params: { userId: number; title: string; description?: string | null; dueDate?: string | null }) => Promise<OperativeTaskView | null>;
+  updateStatus:  (taskId: number, userId: number, status: OperativeTaskStatus) => Promise<void>;
+  updateDueDate: (taskId: number, userId: number, dueDate: string | null) => Promise<void>;
+  addSubtask:    (taskId: number, userId: number, title: string) => Promise<OperativeSubtaskView | null>;
+  toggleSubtask: (taskId: number, userId: number, subtaskId: number, current: boolean) => Promise<void>;
 }
 
 // ── Helpers to update nested state ────────────────────────────────────────────
@@ -101,7 +101,7 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
   },
 
   // ── addTask ─────────────────────────────────────────────────────────────────
-  addTask: async ({ userId, title, description = null }) => {
+  addTask: async ({ userId, title, description = null, dueDate = null }) => {
     if (isOffline()) { notifyOfflineBlocked(); return null; }
 
     const tempId = nextTempId();
@@ -112,6 +112,7 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       userId,
       title,
       description,
+      dueDate,
       status:      "todo",
       sortOrder:   Date.now(),
       createdAt:   now,
@@ -133,7 +134,7 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       const res = await fetch("/api/operative-tasks", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ userId, title, description }),
+        body:    JSON.stringify({ userId, title, description, dueDate }),
       });
       const data = await res.json();
 
@@ -200,6 +201,40 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
         userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
           ...t,
           status: prev.status,
+        })),
+      }));
+    }
+  },
+
+  // ── updateDueDate ────────────────────────────────────────────────────────────
+  updateDueDate: async (taskId, userId, dueDate) => {
+    if (isOffline()) { notifyOfflineBlocked(); return; }
+
+    const prev = get().getTask(taskId);
+    if (!prev) return;
+
+    // Optimistic
+    set((s) => ({
+      userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
+        ...t,
+        dueDate,
+        updatedAt: new Date().toISOString(),
+      })),
+    }));
+
+    try {
+      const res = await fetch(`/api/operative-tasks/${taskId}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ dueDate }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+    } catch {
+      // Rollback
+      set((s) => ({
+        userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
+          ...t,
+          dueDate: prev.dueDate,
         })),
       }));
     }

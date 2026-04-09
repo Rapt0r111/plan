@@ -1,13 +1,12 @@
 /**
  * @file operativeRepository.ts — entities/operative
  *
- * Репозиторий оперативных задач.
- * КЛЮЧЕВЫЕ ПРАВИЛА:
- *  - Удаление задач и подзадач ЗАПРЕЩЕНО (нет deleteOperativeTask/deleteOperativeSubtask).
- *  - Разрешено: создание, смена статуса, добавление подзадач, отметка подзадач.
+ * ОБНОВЛЕНИЕ v2 — Дедлайн оперативных задач:
+ *   - Добавлен `dueDate` в `createOperativeTask` (опционально)
+ *   - Добавлена `updateOperativeTaskDueDate` для PATCH /[id]
+ *   - OperativeTaskView получает dueDate автоматически через DbOperativeTask
  *
- * Оперативные задачи привязаны к пользователям — при добавлении/удалении
- * пользователя в настройках их блок автоматически появляется/убирается.
+ * Оперативные задачи привязаны к пользователям. Удаление запрещено.
  */
 
 import { db } from "@/shared/db/client";
@@ -161,10 +160,11 @@ export async function getOperativeTaskById(id: number): Promise<OperativeTaskVie
 // ─── Write — Tasks ────────────────────────────────────────────────────────────
 
 export async function createOperativeTask(data: {
-  userId:      number;
-  title:       string;
+  userId:       number;
+  title:        string;
   description?: string | null;
-  sortOrder?:  number;
+  dueDate?:     string | null;
+  sortOrder?:   number;
 }): Promise<DbOperativeTask> {
   const [row] = await db
     .insert(operativeTasks)
@@ -172,6 +172,7 @@ export async function createOperativeTask(data: {
       userId:      data.userId,
       title:       data.title,
       description: data.description ?? null,
+      dueDate:     data.dueDate ?? null,
       sortOrder:   data.sortOrder ?? 0,
     })
     .returning();
@@ -185,6 +186,19 @@ export async function updateOperativeTaskStatus(
   const [row] = await db
     .update(operativeTasks)
     .set({ status, updatedAt: new Date().toISOString() })
+    .where(eq(operativeTasks.id, id))
+    .returning();
+  if (!row) throw new Error(`Operative task ${id} not found`);
+  return row;
+}
+
+export async function updateOperativeTaskDueDate(
+  id:      number,
+  dueDate: string | null,
+): Promise<DbOperativeTask> {
+  const [row] = await db
+    .update(operativeTasks)
+    .set({ dueDate, updatedAt: new Date().toISOString() })
     .where(eq(operativeTasks.id, id))
     .returning();
   if (!row) throw new Error(`Operative task ${id} not found`);

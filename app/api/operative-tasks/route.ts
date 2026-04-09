@@ -1,6 +1,9 @@
 /**
  * @file route.ts — app/api/operative-tasks
  *
+ * ОБНОВЛЕНИЕ v2 — Дедлайн:
+ *   Добавлен `dueDate` в CreateSchema (опционально, ISO-8601).
+ *
  * POST /api/operative-tasks — создать оперативную задачу для пользователя.
  * Удаление не поддерживается.
  */
@@ -16,6 +19,7 @@ const CreateSchema = z.object({
   userId:      z.number().int().positive(),
   title:       z.string().min(1).max(200),
   description: z.string().max(2000).nullable().optional(),
+  dueDate:     z.string().datetime().nullable().optional(),
   sortOrder:   z.number().int().min(0).optional(),
 });
 

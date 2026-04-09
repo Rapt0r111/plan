@@ -1,16 +1,9 @@
 /**
  * @file schema.ts — shared/db
  *
- * BREAKING CHANGE v2:
- *   - Добавлена таблица roles (canonical source of truth)
- *   - users.role: text → users.roleId: integer FK → roles.id
- *   - Удалён ROLES array и Role enum
- *
- * v3 — Оперативные задачи:
- *   - Добавлены таблицы operative_tasks и operative_subtasks
- *     для хранения задач, привязанных к конкретным пользователям.
- *
- * Migration: CREATE TABLE IF NOT EXISTS в shared/db/migrate.ts
+ * v4 — Оперативные задачи с дедлайном:
+ *   - Добавлен `due_date` в operative_tasks
+ *   - Миграция: 0004_operative_due_date.sql
  */
 import { sql } from "drizzle-orm";
 import {
@@ -131,6 +124,7 @@ export const operativeTasks = sqliteTable(
     title:       text("title").notNull(),
     description: text("description"),
     status:      text("status").$type<OperativeTaskStatus>().notNull().default("todo"),
+    dueDate:     text("due_date"),                          // ← НОВОЕ: v4
     sortOrder:   integer("sort_order").notNull().default(0),
     createdAt:   text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt:   text("updated_at").notNull().default(sql`(datetime('now'))`),

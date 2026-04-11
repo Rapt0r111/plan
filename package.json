@@ -19,15 +19,21 @@
     "db:reset": "rm -f local.db && bun run db:migrate && bun run db:seed"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@ducanh2912/next-pwa": "^10.2.9",
+    "better-auth": "^1.6.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.45.1",
     "framer-motion": "^12.34.5",
     "next": "^16.1.6",
+    "next-safe-action": "^8.4.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwind-merge": "^3.5.0",
+    "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

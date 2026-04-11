@@ -1,8 +1,9 @@
 /**
  * @file route.ts — app/api/operative-subtasks/[id]
  *
- * PATCH /api/operative-subtasks/:id — переключить isCompleted.
- * DELETE намеренно отсутствует.
+ * ИСПРАВЛЕНИЯ:
+ *   1. Добавлена проверка аутентификации на PATCH
+ *   2. Только администраторы могут переключать статус подзадач
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -10,6 +11,8 @@ import { z } from "zod";
 import { toggleOperativeSubtask } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
 import { OPERATIVE_CACHE_TAG } from "../../operative-tasks/route";
+import { auth } from "@/shared/lib/auth";
+import { headers } from "next/headers";
 
 const ToggleSchema = z.object({
   isCompleted: z.boolean(),
@@ -19,6 +22,23 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
+    // ── Проверка аутентификации ──────────────────────────────────────────────
+    const session = await auth.api.getSession({ headers: await headers() });
+
+    if (!session?.user) {
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    if (session.user.role !== "admin") {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden: requires admin role" },
+        { status: 403 },
+      );
+    }
+
     const { id }     = await params;
     const subtaskId  = Number(id);
 

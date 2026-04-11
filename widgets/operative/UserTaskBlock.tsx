@@ -2,20 +2,10 @@
 /**
  * @file UserTaskBlock.tsx — widgets/operative
  *
- * v3 — Полный редизайн UX:
- *
- * УЛУЧШЕНИЯ:
- *  - Задачи сортируются: in_progress → todo → done (активные сверху)
- *  - Компактные карточки с быстрым toggle статуса одним кликом
- *  - Дедлайн виден сразу на карточке (цветовая индикация)
- *  - Добавление задачи — одно поле, Enter = сохранить
- *  - Подзадачи раскрываются inline, без перехода
- *  - Прогресс пользователя (всего/сделано) вверху блока
- *  - Кнопка "Готово" на карточке — одним кликом завершить задачу
- *
- * ПРАВИЛА:
- *  - Удаление задач ЗАПРЕЩЕНО (только смена статуса → done)
- *  - Офлайн = только просмотр
+ * ИЗМЕНЕНИЯ:
+ * 1. Подсветка дедлайна: красная анимация для задач с дедлайном ≤3 дней
+ * 2. DueBadge — пульсирующий красный для просроченных и срочных
+ * 3. Карточка — красная рамка + glow при критичном дедлайне
  */
 import { useState, useRef, useCallback, useEffect, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -25,6 +15,7 @@ import { formatDate, formatDateInput } from "@/shared/lib/utils";
 import type {
   UserWithOperativeTasks,
   OperativeTaskView,
+  OperativeSubtaskView,
   OperativeTaskStatus,
 } from "@/entities/operative/operativeRepository";
 import { useShallow } from "zustand/react/shallow";
@@ -42,18 +33,76 @@ const STATUS: Record<
 
 // ── Deadline helpers ──────────────────────────────────────────────────────────
 
-function deadlineInfo(dueDate: string | null | undefined) {
-  if (!dueDate) return null;
-  const due = new Date(dueDate);
-  const now = new Date();
-  const diffMs = due.getTime() - now.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  const isOverdue = diffMs < 0;
-  const isSoon = !isOverdue && diffDays <= 3;
-  return { label: formatDate(dueDate), isOverdue, isSoon };
+interface DeadlineInfo {
+  label:     string;
+  isOverdue: boolean;
+  isSoon:    boolean;   // ≤3 дней до дедлайна
+  isToday:   boolean;
+  daysLeft:  number;
 }
 
-// ── Status pill — click to cycle ──────────────────────────────────────────────
+function deadlineInfo(dueDate: string | null | undefined): DeadlineInfo | null {
+  if (!dueDate) return null;
+  const due    = new Date(dueDate);
+  const now    = new Date();
+  const diffMs = due.getTime() - now.getTime();
+  const daysLeft  = diffMs / (1000 * 60 * 60 * 24);
+  const isOverdue = diffMs < 0;
+  const isToday   = !isOverdue && Math.floor(daysLeft) === 0;
+  const isSoon    = !isOverdue && daysLeft <= 3;
+
+  return {
+    label: formatDate(dueDate),
+    isOverdue,
+    isSoon,
+    isToday,
+    daysLeft: Math.max(0, Math.floor(daysLeft)),
+  };
+}
+
+// ── Deadline visual tokens ────────────────────────────────────────────────────
+
+function getDeadlineStyle(info: DeadlineInfo | null, isDone: boolean) {
+  if (!info || isDone) return null;
+
+  if (info.isOverdue) {
+    return {
+      color:       "#f87171",
+      bg:          "rgba(239,68,68,0.12)",
+      border:      "rgba(239,68,68,0.4)",
+      cardBorder:  "#f87171",
+      cardGlow:    "rgba(239,68,68,0.25)",
+      pulse:       true,
+      label:       `${info.label} ⚠`,
+    };
+  }
+  if (info.isToday) {
+    return {
+      color:       "#fb923c",
+      bg:          "rgba(251,146,60,0.12)",
+      border:      "rgba(251,146,60,0.35)",
+      cardBorder:  "#fb923c",
+      cardGlow:    "rgba(251,146,60,0.20)",
+      pulse:       true,
+      label:       "Сегодня",
+    };
+  }
+  if (info.isSoon) {
+    // ≤3 дней — подсвечиваем красным/оранжевым
+    return {
+      color:       "#fbbf24",
+      bg:          "rgba(251,191,36,0.12)",
+      border:      "rgba(251,191,36,0.30)",
+      cardBorder:  "#fbbf24",
+      cardGlow:    "rgba(251,191,36,0.15)",
+      pulse:       false,
+      label:       info.daysLeft <= 1 ? `Завтра` : `${info.daysLeft} дн.`,
+    };
+  }
+  return null;
+}
+
+// ── Status pill ───────────────────────────────────────────────────────────────
 
 const StatusPill = memo(function StatusPill({
   status, onClick, disabled,
@@ -69,12 +118,12 @@ const StatusPill = memo(function StatusPill({
       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all select-none shrink-0"
       style={{
         background: s.bg,
-        color: s.color,
-        border: `1px solid ${s.dot}28`,
-        cursor: disabled ? "default" : "pointer",
-        opacity: disabled ? 0.6 : 1,
+        color:      s.color,
+        border:     `1px solid ${s.dot}28`,
+        cursor:     disabled ? "default" : "pointer",
+        opacity:    disabled ? 0.6 : 1,
       }}
-      title={disabled ? "Офлайн — только просмотр" : `Статус: ${s.label} → нажмите для смены`}
+      title={disabled ? "Офлайн — только просмотр" : `Нажмите → ${STATUS[s.next].label}`}
     >
       <motion.span
         className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -89,25 +138,68 @@ const StatusPill = memo(function StatusPill({
 
 // ── Due date badge ────────────────────────────────────────────────────────────
 
-function DueBadge({ dueDate }: { dueDate: string | null | undefined }) {
-  const info = deadlineInfo(dueDate);
+function DueBadge({
+  dueDate,
+  isDone,
+}: {
+  dueDate: string | null | undefined;
+  isDone: boolean;
+}) {
+  const info  = deadlineInfo(dueDate);
+  const style = getDeadlineStyle(info, isDone);
+
   if (!info) return null;
-  const color = info.isOverdue ? "#f87171" : info.isSoon ? "#fbbf24" : "#64748b";
+
+  // Если задача готова — просто серый текст
+  if (isDone) {
+    return (
+      <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
+        {info.label}
+      </span>
+    );
+  }
+
+  // Нет критичности — простой серый бейдж
+  if (!style) {
+    return (
+      <span
+        className="flex items-center gap-1 text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded"
+        style={{ color: "#64748b" }}
+      >
+        <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+          <rect x="1" y="2" width="10" height="9" rx="1.5" />
+          <path d="M4 1v2M8 1v2M1 5h10" />
+        </svg>
+        {info.label}
+      </span>
+    );
+  }
+
   return (
     <span
-      className="flex items-center gap-1 text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded"
+      className="flex items-center gap-1 text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded-md font-semibold"
       style={{
-        color,
-        background: info.isOverdue ? "rgba(239,68,68,0.1)" : info.isSoon ? "rgba(251,191,36,0.1)" : "transparent",
-        border: (info.isOverdue || info.isSoon) ? `1px solid ${color}30` : "none",
+        color:      style.color,
+        background: style.bg,
+        border:     `1px solid ${style.border}`,
       }}
-      title={info.isOverdue ? "Просрочено!" : info.isSoon ? "Дедлайн скоро" : "Дедлайн"}
+      title={info.isOverdue ? "Просрочено!" : info.isToday ? "Дедлайн сегодня!" : `Осталось ${info.daysLeft} дн.`}
     >
-      <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-        <rect x="1" y="2" width="10" height="9" rx="1.5" />
-        <path d="M4 1v2M8 1v2M1 5h10" />
-      </svg>
-      {info.label}{info.isOverdue ? " ⚠" : ""}
+      {/* Пульсирующая точка для просроченных и сегодняшних */}
+      {style.pulse ? (
+        <motion.span
+          className="w-1.5 h-1.5 rounded-full shrink-0"
+          style={{ backgroundColor: style.color }}
+          animate={{ scale: [1, 1.6, 1], opacity: [1, 0.4, 1] }}
+          transition={{ duration: 1.2, repeat: Infinity }}
+        />
+      ) : (
+        <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <rect x="1" y="2" width="10" height="9" rx="1.5" />
+          <path d="M4 1v2M8 1v2M1 5h10" />
+        </svg>
+      )}
+      {style.label}
     </span>
   );
 }
@@ -134,9 +226,9 @@ const SubtaskRow = memo(function SubtaskRow({
       <div
         className="w-4 h-4 rounded-md shrink-0 flex items-center justify-center border transition-all duration-150"
         style={{
-          background: subtask.isCompleted ? accentColor : "transparent",
+          background:  subtask.isCompleted ? accentColor : "transparent",
           borderColor: subtask.isCompleted ? accentColor : "var(--glass-border-active)",
-          boxShadow: subtask.isCompleted ? `0 0 6px ${accentColor}50` : "none",
+          boxShadow:   subtask.isCompleted ? `0 0 6px ${accentColor}50` : "none",
         }}
       >
         <AnimatePresence>
@@ -157,9 +249,9 @@ const SubtaskRow = memo(function SubtaskRow({
       <span
         className="text-xs leading-snug flex-1 transition-colors"
         style={{
-          color: subtask.isCompleted ? "var(--text-muted)" : "var(--text-secondary)",
+          color:          subtask.isCompleted ? "var(--text-muted)" : "var(--text-secondary)",
           textDecoration: subtask.isCompleted ? "line-through" : "none",
-          opacity: subtask.isCompleted ? 0.6 : 1,
+          opacity:        subtask.isCompleted ? 0.6 : 1,
         }}
       >
         {subtask.title}
@@ -197,8 +289,8 @@ function InlineInput({
       className="flex items-center gap-2 px-3 py-2 rounded-xl"
       style={{
         background: "var(--glass-01)",
-        border: `1px solid ${accentColor}45`,
-        boxShadow: `0 0 0 3px ${accentColor}10`,
+        border:     `1px solid ${accentColor}45`,
+        boxShadow:  `0 0 0 3px ${accentColor}10`,
       }}
     >
       <input
@@ -206,7 +298,7 @@ function InlineInput({
         value={val}
         onChange={e => setVal(e.target.value)}
         onKeyDown={e => {
-          if (e.key === "Enter") { e.preventDefault(); submit(); }
+          if (e.key === "Enter")  { e.preventDefault(); submit(); }
           if (e.key === "Escape") { e.preventDefault(); onCancel(); }
         }}
         onBlur={() => { if (!val.trim()) onCancel(); }}
@@ -237,11 +329,11 @@ function TaskCard({
   accentColor: string;
   offline: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [addingSub, setAddingSub] = useState(false);
+  const [open,        setOpen]        = useState(false);
+  const [addingSub,   setAddingSub]   = useState(false);
   const [editingDate, setEditingDate] = useState(false);
 
-  const liveTask     = useOperativeStore(s => s.getTask(task.id)) ?? task;
+  const liveTask      = useOperativeStore(s => s.getTask(task.id)) ?? task;
   const updateStatus  = useOperativeStore(s => s.updateStatus);
   const updateDueDate = useOperativeStore(s => s.updateDueDate);
   const addSubtask    = useOperativeStore(s => s.addSubtask);
@@ -249,22 +341,30 @@ function TaskCard({
 
   const cycleStatus = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    const next = STATUS[liveTask.status].next;
-    updateStatus(liveTask.id, userId, next);
+    updateStatus(liveTask.id, userId, STATUS[liveTask.status].next);
   }, [liveTask.id, liveTask.status, userId, updateStatus]);
 
   const markDone = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    if (liveTask.status !== "done") updateStatus(liveTask.id, userId, "done");
-    else updateStatus(liveTask.id, userId, "todo");
+    updateStatus(liveTask.id, userId, liveTask.status !== "done" ? "done" : "todo");
   }, [liveTask.id, liveTask.status, userId, updateStatus]);
 
   const isDone = liveTask.status === "done";
-  const s = STATUS[liveTask.status];
-  const dl = deadlineInfo(liveTask.dueDate);
-  const subDone = liveTask.progress.done;
+  const dl     = deadlineInfo(liveTask.dueDate);
+  const dlStyle = getDeadlineStyle(dl, isDone);
+
+  const subDone  = liveTask.progress.done;
   const subTotal = liveTask.progress.total;
-  const subPct = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
+  const subPct   = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
+  const s        = STATUS[liveTask.status];
+
+  // Цвет левой рамки карточки — по статусу или по дедлайну
+  const leftBorderColor = dlStyle?.cardBorder && !isDone
+    ? dlStyle.cardBorder
+    : isDone ? "#34d399" : s.dot;
+
+  // Дополнительный glow для срочных задач
+  const cardGlow = dlStyle?.cardGlow && !isDone ? dlStyle.cardGlow : "transparent";
 
   return (
     <motion.div
@@ -273,29 +373,34 @@ function TaskCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97 }}
       transition={{ duration: 0.2 }}
-      className="rounded-xl overflow-hidden"
+      className="rounded-xl overflow-hidden relative"
       style={{
-        background: isDone ? "var(--bg-overlay)" : "var(--bg-overlay)",
-        border: `1px solid ${
-          isDone ? "var(--glass-border)"
-          : dl?.isOverdue ? "rgba(239,68,68,0.3)"
-          : "var(--glass-border)"
-        }`,
-        borderLeft: `2px solid ${
-          isDone ? "#34d399"
-          : dl?.isOverdue ? "#f87171"
-          : s.dot
-        }`,
-        opacity: isDone ? 0.72 : 1,
+        background:  isDone ? "var(--bg-overlay)" : "var(--bg-overlay)",
+        border:      `1px solid ${dlStyle && !isDone ? dlStyle.border : "var(--glass-border)"}`,
+        borderLeft:  `2px solid ${leftBorderColor}`,
+        opacity:     isDone ? 0.72 : 1,
+        boxShadow:   dlStyle && !isDone
+          ? `0 0 16px ${cardGlow}, inset 0 0 0 0 transparent`
+          : "none",
       }}
     >
+      {/* Мигающая полоска сверху для просроченных */}
+      {dlStyle?.pulse && !isDone && (
+        <motion.div
+          className="absolute top-0 left-0 right-0 h-0.5"
+          style={{ background: `linear-gradient(90deg, transparent, ${leftBorderColor}, transparent)` }}
+          animate={{ opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 1.5, repeat: Infinity }}
+        />
+      )}
+
       {/* ── Main row ──────────────────────────────────────────── */}
       <div className="px-3 py-2.5 space-y-2">
         {/* Row 1: status + due + expand */}
         <div className="flex items-center gap-2">
           <StatusPill status={liveTask.status} onClick={cycleStatus} disabled={offline} />
           <div className="flex-1 min-w-0" />
-          <DueBadge dueDate={liveTask.dueDate} />
+          <DueBadge dueDate={liveTask.dueDate} isDone={isDone} />
           <button
             onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
             className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center transition-colors"
@@ -315,7 +420,7 @@ function TaskCard({
           <p
             className="text-sm font-medium leading-snug flex-1"
             style={{
-              color: isDone ? "var(--text-muted)" : "var(--text-primary)",
+              color:          isDone ? "var(--text-muted)" : "var(--text-primary)",
               textDecoration: isDone ? "line-through" : "none",
             }}
           >
@@ -330,8 +435,8 @@ function TaskCard({
               className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5 transition-all"
               style={{
                 background: isDone ? "rgba(52,211,153,0.15)" : "var(--glass-01)",
-                border: isDone ? "1.5px solid #34d399" : "1.5px solid var(--glass-border-active)",
-                color: isDone ? "#34d399" : "var(--text-muted)",
+                border:     isDone ? "1.5px solid #34d399" : "1.5px solid var(--glass-border-active)",
+                color:      isDone ? "#34d399" : "var(--text-muted)",
               }}
             >
               <svg viewBox="0 0 10 10" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
@@ -371,14 +476,13 @@ function TaskCard({
           >
             <div className="px-3 py-3 space-y-3" onClick={e => e.stopPropagation()}>
 
-              {/* Description */}
               {liveTask.description && (
                 <p className="text-xs leading-relaxed" style={{ color: "var(--text-muted)" }}>
                   {liveTask.description}
                 </p>
               )}
 
-              {/* Due date */}
+              {/* Due date editor */}
               <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase tracking-widest font-semibold shrink-0" style={{ color: "var(--text-muted)" }}>
                   Дедлайн
@@ -396,15 +500,19 @@ function TaskCard({
                       onBlur={() => setEditingDate(false)}
                       className="flex-1 px-2 py-1 rounded-lg text-xs outline-none"
                       style={{
-                        background: "var(--glass-01)",
-                        border: "1px solid var(--accent-500)",
-                        color: "var(--text-primary)",
+                        background:  "var(--glass-01)",
+                        border:      "1px solid var(--accent-500)",
+                        color:       "var(--text-primary)",
                         colorScheme: "light dark",
                       }}
                     />
                     {liveTask.dueDate && (
-                      <button onClick={() => { updateDueDate(liveTask.id, userId, null); setEditingDate(false); }}
-                        className="text-xs" style={{ color: "#f87171" }} title="Снять дедлайн">✕</button>
+                      <button
+                        onClick={() => { updateDueDate(liveTask.id, userId, null); setEditingDate(false); }}
+                        className="text-xs"
+                        style={{ color: "#f87171" }}
+                        title="Снять дедлайн"
+                      >✕</button>
                     )}
                   </div>
                 ) : (
@@ -412,18 +520,21 @@ function TaskCard({
                     onClick={() => !offline && setEditingDate(true)}
                     className="text-xs px-2 py-0.5 rounded-lg transition-colors"
                     style={{
-                      color: liveTask.dueDate ? (dl?.isOverdue ? "#f87171" : dl?.isSoon ? "#fbbf24" : "var(--text-secondary)") : "var(--text-muted)",
+                      color:      liveTask.dueDate
+                        ? (dl?.isOverdue ? "#f87171" : dl?.isSoon ? "#fbbf24" : "var(--text-secondary)")
+                        : "var(--text-muted)",
                       background: "var(--glass-01)",
-                      border: "1px solid var(--glass-border)",
-                      cursor: offline ? "default" : "pointer",
+                      border:     "1px solid var(--glass-border)",
+                      cursor:     offline ? "default" : "pointer",
                     }}
                   >
-                    {liveTask.dueDate ? (dl?.label + (dl?.isOverdue ? " ⚠" : "")) : (offline ? "—" : "+ Установить дедлайн")}
+                    {liveTask.dueDate
+                      ? `${formatDate(liveTask.dueDate)}${dl?.isOverdue ? " ⚠" : ""}`
+                      : (offline ? "—" : "+ Установить дедлайн")}
                   </button>
                 )}
               </div>
 
-              {/* Divider */}
               <div style={{ height: 1, background: "var(--glass-border)" }} />
 
               {/* Subtasks */}
@@ -511,9 +622,9 @@ function AddTaskForm({
   onAdd: (title: string, dueDate: string | null) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [title, setTitle]   = useState("");
-  const [dueDate, setDate]  = useState("");
-  const [saving, setSaving] = useState(false);
+  const [title,   setTitle]   = useState("");
+  const [dueDate, setDate]    = useState("");
+  const [saving,  setSaving]  = useState(false);
   const [showDate, setShowDate] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
@@ -522,8 +633,13 @@ function AddTaskForm({
     const t = title.trim();
     if (!t || saving) return;
     setSaving(true);
-    try { await onAdd(t, dueDate ? `${dueDate}T00:00:00.000Z` : null); }
-    finally { setSaving(false); }
+    try {
+      await onAdd(t, dueDate ? `${dueDate}T00:00:00.000Z` : null);
+    } catch (e) {
+      console.error("[AddTaskForm] submit error:", e);
+    } finally {
+      setSaving(false);
+    }
   }, [title, dueDate, saving, onAdd]);
 
   return (
@@ -535,8 +651,8 @@ function AddTaskForm({
       className="rounded-xl overflow-hidden"
       style={{
         background: "var(--bg-overlay)",
-        border: `1px solid ${accentColor}50`,
-        boxShadow: `0 0 0 3px ${accentColor}10`,
+        border:     `1px solid ${accentColor}50`,
+        boxShadow:  `0 0 0 3px ${accentColor}10`,
       }}
     >
       <div className="px-3 pt-2.5 pb-2 space-y-2">
@@ -545,7 +661,7 @@ function AddTaskForm({
           value={title}
           onChange={e => setTitle(e.target.value)}
           onKeyDown={e => {
-            if (e.key === "Enter") { e.preventDefault(); submit(); }
+            if (e.key === "Enter")  { e.preventDefault(); submit(); }
             if (e.key === "Escape") { e.preventDefault(); onCancel(); }
           }}
           placeholder="Название задачи..."
@@ -575,7 +691,9 @@ function AddTaskForm({
                   className="flex-1 text-xs bg-transparent outline-none"
                   style={{ color: dueDate ? "var(--text-secondary)" : "var(--text-muted)", colorScheme: "light dark" }}
                 />
-                {dueDate && <button onClick={() => setDate("")} style={{ color: "var(--text-muted)" }}>✕</button>}
+                {dueDate && (
+                  <button onClick={() => setDate("")} style={{ color: "var(--text-muted)" }}>✕</button>
+                )}
               </div>
             </motion.div>
           )}
@@ -587,9 +705,9 @@ function AddTaskForm({
           onClick={() => setShowDate(v => !v)}
           className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg transition-colors"
           style={{
-            color: showDate ? accentColor : "var(--text-muted)",
+            color:      showDate ? accentColor : "var(--text-muted)",
             background: showDate ? `${accentColor}12` : "transparent",
-            border: `1px solid ${showDate ? accentColor + "30" : "transparent"}`,
+            border:     `1px solid ${showDate ? accentColor + "30" : "transparent"}`,
           }}
         >
           <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
@@ -612,9 +730,9 @@ function AddTaskForm({
           className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
           style={{
             background: title.trim() ? `${accentColor}22` : "var(--glass-01)",
-            border: `1px solid ${title.trim() ? accentColor + "45" : "var(--glass-border)"}`,
-            color: title.trim() ? accentColor : "var(--text-muted)",
-            opacity: saving ? 0.6 : 1,
+            border:     `1px solid ${title.trim() ? accentColor + "45" : "var(--glass-border)"}`,
+            color:      title.trim() ? accentColor : "var(--text-muted)",
+            opacity:    saving ? 0.6 : 1,
           }}
         >
           {saving ? "..." : "Добавить ↵"}
@@ -624,26 +742,34 @@ function AddTaskForm({
   );
 }
 
-// ── Sort tasks ────────────────────────────────────────────────────────────────
+// ── Sort tasks — В работе → К работе → Готово ─────────────────────────────────
 
 const STATUS_ORDER_MAP: Record<OperativeTaskStatus, number> = {
   in_progress: 0,
-  todo: 1,
-  done: 2,
+  todo:        1,
+  done:        2,
 };
 
 function sortTasks(tasks: OperativeTaskView[]): OperativeTaskView[] {
   return [...tasks].sort((a, b) => {
-    const so = STATUS_ORDER_MAP[a.status] - STATUS_ORDER_MAP[b.status];
-    if (so !== 0) return so;
-    // Within same status: overdue first, then by due date asc, then no due date
-    const aInfo = deadlineInfo(a.dueDate);
-    const bInfo = deadlineInfo(b.dueDate);
-    if (aInfo?.isOverdue && !bInfo?.isOverdue) return -1;
-    if (!aInfo?.isOverdue && bInfo?.isOverdue) return 1;
-    if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+    // 1. Статус: В работе → К работе → Готово
+    const statusDiff = STATUS_ORDER_MAP[a.status] - STATUS_ORDER_MAP[b.status];
+    if (statusDiff !== 0) return statusDiff;
+
+    // 2. Внутри статуса: просроченные ПЕРВЫМИ
+    const aOverdue = !!(a.dueDate && new Date(a.dueDate) < new Date() && a.status !== "done");
+    const bOverdue = !!(b.dueDate && new Date(b.dueDate) < new Date() && b.status !== "done");
+    if (aOverdue && !bOverdue) return -1;
+    if (!aOverdue && bOverdue) return 1;
+
+    // 3. По ближайшему дедлайну (сначала срочные)
+    if (a.dueDate && b.dueDate) {
+      return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    }
     if (a.dueDate && !b.dueDate) return -1;
     if (!a.dueDate && b.dueDate) return 1;
+
+    // 4. По sortOrder
     return a.sortOrder - b.sortOrder;
   });
 }
@@ -656,7 +782,7 @@ interface Props {
 
 export function UserTaskBlock({ block }: Props) {
   const { user } = block;
-  const offline   = useIsOffline();
+  const offline  = useIsOffline();
   const [adding, setAdding] = useState(false);
 
   const tasks   = useOperativeStore(useShallow(s => s.getTasksForUser(user.id)));
@@ -665,35 +791,44 @@ export function UserTaskBlock({ block }: Props) {
   const accentColor = user.roleMeta.hex;
   const sorted = sortTasks(tasks);
 
-  const total = tasks.length;
-  const done  = tasks.filter(t => t.status === "done").length;
-  const inProg = tasks.filter(t => t.status === "in_progress").length;
-  const overdue = tasks.filter(t => deadlineInfo(t.dueDate)?.isOverdue && t.status !== "done").length;
+  const total    = tasks.length;
+  const done     = tasks.filter(t => t.status === "done").length;
+  const inProg   = tasks.filter(t => t.status === "in_progress").length;
+  const overdue  = tasks.filter(t => {
+    const dl = deadlineInfo(t.dueDate);
+    return dl?.isOverdue && t.status !== "done";
+  }).length;
+  const urgent   = tasks.filter(t => {
+    const dl = deadlineInfo(t.dueDate);
+    return dl?.isSoon && !dl.isOverdue && t.status !== "done";
+  }).length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const handleAdd = useCallback(async (title: string, dueDate: string | null) => {
     setAdding(false);
-    await addTask({ userId: user.id, title, dueDate });
+    const result = await addTask({ userId: user.id, title, dueDate });
+    if (!result) {
+      console.error("[UserTaskBlock] addTask failed for userId:", user.id);
+    }
   }, [user.id, addTask]);
 
   return (
     <div
       className="flex flex-col rounded-2xl overflow-hidden"
       style={{
-        background: "var(--bg-elevated)",
-        border: "1px solid var(--glass-border)",
-        borderTop: `3px solid ${accentColor}`,
+        background:   "var(--bg-elevated)",
+        border:       "1px solid var(--glass-border)",
+        borderTop:    `3px solid ${accentColor}`,
       }}
     >
       {/* ── Header ─────────────────────────────────────────────── */}
       <div
         className="px-4 py-3 flex items-start gap-3"
         style={{
-          background: `linear-gradient(135deg, ${accentColor}0c 0%, transparent 55%)`,
+          background:   `linear-gradient(135deg, ${accentColor}0c 0%, transparent 55%)`,
           borderBottom: "1px solid var(--glass-border)",
         }}
       >
-        {/* Avatar */}
         <div
           className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white shrink-0 mt-0.5"
           style={{ backgroundColor: accentColor, boxShadow: `0 0 14px ${accentColor}45` }}
@@ -701,7 +836,6 @@ export function UserTaskBlock({ block }: Props) {
           {user.initials}
         </div>
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>
             {user.name}
@@ -715,15 +849,31 @@ export function UserTaskBlock({ block }: Props) {
             </span>
           </div>
 
-          {/* Mini progress bar */}
           {total > 0 && (
             <div className="mt-2 space-y-1">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[10px] font-mono">
-                  {inProg > 0 && <span style={{ color: "#38bdf8" }}>●{inProg} в работе</span>}
-                  {overdue > 0 && <span style={{ color: "#f87171" }}>⚠{overdue} просроч.</span>}
+                <div className="flex items-center gap-2 text-[10px] font-mono flex-wrap">
+                  {inProg > 0 && (
+                    <span style={{ color: "#38bdf8" }}>● {inProg} в работе</span>
+                  )}
+                  {/* Красный счётчик для просроченных */}
+                  {overdue > 0 && (
+                    <motion.span
+                      style={{ color: "#f87171" }}
+                      animate={{ opacity: [1, 0.5, 1] }}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                    >
+                      ⚠ {overdue} просроч.
+                    </motion.span>
+                  )}
+                  {/* Жёлтый счётчик для срочных (≤3 дней) */}
+                  {urgent > 0 && overdue === 0 && (
+                    <span style={{ color: "#fbbf24" }}>⏰ {urgent} срочно</span>
+                  )}
                 </div>
-                <span className="text-[10px] font-mono" style={{ color: accentColor }}>{done}/{total}</span>
+                <span className="text-[10px] font-mono" style={{ color: accentColor }}>
+                  {done}/{total}
+                </span>
               </div>
               <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
                 <motion.div
@@ -795,7 +945,12 @@ export function UserTaskBlock({ block }: Props) {
         {offline ? (
           <div
             className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs"
-            style={{ color: "var(--text-muted)", background: "var(--glass-01)", border: "1px solid var(--glass-border)", opacity: 0.6 }}
+            style={{
+              color:      "var(--text-muted)",
+              background: "var(--glass-01)",
+              border:     "1px solid var(--glass-border)",
+              opacity:    0.6,
+            }}
           >
             <svg viewBox="0 0 14 14" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
               <rect x="2" y="6" width="10" height="7" rx="1.5" />
@@ -812,11 +967,11 @@ export function UserTaskBlock({ block }: Props) {
             transition={{ duration: 0.15 }}
             className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-xl text-xs font-medium"
             style={{
-              border: "1px dashed var(--glass-border)",
-              color: "var(--text-muted)",
-              background: "transparent",
-              opacity: adding ? 0 : 1,
-              transition: "opacity 0.15s, border-color 0.15s, color 0.15s, background 0.15s",
+              border:      "1px dashed var(--glass-border)",
+              color:       "var(--text-muted)",
+              background:  "transparent",
+              opacity:     adding ? 0 : 1,
+              transition:  "opacity 0.15s, border-color 0.15s, color 0.15s, background 0.15s",
             }}
           >
             <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">

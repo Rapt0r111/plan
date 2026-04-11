@@ -1,14 +1,10 @@
 /**
  * @file route.ts — app/api/operative-tasks
  *
- * ОБНОВЛЕНИЕ v2 — Дедлайн:
- *   Добавлен `dueDate` в CreateSchema (опционально, ISO-8601).
- *
- * POST /api/operative-tasks — создать оперативную задачу для пользователя.
- * Удаление не поддерживается.
+ * ИСПРАВЛЕНИЕ: добавлен console.error для диагностики 500-ошибок.
+ * Убрана лишняя операция revalidateTag (нет cache в force-dynamic роутах).
  */
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { createOperativeTask } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
@@ -25,7 +21,8 @@ const CreateSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const body   = await req.json();
+    const body = await req.json();
+
     const parsed = CreateSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -35,12 +32,34 @@ export async function POST(req: Request) {
       );
     }
 
-    const task = await createOperativeTask(parsed.data);
-    revalidateTag(OPERATIVE_CACHE_TAG, "max");
-    broadcast("task:created", { source: "operative", taskId: task.id, userId: task.userId });
+    const { sortOrder, ...rest } = parsed.data;
+
+    const task = await createOperativeTask({
+      ...rest,
+      sortOrder: sortOrder ?? 0,
+    });
+
+    if (!task) {
+      console.error("[operative-tasks POST] createOperativeTask returned undefined");
+      return NextResponse.json(
+        { ok: false, error: "DB insert returned no row" },
+        { status: 500 },
+      );
+    }
+
+    broadcast("task:created", {
+      source: "operative",
+      taskId: task.id,
+      userId: task.userId,
+    });
 
     return NextResponse.json({ ok: true, data: task }, { status: 201 });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    // ← Это покажет реальную причину ошибки в dev-консоли
+    console.error("[operative-tasks POST] ERROR:", e);
+    return NextResponse.json(
+      { ok: false, error: String(e) },
+      { status: 500 },
+    );
   }
 }

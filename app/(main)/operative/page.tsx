@@ -15,7 +15,7 @@ export default async function OperativeRoute() {
 
   const allTasks = data.flatMap(b => b.tasks);
   const totalTasks = allTasks.length;
-  const doneTasks  = allTasks.filter(t => t.status === "done").length;
+  const doneTasks = allTasks.filter(t => t.status === "done").length;
   const inProgress = allTasks.filter(t => t.status === "in_progress").length;
 
   // Просроченные (dueDate < now и статус не done)
@@ -76,7 +76,7 @@ export default async function OperativeRoute() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        <OperativePage initialData={data} />
+        <OperativePage initialData={data} isAdmin={isAdmin} />
       </div>
     </div>
   );

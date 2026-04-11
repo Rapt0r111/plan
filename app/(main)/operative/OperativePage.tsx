@@ -16,6 +16,7 @@ import type { UserWithOperativeTasks } from "@/entities/operative/operativeRepos
 
 interface Props {
   initialData: UserWithOperativeTasks[];
+  isAdmin: boolean;
 }
 
 export function OperativePage({ initialData }: Props) {

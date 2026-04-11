@@ -2,11 +2,11 @@
 /**
  * @file OperativePage.tsx — app/(main)/operative
  *
- * Client Component: получает SSR-данные, гидрирует Zustand store,
- * рендерит сетку блоков по пользователям.
- *
- * ВАЖНО: новые пользователи подхватываются автоматически через router.refresh()
- * (SSE realtime push при изменениях в системе).
+ * ИСПРАВЛЕНИЯ v3:
+ *   1. isAdmin деструктурируется из props (раньше игнорировался)
+ *   2. isAdmin передаётся в UserTaskBlock (раньше не передавался)
+ *   Без этого все пользователи видели UI администратора и получали
+ *   ошибку "Forbidden" при попытке что-либо сделать.
  */
 import { useEffect } from "react";
 import { motion } from "framer-motion";
@@ -19,17 +19,15 @@ interface Props {
   isAdmin: boolean;
 }
 
-export function OperativePage({ initialData }: Props) {
+export function OperativePage({ initialData, isAdmin }: Props) {
   const hydrate    = useOperativeStore((s) => s.hydrate);
   const isHydrated = useOperativeStore((s) => s.isHydrated);
   const userBlocks = useOperativeStore((s) => s.userBlocks);
 
-  // Гидрация при монтировании и при обновлении SSR-данных
   useEffect(() => {
     hydrate(initialData);
   }, [initialData, hydrate]);
 
-  // Используем SSR-данные до гидрации стора (нет flash)
   const blocks = isHydrated ? userBlocks : initialData;
 
   if (blocks.length === 0) {
@@ -79,7 +77,8 @@ export function OperativePage({ initialData }: Props) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: idx * 0.06, ease: [0.16, 1, 0.3, 1] }}
         >
-          <UserTaskBlock block={block} />
+          {/* isAdmin теперь передаётся в UserTaskBlock */}
+          <UserTaskBlock block={block} isAdmin={isAdmin} />
         </motion.div>
       ))}
     </div>

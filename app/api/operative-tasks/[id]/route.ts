@@ -1,12 +1,10 @@
 /**
  * @file route.ts — app/api/operative-tasks/[id]
  *
- * ОБНОВЛЕНИЕ v2 — Дедлайн:
- *   Расширен PatchSchema — теперь поддерживает `dueDate` в дополнение к `status`.
- *   Оба поля опциональны, достаточно передать хотя бы одно.
- *
- * PATCH /api/operative-tasks/:id — изменить статус и/или дедлайн задачи.
- * DELETE намеренно отсутствует.
+ * ИСПРАВЛЕНИЯ:
+ *   1. Добавлена проверка аутентификации на PATCH
+ *   2. Только администраторы могут менять статус/дедлайн
+ *   Раньше маршрут был открыт без авторизации.
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -17,6 +15,8 @@ import {
 } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
 import { OPERATIVE_CACHE_TAG } from "../route";
+import { auth } from "@/shared/lib/auth";
+import { headers } from "next/headers";
 
 const PatchSchema = z.object({
   status:  z.enum(["todo", "in_progress", "done"]).optional(),
@@ -30,6 +30,23 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
+    // ── Проверка аутентификации ──────────────────────────────────────────────
+    const session = await auth.api.getSession({ headers: await headers() });
+
+    if (!session?.user) {
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    if (session.user.role !== "admin") {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden: requires admin role" },
+        { status: 403 },
+      );
+    }
+
     const { id } = await params;
     const taskId = Number(id);
 
@@ -50,12 +67,10 @@ export async function PATCH(req: Request, { params }: Params) {
     const { status, dueDate } = parsed.data;
     let task;
 
-    // Apply status update if provided
     if (status !== undefined) {
       task = await updateOperativeTaskStatus(taskId, status);
     }
 
-    // Apply dueDate update if provided
     if (dueDate !== undefined) {
       task = await updateOperativeTaskDueDate(taskId, dueDate);
     }

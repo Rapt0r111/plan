@@ -2,10 +2,18 @@
 /**
  * @file UserTaskBlock.tsx — widgets/operative
  *
- * ИЗМЕНЕНИЯ:
- * 1. Подсветка дедлайна: красная анимация для задач с дедлайном ≤3 дней
- * 2. DueBadge — пульсирующий красный для просроченных и срочных
- * 3. Карточка — красная рамка + glow при критичном дедлайне
+ * ИСПРАВЛЕНИЯ v4:
+ *   1. Принимает проп isAdmin (раньше его не было)
+ *   2. Все мутирующие UI-элементы скрыты для неадминистраторов:
+ *      - кнопка статуса (cycleStatus / markDone)
+ *      - редактор дедлайна
+ *      - добавление подзадач
+ *      - кнопка «Добавить задачу»
+ *   3. isAdmin || offline оба блокируют мутации:
+ *      - offline: нет сети → блокировано
+ *      - !isAdmin: нет прав → скрыто
+ *   Это соответствует тому, что уже есть на сервере:
+ *   adminActionClient в operativeActions.ts и 403 в API-маршрутах.
  */
 import { useState, useRef, useCallback, useEffect, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -36,7 +44,7 @@ const STATUS: Record<
 interface DeadlineInfo {
   label:     string;
   isOverdue: boolean;
-  isSoon:    boolean;   // ≤3 дней до дедлайна
+  isSoon:    boolean;
   isToday:   boolean;
   daysLeft:  number;
 }
@@ -59,8 +67,6 @@ function deadlineInfo(dueDate: string | null | undefined): DeadlineInfo | null {
     daysLeft: Math.max(0, Math.floor(daysLeft)),
   };
 }
-
-// ── Deadline visual tokens ────────────────────────────────────────────────────
 
 function getDeadlineStyle(info: DeadlineInfo | null, isDone: boolean) {
   if (!info || isDone) return null;
@@ -88,7 +94,6 @@ function getDeadlineStyle(info: DeadlineInfo | null, isDone: boolean) {
     };
   }
   if (info.isSoon) {
-    // ≤3 дней — подсвечиваем красным/оранжевым
     return {
       color:       "#fbbf24",
       bg:          "rgba(251,191,36,0.12)",
@@ -121,9 +126,9 @@ const StatusPill = memo(function StatusPill({
         color:      s.color,
         border:     `1px solid ${s.dot}28`,
         cursor:     disabled ? "default" : "pointer",
-        opacity:    disabled ? 0.6 : 1,
+        opacity:    disabled ? 0.7 : 1,
       }}
-      title={disabled ? "Офлайн — только просмотр" : `Нажмите → ${STATUS[s.next].label}`}
+      title={disabled ? "Смена статуса недоступна" : `Нажмите → ${STATUS[s.next].label}`}
     >
       <motion.span
         className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -150,7 +155,6 @@ function DueBadge({
 
   if (!info) return null;
 
-  // Если задача готова — просто серый текст
   if (isDone) {
     return (
       <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
@@ -159,7 +163,6 @@ function DueBadge({
     );
   }
 
-  // Нет критичности — простой серый бейдж
   if (!style) {
     return (
       <span
@@ -185,7 +188,6 @@ function DueBadge({
       }}
       title={info.isOverdue ? "Просрочено!" : info.isToday ? "Дедлайн сегодня!" : `Осталось ${info.daysLeft} дн.`}
     >
-      {/* Пульсирующая точка для просроченных и сегодняшних */}
       {style.pulse ? (
         <motion.span
           className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -207,12 +209,12 @@ function DueBadge({
 // ── Subtask row ───────────────────────────────────────────────────────────────
 
 const SubtaskRow = memo(function SubtaskRow({
-  subtask, accentColor, onToggle, disabled,
+  subtask, accentColor, onToggle, canEdit,
 }: {
   subtask: { id: number; title: string; isCompleted: boolean };
   accentColor: string;
   onToggle: () => void;
-  disabled: boolean;
+  canEdit: boolean;
 }) {
   return (
     <motion.div
@@ -220,8 +222,8 @@ const SubtaskRow = memo(function SubtaskRow({
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       className="flex items-center gap-2.5 py-1.5 group/st"
-      onClick={disabled ? undefined : onToggle}
-      style={{ cursor: disabled ? "default" : "pointer" }}
+      onClick={canEdit ? onToggle : undefined}
+      style={{ cursor: canEdit ? "pointer" : "default" }}
     >
       <div
         className="w-4 h-4 rounded-md shrink-0 flex items-center justify-center border transition-all duration-150"
@@ -308,7 +310,10 @@ function InlineInput({
         style={{ color: "var(--text-primary)" }}
       />
       <div className="flex items-center gap-1.5 shrink-0">
-        <kbd className="px-1.5 py-0.5 rounded text-[9px] font-mono" style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)", color: "var(--text-muted)" }}>↵</kbd>
+        <kbd
+          className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+          style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)", color: "var(--text-muted)" }}
+        >↵</kbd>
         <button onMouseDown={e => { e.preventDefault(); onCancel(); }} style={{ color: "var(--text-muted)", lineHeight: 1 }}>
           <svg viewBox="0 0 10 10" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
             <path d="M2 2l6 6M8 2L2 8" />
@@ -322,12 +327,13 @@ function InlineInput({
 // ── Task card ─────────────────────────────────────────────────────────────────
 
 function TaskCard({
-  task, userId, accentColor, offline,
+  task, userId, accentColor, canEdit,
 }: {
   task: OperativeTaskView;
   userId: number;
   accentColor: string;
-  offline: boolean;
+  /** canEdit = isAdmin && !offline */
+  canEdit: boolean;
 }) {
   const [open,        setOpen]        = useState(false);
   const [addingSub,   setAddingSub]   = useState(false);
@@ -358,12 +364,10 @@ function TaskCard({
   const subPct   = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
   const s        = STATUS[liveTask.status];
 
-  // Цвет левой рамки карточки — по статусу или по дедлайну
   const leftBorderColor = dlStyle?.cardBorder && !isDone
     ? dlStyle.cardBorder
     : isDone ? "#34d399" : s.dot;
 
-  // Дополнительный glow для срочных задач
   const cardGlow = dlStyle?.cardGlow && !isDone ? dlStyle.cardGlow : "transparent";
 
   return (
@@ -375,7 +379,7 @@ function TaskCard({
       transition={{ duration: 0.2 }}
       className="rounded-xl overflow-hidden relative"
       style={{
-        background:  isDone ? "var(--bg-overlay)" : "var(--bg-overlay)",
+        background:  "var(--bg-overlay)",
         border:      `1px solid ${dlStyle && !isDone ? dlStyle.border : "var(--glass-border)"}`,
         borderLeft:  `2px solid ${leftBorderColor}`,
         opacity:     isDone ? 0.72 : 1,
@@ -384,7 +388,6 @@ function TaskCard({
           : "none",
       }}
     >
-      {/* Мигающая полоска сверху для просроченных */}
       {dlStyle?.pulse && !isDone && (
         <motion.div
           className="absolute top-0 left-0 right-0 h-0.5"
@@ -396,9 +399,12 @@ function TaskCard({
 
       {/* ── Main row ──────────────────────────────────────────── */}
       <div className="px-3 py-2.5 space-y-2">
-        {/* Row 1: status + due + expand */}
         <div className="flex items-center gap-2">
-          <StatusPill status={liveTask.status} onClick={cycleStatus} disabled={offline} />
+          <StatusPill
+            status={liveTask.status}
+            onClick={cycleStatus}
+            disabled={!canEdit}
+          />
           <div className="flex-1 min-w-0" />
           <DueBadge dueDate={liveTask.dueDate} isDone={isDone} />
           <button
@@ -415,7 +421,6 @@ function TaskCard({
           </button>
         </div>
 
-        {/* Row 2: title + done button */}
         <div className="flex items-start gap-2">
           <p
             className="text-sm font-medium leading-snug flex-1"
@@ -426,7 +431,8 @@ function TaskCard({
           >
             {liveTask.title}
           </p>
-          {!offline && (
+          {/* Кнопка выполнить — только для администраторов */}
+          {canEdit && (
             <motion.button
               onClick={markDone}
               whileHover={{ scale: 1.1 }}
@@ -446,7 +452,6 @@ function TaskCard({
           )}
         </div>
 
-        {/* Row 3: subtask mini-progress */}
         {subTotal > 0 && (
           <div className="flex items-center gap-2">
             <div className="flex-1 h-0.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
@@ -482,12 +487,12 @@ function TaskCard({
                 </p>
               )}
 
-              {/* Due date editor */}
+              {/* Due date editor — только для администраторов */}
               <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase tracking-widest font-semibold shrink-0" style={{ color: "var(--text-muted)" }}>
                   Дедлайн
                 </span>
-                {editingDate && !offline ? (
+                {editingDate && canEdit ? (
                   <div className="flex items-center gap-2 flex-1">
                     <input
                       autoFocus
@@ -517,7 +522,7 @@ function TaskCard({
                   </div>
                 ) : (
                   <button
-                    onClick={() => !offline && setEditingDate(true)}
+                    onClick={() => canEdit && setEditingDate(true)}
                     className="text-xs px-2 py-0.5 rounded-lg transition-colors"
                     style={{
                       color:      liveTask.dueDate
@@ -525,12 +530,12 @@ function TaskCard({
                         : "var(--text-muted)",
                       background: "var(--glass-01)",
                       border:     "1px solid var(--glass-border)",
-                      cursor:     offline ? "default" : "pointer",
+                      cursor:     canEdit ? "pointer" : "default",
                     }}
                   >
                     {liveTask.dueDate
                       ? `${formatDate(liveTask.dueDate)}${dl?.isOverdue ? " ⚠" : ""}`
-                      : (offline ? "—" : "+ Установить дедлайн")}
+                      : (canEdit ? "+ Установить дедлайн" : "—")}
                   </button>
                 )}
               </div>
@@ -552,12 +557,12 @@ function TaskCard({
 
                 <div className="space-y-0.5">
                   <AnimatePresence>
-                    {liveTask.subtasks.map(st => (
+                    {liveTask.subtasks.map((st: OperativeSubtaskView) => (
                       <SubtaskRow
                         key={st.id}
                         subtask={st}
                         accentColor={accentColor}
-                        disabled={offline}
+                        canEdit={canEdit}
                         onToggle={() => toggleSubtask(liveTask.id, userId, st.id, st.isCompleted)}
                       />
                     ))}
@@ -583,7 +588,8 @@ function TaskCard({
                   )}
                 </AnimatePresence>
 
-                {!addingSub && !offline && (
+                {/* Кнопка добавить подзадачу — только для администраторов */}
+                {!addingSub && canEdit && (
                   <button
                     onClick={() => setAddingSub(true)}
                     className="mt-2 flex items-center gap-1.5 text-xs w-full px-1 py-1 rounded-lg transition-all"
@@ -622,9 +628,9 @@ function AddTaskForm({
   onAdd: (title: string, dueDate: string | null) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [title,   setTitle]   = useState("");
-  const [dueDate, setDate]    = useState("");
-  const [saving,  setSaving]  = useState(false);
+  const [title,    setTitle]    = useState("");
+  const [dueDate,  setDate]     = useState("");
+  const [saving,   setSaving]   = useState(false);
   const [showDate, setShowDate] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
@@ -635,8 +641,6 @@ function AddTaskForm({
     setSaving(true);
     try {
       await onAdd(t, dueDate ? `${dueDate}T00:00:00.000Z` : null);
-    } catch (e) {
-      console.error("[AddTaskForm] submit error:", e);
     } finally {
       setSaving(false);
     }
@@ -742,7 +746,7 @@ function AddTaskForm({
   );
 }
 
-// ── Sort tasks — В работе → К работе → Готово ─────────────────────────────────
+// ── Sort tasks ────────────────────────────────────────────────────────────────
 
 const STATUS_ORDER_MAP: Record<OperativeTaskStatus, number> = {
   in_progress: 0,
@@ -752,24 +756,20 @@ const STATUS_ORDER_MAP: Record<OperativeTaskStatus, number> = {
 
 function sortTasks(tasks: OperativeTaskView[]): OperativeTaskView[] {
   return [...tasks].sort((a, b) => {
-    // 1. Статус: В работе → К работе → Готово
     const statusDiff = STATUS_ORDER_MAP[a.status] - STATUS_ORDER_MAP[b.status];
     if (statusDiff !== 0) return statusDiff;
 
-    // 2. Внутри статуса: просроченные ПЕРВЫМИ
     const aOverdue = !!(a.dueDate && new Date(a.dueDate) < new Date() && a.status !== "done");
     const bOverdue = !!(b.dueDate && new Date(b.dueDate) < new Date() && b.status !== "done");
     if (aOverdue && !bOverdue) return -1;
     if (!aOverdue && bOverdue) return 1;
 
-    // 3. По ближайшему дедлайну (сначала срочные)
     if (a.dueDate && b.dueDate) {
       return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
     }
     if (a.dueDate && !b.dueDate) return -1;
     if (!a.dueDate && b.dueDate) return 1;
 
-    // 4. По sortOrder
     return a.sortOrder - b.sortOrder;
   });
 }
@@ -778,12 +778,18 @@ function sortTasks(tasks: OperativeTaskView[]): OperativeTaskView[] {
 
 interface Props {
   block: UserWithOperativeTasks;
+  /** Передаётся из OperativePage, который получает из operative/page.tsx через сессию */
+  isAdmin: boolean;
 }
 
-export function UserTaskBlock({ block }: Props) {
+export function UserTaskBlock({ block, isAdmin }: Props) {
   const { user } = block;
   const offline  = useIsOffline();
   const [adding, setAdding] = useState(false);
+
+  // canEdit = администратор И есть сеть
+  // Только при обоих условиях показываем мутирующий UI
+  const canEdit = isAdmin && !offline;
 
   const tasks   = useOperativeStore(useShallow(s => s.getTasksForUser(user.id)));
   const addTask = useOperativeStore(s => s.addTask);
@@ -806,10 +812,7 @@ export function UserTaskBlock({ block }: Props) {
 
   const handleAdd = useCallback(async (title: string, dueDate: string | null) => {
     setAdding(false);
-    const result = await addTask({ userId: user.id, title, dueDate });
-    if (!result) {
-      console.error("[UserTaskBlock] addTask failed for userId:", user.id);
-    }
+    await addTask({ userId: user.id, title, dueDate });
   }, [user.id, addTask]);
 
   return (
@@ -856,7 +859,6 @@ export function UserTaskBlock({ block }: Props) {
                   {inProg > 0 && (
                     <span style={{ color: "#38bdf8" }}>● {inProg} в работе</span>
                   )}
-                  {/* Красный счётчик для просроченных */}
                   {overdue > 0 && (
                     <motion.span
                       style={{ color: "#f87171" }}
@@ -866,7 +868,6 @@ export function UserTaskBlock({ block }: Props) {
                       ⚠ {overdue} просроч.
                     </motion.span>
                   )}
-                  {/* Жёлтый счётчик для срочных (≤3 дней) */}
                   {urgent > 0 && overdue === 0 && (
                     <span style={{ color: "#fbbf24" }}>⏰ {urgent} срочно</span>
                   )}
@@ -908,7 +909,7 @@ export function UserTaskBlock({ block }: Props) {
                 </svg>
               </div>
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>Нет задач</p>
-              {!offline && (
+              {canEdit && (
                 <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
                   Нажмите «+» чтобы добавить
                 </p>
@@ -922,7 +923,7 @@ export function UserTaskBlock({ block }: Props) {
               task={task}
               userId={user.id}
               accentColor={accentColor}
-              offline={offline}
+              canEdit={canEdit}
             />
           ))}
         </AnimatePresence>
@@ -942,7 +943,8 @@ export function UserTaskBlock({ block }: Props) {
 
       {/* ── Footer ─────────────────────────────────────────────── */}
       <div className="px-2.5 pb-2.5">
-        {offline ? (
+        {!canEdit ? (
+          /* Показываем разные сообщения: офлайн vs нет прав */
           <div
             className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs"
             style={{
@@ -952,11 +954,23 @@ export function UserTaskBlock({ block }: Props) {
               opacity:    0.6,
             }}
           >
-            <svg viewBox="0 0 14 14" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <rect x="2" y="6" width="10" height="7" rx="1.5" />
-              <path d="M4.5 6V4a2.5 2.5 0 0 1 5 0v2" />
-            </svg>
-            Только просмотр
+            {offline ? (
+              <>
+                <svg viewBox="0 0 14 14" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                  <rect x="2" y="6" width="10" height="7" rx="1.5" />
+                  <path d="M4.5 6V4a2.5 2.5 0 0 1 5 0v2" />
+                </svg>
+                Только просмотр (офлайн)
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 14 14" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                  <circle cx="7" cy="5" r="3" />
+                  <path d="M1 13a6 6 0 0 1 12 0" />
+                </svg>
+                Только просмотр
+              </>
+            )}
           </div>
         ) : (
           <motion.button

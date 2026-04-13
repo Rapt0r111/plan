@@ -9,6 +9,8 @@ import { z } from "zod";
 import { addTaskAssignee } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
+import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { writeAuditLog } from "@/shared/lib/audit";
 
 const AddAssigneeSchema = z.object({
   userId: z.number().int().positive(),
@@ -18,6 +20,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: Request, { params }: Params) {
   try {
+    const session = await requireSession();
     const { id } = await params;
     const taskId = Number(id);
 
@@ -39,9 +42,18 @@ export async function POST(req: Request, { params }: Params) {
     revalidateTag(EPICS_CACHE_TAG, "max");
 
     broadcast("task:assignee:added", { taskId, userId: parsed.data.userId });
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "add_assignee",
+      entityType: "task",
+      entityId: taskId,
+      metadata: { userId: parsed.data.userId },
+    });
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

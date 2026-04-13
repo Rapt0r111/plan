@@ -14,6 +14,8 @@ import { z } from "zod";
 import { createTaskWithRelations } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
+import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { writeAuditLog } from "@/shared/lib/audit";
 
 const SubtaskInputSchema = z.object({
   isCompleted: z.boolean().default(false),
@@ -35,6 +37,7 @@ const CreateTaskSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const session = await requireSession();
     const body   = await req.json();
     const parsed = CreateTaskSchema.safeParse(body);
 
@@ -64,12 +67,21 @@ export async function POST(req: Request) {
       epicId: parsed.data.epicId,
       title:  parsed.data.title,
     });
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "create",
+      entityType: "task",
+      entityId: result.taskId,
+      after: { ...taskData, assigneeIds, subtasks },
+    });
 
     return NextResponse.json(
       { ok: true, data: { id: result.taskId, subtaskIds: result.subtaskIds } },
       { status: 201 },
     );
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

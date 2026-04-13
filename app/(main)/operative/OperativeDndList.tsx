@@ -116,17 +116,14 @@ function SortableTaskCard({
 
         {/* Статус (кликабелен только для админа) */}
         <button
-          onClick={isAdmin
-            ? () => onStatusChange(task.id, task.status === "done" ? "todo" : "done")
-            : undefined
-          }
+          onClick={() => onStatusChange(task.id, task.status === "done" ? "todo" : "done")}
           className="text-xs px-2 py-0.5 rounded-full font-medium"
           style={{
             background: task.status === "done"
               ? "rgba(52,211,153,0.15)"
               : "rgba(100,116,139,0.15)",
             color:  task.status === "done" ? "#34d399" : "#94a3b8",
-            cursor: isAdmin ? "pointer" : "default",
+            cursor: "pointer",
           }}
         >
           {task.status === "done" ? "Готово" : "К работе"}

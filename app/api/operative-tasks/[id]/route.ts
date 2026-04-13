@@ -17,6 +17,7 @@ import { broadcast } from "@/shared/server/eventBus";
 import { OPERATIVE_CACHE_TAG } from "../route";
 import { auth } from "@/shared/lib/auth";
 import { headers } from "next/headers";
+import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchSchema = z.object({
   status:  z.enum(["todo", "in_progress", "done"]).optional(),
@@ -40,13 +41,6 @@ export async function PATCH(req: Request, { params }: Params) {
       );
     }
 
-    if (session.user.role !== "admin") {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden: requires admin role" },
-        { status: 403 },
-      );
-    }
-
     const { id } = await params;
     const taskId = Number(id);
 
@@ -65,6 +59,13 @@ export async function PATCH(req: Request, { params }: Params) {
     }
 
     const { status, dueDate } = parsed.data;
+    if (session.user.role !== "admin" && dueDate !== undefined) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden: only admin can change due date" },
+        { status: 403 },
+      );
+    }
+
     let task;
 
     if (status !== undefined) {
@@ -81,6 +82,14 @@ export async function PATCH(req: Request, { params }: Params) {
       taskId,
       ...(status   !== undefined && { status }),
       ...(dueDate  !== undefined && { dueDate }),
+    });
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "update",
+      entityType: "operative_task",
+      entityId: taskId,
+      after: task,
+      metadata: { status, dueDate },
     });
 
     return NextResponse.json({ ok: true, data: task });

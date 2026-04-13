@@ -115,6 +115,7 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       dueDate,
       status:      "todo",
       sortOrder:   Date.now(),
+      order:       Date.now(),
       createdAt:   now,
       updatedAt:   now,
       subtasks:    [],

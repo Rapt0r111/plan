@@ -17,6 +17,8 @@ import {
   deleteEpic,
   EPICS_CACHE_TAG,
 } from "@/entities/epic/epicRepository";
+import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
+import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchEpicSchema = z.object({
   title:       z.string().min(1).max(200).optional(),
@@ -48,6 +50,7 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
+    const session = await requireSession();
     const { id } = await params;
     const epicId = Number(id);
 
@@ -69,11 +72,22 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Nothing to update" }, { status: 422 });
     }
 
+    const before = await getEpicById(epicId);
     const epic = await updateEpic(epicId, parsed.data);
     revalidateTag(EPICS_CACHE_TAG, "max");
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "update",
+      entityType: "epic",
+      entityId: epicId,
+      before,
+      after: epic,
+    });
 
     return NextResponse.json({ ok: true, data: epic });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     if (String(e).includes("not found")) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }
@@ -83,6 +97,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
 export async function DELETE(_req: Request, { params }: Params) {
   try {
+    const session = await requireAdminSession();
     const { id } = await params;
     const epicId = Number(id);
 
@@ -90,11 +105,22 @@ export async function DELETE(_req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Invalid epic id" }, { status: 400 });
     }
 
+    const before = await getEpicById(epicId);
     await deleteEpic(epicId);
     revalidateTag(EPICS_CACHE_TAG, "max");
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "delete",
+      entityType: "epic",
+      entityId: epicId,
+      before,
+      after: null,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

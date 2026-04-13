@@ -113,6 +113,7 @@ export const taskAssignees = sqliteTable(
 export const authUsers = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  login: text("login").unique(),
   email: text("email").notNull().unique(),
   emailVerified: integer("emailVerified", { mode: "boolean" }).notNull().default(false),
   image: text("image"),
@@ -199,45 +200,23 @@ export const operativeSubtasks = sqliteTable(
   })
 );
 
-// ─── TABLE: audit_log ────────────────────────────────────────────────────────
-// Tracks all mutations: who did what, when, on which entity.
-// Retained indefinitely — never delete audit records.
-export const auditLog = sqliteTable(
-  "audit_log",
+export const auditLogs = sqliteTable(
+  "audit_logs",
   {
-    id:          integer("id").primaryKey({ autoIncrement: true }),
-    actorEmail:  text("actor_email").notNull(),
-    actorRole:   text("actor_role").notNull().default("member"),
-    action:      text("action").notNull(),       // CREATE | UPDATE | DELETE | STATUS_CHANGE | REORDER
-    entityType:  text("entity_type").notNull(),  // task | epic | operative_task | user | role | subtask
-    entityId:    integer("entity_id"),
-    entityTitle: text("entity_title"),           // human-readable snapshot
-    details:     text("details"),                // JSON: { before?, after?, patch? }
-    ipAddress:   text("ip_address"),
-    userAgent:   text("user_agent"),
-    createdAt:   text("created_at").notNull().default(sql`(datetime('now'))`),
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    actorUserId: text("actor_user_id"),
+    actorRole: text("actor_role"),
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id"),
+    beforeJson: text("before_json"),
+    afterJson: text("after_json"),
+    metadataJson: text("metadata_json"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   },
   (t) => ({
-    actorIdx:    index("audit_actor_idx").on(t.actorEmail),
-    entityIdx:   index("audit_entity_idx").on(t.entityType, t.entityId),
-    createdIdx:  index("audit_created_at_idx").on(t.createdAt),
+    actionIdx: index("audit_logs_action_idx").on(t.action),
+    entityIdx: index("audit_logs_entity_idx").on(t.entityType, t.entityId),
+    createdAtIdx: index("audit_logs_created_at_idx").on(t.createdAt),
   })
 );
-
-export type AuditAction =
-  | "CREATE"
-  | "UPDATE"
-  | "DELETE"
-  | "STATUS_CHANGE"
-  | "REORDER"
-  | "LOGIN"
-  | "SUBTASK_TOGGLE";
-
-export type AuditEntityType =
-  | "task"
-  | "epic"
-  | "operative_task"
-  | "operative_subtask"
-  | "user"
-  | "role"
-  | "subtask";

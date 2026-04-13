@@ -142,30 +142,20 @@ function SortableTaskCard({
           )}
         </div>
 
-        {/* Status — full cycle for admin, read-only badge for guest */}
-        {isAdmin ? (
-          <button
-            onClick={() => onStatusChange(task.id, task.status === "done" ? "todo" : "done")}
-            className="text-xs px-2 py-0.5 rounded-full font-medium"
-            style={{
-              background: isDone ? "rgba(52,211,153,0.15)" : "rgba(100,116,139,0.15)",
-              color:      isDone ? "#34d399" : "#94a3b8",
-              cursor:     "pointer",
-            }}
-          >
-            {isDone ? "Готово" : "К работе"}
-          </button>
-        ) : (
-          <span
-            className="text-xs px-2 py-0.5 rounded-full font-medium"
-            style={{
-              background: isDone ? "rgba(52,211,153,0.10)" : "rgba(100,116,139,0.10)",
-              color:      isDone ? "#34d399" : "#94a3b8",
-            }}
-          >
-            {isDone ? "Готово" : "К работе"}
-          </span>
-        )}
+        {/* Статус (кликабелен только для админа) */}
+        <button
+          onClick={() => onStatusChange(task.id, task.status === "done" ? "todo" : "done")}
+          className="text-xs px-2 py-0.5 rounded-full font-medium"
+          style={{
+            background: task.status === "done"
+              ? "rgba(52,211,153,0.15)"
+              : "rgba(100,116,139,0.15)",
+            color:  task.status === "done" ? "#34d399" : "#94a3b8",
+            cursor: "pointer",
+          }}
+        >
+          {task.status === "done" ? "Готово" : "К работе"}
+        </button>
 
         {/* Delete — admin only */}
         {isAdmin && (

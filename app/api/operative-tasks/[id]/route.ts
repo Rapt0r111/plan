@@ -16,7 +16,7 @@ import { broadcast } from "@/shared/server/eventBus";
 import { OPERATIVE_CACHE_TAG } from "../route";
 import { auth } from "@/shared/lib/auth";
 import { headers } from "next/headers";
-import { auditMutation } from "@/shared/lib/auditHelpers";
+import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchSchema = z.object({
   status:  z.enum(["todo", "in_progress", "done"]).optional(),
@@ -36,13 +36,6 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json(
         { ok: false, error: "Unauthorized" },
         { status: 401 },
-      );
-    }
-
-    if (session.user.role !== "admin") {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden: requires admin role" },
-        { status: 403 },
       );
     }
 
@@ -67,6 +60,13 @@ export async function PATCH(req: Request, { params }: Params) {
     const beforeTask = await getOperativeTaskById(taskId);
 
     const { status, dueDate } = parsed.data;
+    if (session.user.role !== "admin" && dueDate !== undefined) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden: only admin can change due date" },
+        { status: 403 },
+      );
+    }
+
     let task;
 
     if (status !== undefined) {
@@ -97,58 +97,20 @@ export async function PATCH(req: Request, { params }: Params) {
         after:  status !== undefined ? { status } : { dueDate },
       },
     });
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "update",
+      entityType: "operative_task",
+      entityId: taskId,
+      after: task,
+      metadata: { status, dueDate },
+    });
 
     return NextResponse.json({ ok: true, data: task });
   } catch (e) {
     if (String(e).includes("not found")) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
-  }
-}
-
-export async function DELETE(req: Request, { params }: Params) {
-  try {
-    const session = await auth.api.getSession({ headers: await headers() });
-
-    if (!session?.user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (session.user.role !== "admin") {
-      return NextResponse.json({ ok: false, error: "Forbidden: requires admin role" }, { status: 403 });
-    }
-
-    const { id } = await params;
-    const taskId = Number(id);
-
-    if (!Number.isInteger(taskId) || taskId <= 0) {
-      return NextResponse.json({ ok: false, error: "Invalid task id" }, { status: 400 });
-    }
-
-    // Capture before deletion
-    const beforeTask = await getOperativeTaskById(taskId);
-
-    const { db } = await import("@/shared/db/client");
-    const { operativeTasks } = await import("@/shared/db/schema");
-    const { eq } = await import("drizzle-orm");
-
-    await db.delete(operativeTasks).where(eq(operativeTasks.id, taskId));
-
-    revalidateTag(OPERATIVE_CACHE_TAG, "max");
-    broadcast("task:deleted", { taskId, source: "operative" });
-
-    // ── Audit log ──────────────────────────────────────────────────────────
-    await auditMutation(req, {
-      action:      "DELETE",
-      entityType:  "operative_task",
-      entityId:    taskId,
-      entityTitle: beforeTask?.title,
-      details:     { deletedStatus: beforeTask?.status },
-    });
-
-    return NextResponse.json({ ok: true });
-  } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getAllRoles, createRole, ROLES_CACHE_TAG } from "@/entities/role/roleRepository";
 import { z } from "zod";
+import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
 
 const CreateRoleSchema = z.object({
   key:         z.string().min(1).max(64).regex(/^[a-z0-9_]+$/),
@@ -34,6 +35,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    await requireSession();
     const body = await req.json();
     const parsed = CreateRoleSchema.safeParse(body);
     if (!parsed.success) {
@@ -51,6 +53,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, data: role }, { status: 201 });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     // Unique constraint на key
     if (String(e).includes("UNIQUE")) {
       return NextResponse.json(

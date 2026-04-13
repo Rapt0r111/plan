@@ -24,8 +24,12 @@ export const auth = betterAuth({
   },
 
   user: {
-    // Позволяем читать поле role из таблицы
+    // Позволяем читать/записывать доп. поля пользователя
     additionalFields: {
+      login: {
+        type: "string",
+        required: false,
+      },
       role: {
         type: "string",
         required: false,

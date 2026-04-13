@@ -21,6 +21,7 @@ import {
 } from "@/entities/role/roleRepository";
 import { USERS_CACHE_TAG } from "@/entities/user/userRepository";
 import { z } from "zod";
+import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
 
 const PatchRoleSchema = z.object({
   label:       z.string().min(1).max(128).optional(),
@@ -41,6 +42,7 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
+    await requireSession();
     const { id } = await params;
     const body = await req.json();
     const parsed = PatchRoleSchema.safeParse(body);
@@ -56,6 +58,8 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: role });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     if (String(e).includes("not found")) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }
@@ -65,6 +69,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
 export async function DELETE(_req: Request, { params }: Params) {
   try {
+    await requireAdminSession();
     const { id } = await params;
     await deleteRole(Number(id));
 
@@ -74,6 +79,8 @@ export async function DELETE(_req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     const err = e as Error & { code?: string };
     if (err.code === "ROLE_HAS_USERS") {
       return NextResponse.json(

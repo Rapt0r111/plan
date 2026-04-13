@@ -20,6 +20,8 @@ import {
   USERS_CACHE_TAG,
 } from "@/entities/user/userRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
+import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
+import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchUserSchema = z.object({
   name:     z.string().min(1).max(200).optional(),
@@ -50,6 +52,7 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
+    const session = await requireSession();
     const { id } = await params;
     const userId = Number(id);
 
@@ -71,12 +74,23 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Nothing to update" }, { status: 422 });
     }
 
+    const before = await getUserById(userId);
     const user = await updateUser(userId, parsed.data);
     revalidateTag(USERS_CACHE_TAG, "max");
     revalidateTag(EPICS_CACHE_TAG, "max"); // assignees в задачах обновятся
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "update",
+      entityType: "user_profile",
+      entityId: userId,
+      before,
+      after: user,
+    });
 
     return NextResponse.json({ ok: true, data: user });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     if (String(e).includes("not found")) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }
@@ -89,6 +103,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
 export async function DELETE(_req: Request, { params }: Params) {
   try {
+    await requireAdminSession();
     const { id } = await params;
     const userId = Number(id);
 

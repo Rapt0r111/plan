@@ -7,6 +7,7 @@ import { db } from "@/shared/db/client";
 import { operativeTasks } from "@/shared/db/schema";
 import { eq, asc, sql } from "drizzle-orm";
 import { broadcast } from "@/shared/server/eventBus";
+import { writeAuditLog } from "@/shared/lib/audit";
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -74,11 +75,17 @@ export const createOperativeTaskAction = adminActionClient
 /**
  * updateOperativeTaskAction — только администратор
  */
-export const updateOperativeTaskAction = adminActionClient
+export const updateOperativeTaskAction = authActionClient
   .schema(UpdateTaskSchema)
-  .action(async ({ parsedInput }) => {
+  .action(async ({ parsedInput, ctx }) => {
     const { id, ...patch } = parsedInput;
+    const isStatusOnly = Object.keys(patch).every((key) => key === "status");
 
+    if (ctx.user.role !== "admin" && !isStatusOnly) {
+      throw new Error("Forbidden: only admins can edit operative task fields other than status");
+    }
+
+    const [before] = await db.select().from(operativeTasks).where(eq(operativeTasks.id, id));
     const [task] = await db
       .update(operativeTasks)
       .set({ ...patch, updatedAt: new Date().toISOString() })
@@ -89,6 +96,14 @@ export const updateOperativeTaskAction = adminActionClient
 
     revalidatePath("/operative");
     broadcast("task:updated", { source: "operative", taskId: id });
+    await writeAuditLog({
+      actor: { userId: ctx.user.id, role: ctx.user.role },
+      action: "update",
+      entityType: "operative_task",
+      entityId: id,
+      before,
+      after: task,
+    });
 
     return { task };
   });
@@ -98,13 +113,22 @@ export const updateOperativeTaskAction = adminActionClient
  */
 export const deleteOperativeTaskAction = adminActionClient
   .schema(DeleteTaskSchema)
-  .action(async ({ parsedInput }) => {
+  .action(async ({ parsedInput, ctx }) => {
+    const [before] = await db.select().from(operativeTasks).where(eq(operativeTasks.id, parsedInput.id));
     await db
       .delete(operativeTasks)
       .where(eq(operativeTasks.id, parsedInput.id));
 
     revalidatePath("/operative");
     broadcast("task:deleted", { taskId: parsedInput.id });
+    await writeAuditLog({
+      actor: { userId: ctx.user.id, role: ctx.user.role },
+      action: "delete",
+      entityType: "operative_task",
+      entityId: parsedInput.id,
+      before,
+      after: null,
+    });
 
     return { success: true };
   });
@@ -116,7 +140,7 @@ export const deleteOperativeTaskAction = adminActionClient
  */
 export const updateOrderAction = adminActionClient
   .schema(UpdateOrderSchema)
-  .action(async ({ parsedInput }) => {
+  .action(async ({ parsedInput, ctx }) => {
     // SQLite не поддерживает batch UPDATE нативно — делаем в транзакции
     await db.transaction(async (tx) => {
       for (const { id, order } of parsedInput.items) {
@@ -128,5 +152,11 @@ export const updateOrderAction = adminActionClient
     });
 
     revalidatePath("/operative");
+    await writeAuditLog({
+      actor: { userId: ctx.user.id, role: ctx.user.role },
+      action: "reorder",
+      entityType: "operative_task",
+      metadata: { items: parsedInput.items },
+    });
     return { success: true };
   });

@@ -113,6 +113,7 @@ export const taskAssignees = sqliteTable(
 export const authUsers = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  login: text("login").unique(),
   email: text("email").notNull().unique(),
   emailVerified: integer("emailVerified", { mode: "boolean" }).notNull().default(false),
   image: text("image"),
@@ -196,5 +197,26 @@ export const operativeSubtasks = sqliteTable(
   },
   (t) => ({
     taskIdIdx: index("op_subtasks_task_id_idx").on(t.taskId),
+  })
+);
+
+export const auditLogs = sqliteTable(
+  "audit_logs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    actorUserId: text("actor_user_id"),
+    actorRole: text("actor_role"),
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id"),
+    beforeJson: text("before_json"),
+    afterJson: text("after_json"),
+    metadataJson: text("metadata_json"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    actionIdx: index("audit_logs_action_idx").on(t.action),
+    entityIdx: index("audit_logs_entity_idx").on(t.entityType, t.entityId),
+    createdAtIdx: index("audit_logs_created_at_idx").on(t.createdAt),
   })
 );

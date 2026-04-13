@@ -12,6 +12,8 @@ import { subtasks } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
+import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
+import { writeAuditLog } from "@/shared/lib/audit";
 
 const ToggleSubtaskSchema = z.object({
   isCompleted: z.boolean(),
@@ -21,6 +23,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
+    const session = await requireSession();
     const { id } = await params;
     const subtaskId = Number(id);
 
@@ -54,15 +57,25 @@ export async function PATCH(req: Request, { params }: Params) {
       taskId: updated.taskId,
       isCompleted: parsed.data.isCompleted,
     });
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "update_status",
+      entityType: "subtask",
+      entityId: subtaskId,
+      after: { ...updated, isCompleted: parsed.data.isCompleted },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
   try {
+    const session = await requireAdminSession();
     const { id } = await params;
     const subtaskId = Number(id);
 
@@ -81,9 +94,19 @@ export async function DELETE(_req: Request, { params }: Params) {
 
     revalidateTag(EPICS_CACHE_TAG, "max");
     broadcast("task:updated", { taskId: deleted.taskId, subtaskDeleted: subtaskId });
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "delete",
+      entityType: "subtask",
+      entityId: subtaskId,
+      before: deleted,
+      after: null,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

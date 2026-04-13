@@ -24,6 +24,8 @@ import { eq } from "drizzle-orm";
 import { updateTask, deleteTask, getTaskById } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
+import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
+import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchTaskSchema = z.object({
   title:              z.string().min(1).max(200).optional(),
@@ -59,6 +61,7 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
+    const session = await requireSession();
     const { id } = await params;
     const taskId  = Number(id);
 
@@ -113,19 +116,32 @@ export async function PATCH(req: Request, { params }: Params) {
       }
     }
 
+    const before = await getTaskById(taskId);
     await updateTask(taskId, patch);
+    const after = await getTaskById(taskId);
     revalidateTag(EPICS_CACHE_TAG, "max");
 
     broadcast("task:updated", { taskId, patch });
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "update",
+      entityType: "task",
+      entityId: taskId,
+      before,
+      after,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
   try {
+    const session = await requireAdminSession();
     const { id } = await params;
     const taskId  = Number(id);
 
@@ -133,13 +149,24 @@ export async function DELETE(_req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Invalid task id" }, { status: 400 });
     }
 
+    const before = await getTaskById(taskId);
     await deleteTask(taskId);
     revalidateTag(EPICS_CACHE_TAG, "max");
 
     broadcast("task:deleted", { taskId });
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "delete",
+      entityType: "task",
+      entityId: taskId,
+      before,
+      after: null,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

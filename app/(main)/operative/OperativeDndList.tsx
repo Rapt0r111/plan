@@ -1,6 +1,16 @@
 "use client";
-
-import { useOptimistic, useTransition, useCallback } from "react";
+/**
+ * @file OperativeDndList.tsx — app/(main)/operative
+ *
+ * v2 — Role-based access:
+ *   - Admin: full DnD reorder, status cycle (todo/in_progress/done), delete
+ *   - Guest/member: only toggle done ↔ not-done via /api/operative-tasks/:id/status
+ *     The guest toggle maps any current status → "done" or "todo".
+ *     No drag, no delete, no date editing for guests.
+ *
+ * DnD reorder uses /api/operative-tasks/:id (PATCH sortOrder) which is admin-only.
+ */
+import { useOptimistic, useTransition, useCallback, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -27,7 +37,7 @@ import {
 } from "@/entities/operative/operativeActions";
 import type { OperativeTaskView } from "@/entities/operative/operativeRepository";
 
-// ── Типы ─────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Props {
   tasks:   OperativeTaskView[];
@@ -35,38 +45,37 @@ interface Props {
   userId:  number;
 }
 
-// ── Отдельная карточка с DnD-хуком ───────────────────────────────────────────
+// ── Sortable task card ────────────────────────────────────────────────────────
 
 function SortableTaskCard({
   task,
   isAdmin,
   onDelete,
   onStatusChange,
+  onGuestToggle,
 }: {
   task:           OperativeTaskView;
   isAdmin:        boolean;
   onDelete:       (id: number) => void;
   onStatusChange: (id: number, status: OperativeTaskView["status"]) => void;
+  onGuestToggle:  (id: number, currentDone: boolean) => void;
 }) {
-  // useSortable даёт нам ref, transform и listeners для конкретного элемента
   const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
+    attributes, listeners, setNodeRef,
+    transform, transition, isDragging,
   } = useSortable({
     id:       task.id,
-    disabled: !isAdmin, // DnD доступен только админу
+    disabled: !isAdmin,
   });
 
-  const style = {
+  const style: React.CSSProperties = {
     transform:  CSS.Transform.toString(transform),
     transition,
     opacity:    isDragging ? 0.4 : 1,
     zIndex:     isDragging ? 50 : undefined,
-  } as React.CSSProperties;
+  };
+
+  const isDone = task.status === "done";
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -81,7 +90,7 @@ function SortableTaskCard({
           border:     "1px solid var(--glass-border)",
         }}
       >
-        {/* Drag handle — только для администратора */}
+        {/* Drag handle — admin only */}
         {isAdmin && (
           <button
             {...attributes}
@@ -89,20 +98,39 @@ function SortableTaskCard({
             className="shrink-0 w-5 h-5 flex items-center justify-center opacity-30 hover:opacity-70 transition-opacity cursor-grab active:cursor-grabbing"
             aria-label="Перетащить задачу"
           >
-            <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none"
-              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M6 4h.01M6 8h.01M6 12h.01M10 4h.01M10 8h.01M10 12h.01" />
             </svg>
           </button>
         )}
 
-        {/* Контент задачи */}
+        {/* ── Guest done checkbox (always visible for all) ── */}
+        {!isAdmin && (
+          <button
+            onClick={() => onGuestToggle(task.id, isDone)}
+            className="shrink-0 w-5 h-5 rounded-md flex items-center justify-center border transition-all"
+            style={{
+              background:   isDone ? "#34d399" : "transparent",
+              borderColor:  isDone ? "#34d399" : "var(--glass-border-active)",
+              boxShadow:    isDone ? "0 0 8px rgba(52,211,153,0.5)" : "none",
+            }}
+            title={isDone ? "Отметить как не готово" : "Отметить как готово"}
+          >
+            {isDone && (
+              <svg className="w-3 h-3 text-white" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M1.5 5l2.5 2.5 4.5-4.5" />
+              </svg>
+            )}
+          </button>
+        )}
+
+        {/* Content */}
         <div className="flex-1 min-w-0">
           <p
             className="text-sm font-medium"
             style={{
-              color:          task.status === "done" ? "var(--text-muted)" : "var(--text-primary)",
-              textDecoration: task.status === "done" ? "line-through" : "none",
+              color:          isDone ? "var(--text-muted)" : "var(--text-primary)",
+              textDecoration: isDone ? "line-through" : "none",
             }}
           >
             {task.title}
@@ -114,25 +142,32 @@ function SortableTaskCard({
           )}
         </div>
 
-        {/* Статус (кликабелен только для админа) */}
-        <button
-          onClick={isAdmin
-            ? () => onStatusChange(task.id, task.status === "done" ? "todo" : "done")
-            : undefined
-          }
-          className="text-xs px-2 py-0.5 rounded-full font-medium"
-          style={{
-            background: task.status === "done"
-              ? "rgba(52,211,153,0.15)"
-              : "rgba(100,116,139,0.15)",
-            color:  task.status === "done" ? "#34d399" : "#94a3b8",
-            cursor: isAdmin ? "pointer" : "default",
-          }}
-        >
-          {task.status === "done" ? "Готово" : "К работе"}
-        </button>
+        {/* Status — full cycle for admin, read-only badge for guest */}
+        {isAdmin ? (
+          <button
+            onClick={() => onStatusChange(task.id, task.status === "done" ? "todo" : "done")}
+            className="text-xs px-2 py-0.5 rounded-full font-medium"
+            style={{
+              background: isDone ? "rgba(52,211,153,0.15)" : "rgba(100,116,139,0.15)",
+              color:      isDone ? "#34d399" : "#94a3b8",
+              cursor:     "pointer",
+            }}
+          >
+            {isDone ? "Готово" : "К работе"}
+          </button>
+        ) : (
+          <span
+            className="text-xs px-2 py-0.5 rounded-full font-medium"
+            style={{
+              background: isDone ? "rgba(52,211,153,0.10)" : "rgba(100,116,139,0.10)",
+              color:      isDone ? "#34d399" : "#94a3b8",
+            }}
+          >
+            {isDone ? "Готово" : "К работе"}
+          </span>
+        )}
 
-        {/* Кнопка удаления — ТОЛЬКО для администратора */}
+        {/* Delete — admin only */}
         {isAdmin && (
           <button
             onClick={() => onDelete(task.id)}
@@ -147,8 +182,7 @@ function SortableTaskCard({
               (e.currentTarget as HTMLElement).style.background = "transparent";
             }}
           >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none"
-              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M2 4h10M5 4V2h4v2M6 7v4M8 7v4M3 4l1 8h6l1-8" />
             </svg>
           </button>
@@ -158,18 +192,12 @@ function SortableTaskCard({
   );
 }
 
-// ── Основной компонент со списком ─────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
 
-export function OperativeDndList({ tasks: initialTasks, isAdmin, userId }: Props) {
+export function OperativeDndList({ tasks: initialTasks, isAdmin, userId: _userId }: Props) {
   const [isPending, startTransition] = useTransition();
+  const [guestError, setGuestError]  = useState<string | null>(null);
 
-  /*
-    useOptimistic:
-      - первый аргумент: реальное состояние (приходит с сервера)
-      - второй аргумент: функция применения оптимистичного обновления
-    React 19: при завершении перехода оптимистичное состояние
-    заменяется реальным — автоматически.
-  */
   const [optimisticTasks, setOptimisticTasks] = useOptimistic(
     initialTasks,
     (
@@ -190,22 +218,19 @@ export function OperativeDndList({ tasks: initialTasks, isAdmin, userId }: Props
     }
   );
 
-  // Подключаем server actions через хук next-safe-action
   const { executeAsync: executeUpdateOrder } = useAction(updateOrderAction);
   const { executeAsync: executeDelete }      = useAction(deleteOperativeTaskAction);
   const { executeAsync: executeStatus }      = useAction(updateOperativeTaskAction);
 
-  // DnD sensors — поддержка мыши и клавиатуры
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // ── DnD Handler ─────────────────────────────────────────────────────────────
+  // ── Admin: DnD reorder ────────────────────────────────────────────────────
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      if (!isAdmin) return;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
@@ -216,74 +241,125 @@ export function OperativeDndList({ tasks: initialTasks, isAdmin, userId }: Props
       const reordered = arrayMove(optimisticTasks, oldIndex, newIndex);
 
       startTransition(async () => {
-        // 1. Мгновенно обновляем UI оптимистично
         setOptimisticTasks({ type: "reorder", newOrder: reordered });
-
-        // 2. В фоне обновляем порядок на сервере
         await executeUpdateOrder({
           items: reordered.map((t, i) => ({ id: t.id, order: i })),
         });
       });
     },
-    [optimisticTasks, executeUpdateOrder, setOptimisticTasks, startTransition]
+    [optimisticTasks, executeUpdateOrder, setOptimisticTasks, isAdmin, startTransition]
   );
 
-  // ── Delete Handler ──────────────────────────────────────────────────────────
+  // ── Admin: delete ─────────────────────────────────────────────────────────
   const handleDelete = useCallback(
     (id: number) => {
+      if (!isAdmin) return;
       startTransition(async () => {
         setOptimisticTasks({ type: "delete", id });
         await executeDelete({ id });
       });
     },
-    [executeDelete, setOptimisticTasks, startTransition]
+    [executeDelete, setOptimisticTasks, isAdmin, startTransition]
   );
 
-  // ── Status Handler ──────────────────────────────────────────────────────────
+  // ── Admin: full status change ─────────────────────────────────────────────
   const handleStatusChange = useCallback(
     (id: number, currentStatus: OperativeTaskView["status"]) => {
+      if (!isAdmin) return;
       const newStatus = currentStatus === "done" ? "todo" : ("done" as const);
       startTransition(async () => {
         setOptimisticTasks({ type: "status", id, status: newStatus });
         await executeStatus({ id, status: newStatus });
       });
     },
-    [executeStatus, setOptimisticTasks, startTransition]
+    [executeStatus, setOptimisticTasks, isAdmin, startTransition]
+  );
+
+  // ── Guest: done ↔ not-done toggle ─────────────────────────────────────────
+  const handleGuestToggle = useCallback(
+    (id: number, currentDone: boolean) => {
+      if (isAdmin) return; // admin uses handleStatusChange instead
+      setGuestError(null);
+      const newStatus: OperativeTaskView["status"] = currentDone ? "todo" : "done";
+
+      startTransition(async () => {
+        setOptimisticTasks({ type: "status", id, status: newStatus });
+        const res = await fetch(`/api/operative-tasks/${id}/status`, {
+          method:  "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ done: !currentDone }),
+        });
+        if (!res.ok) {
+          // Rollback optimistic update
+          setOptimisticTasks({ type: "status", id, status: currentDone ? "done" : "todo" });
+          setGuestError("Не удалось изменить статус. Попробуйте ещё раз.");
+        }
+      });
+    },
+    [isAdmin, setOptimisticTasks, startTransition]
   );
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
-    >
-      <SortableContext
-        items={optimisticTasks.map(t => t.id)}
-        strategy={verticalListSortingStrategy}
-      >
-        <div
-          className="space-y-2"
-          style={{ opacity: isPending ? 0.85 : 1, transition: "opacity 0.15s" }}
-        >
-          <AnimatePresence mode="popLayout">
-            {optimisticTasks.map(task => (
-              <SortableTaskCard
-                key={task.id}
-                task={task}
-                isAdmin={isAdmin}
-                onDelete={handleDelete}
-                onStatusChange={handleStatusChange}
-              />
-            ))}
-          </AnimatePresence>
+    <div className="space-y-2">
+      {/* Guest error */}
+      <AnimatePresence>
+        {guestError && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="px-3 py-2 rounded-xl text-xs"
+            style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}
+          >
+            {guestError}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {optimisticTasks.length === 0 && (
-            <p className="text-sm text-center py-8" style={{ color: "var(--text-muted)" }}>
-              Нет задач
-            </p>
-          )}
+      {/* Role hint for guests */}
+      {!isAdmin && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+          style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-muted)" }}
+        >
+          <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+            <circle cx="7" cy="5" r="2.5" /><path d="M1.5 13a5.5 5.5 0 0 1 11 0" />
+          </svg>
+          Вы можете отметить задачи как выполненные. Полное управление доступно администратору.
         </div>
-      </SortableContext>
-    </DndContext>
+      )}
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={optimisticTasks.map(t => t.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div style={{ opacity: isPending ? 0.85 : 1, transition: "opacity 0.15s" }}>
+            <AnimatePresence mode="popLayout">
+              {optimisticTasks.map(task => (
+                <SortableTaskCard
+                  key={task.id}
+                  task={task}
+                  isAdmin={isAdmin}
+                  onDelete={handleDelete}
+                  onStatusChange={handleStatusChange}
+                  onGuestToggle={handleGuestToggle}
+                />
+              ))}
+            </AnimatePresence>
+
+            {optimisticTasks.length === 0 && (
+              <p className="text-sm text-center py-8" style={{ color: "var(--text-muted)" }}>
+                Нет задач
+              </p>
+            )}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
   );
 }

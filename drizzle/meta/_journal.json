@@ -43,6 +43,13 @@
       "when": 1775902795931,
       "tag": "0005_lazy_ultimates",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1776074840449,
+      "tag": "0006_past_weapon_omega",
+      "breakpoints": true
     }
   ]
 }

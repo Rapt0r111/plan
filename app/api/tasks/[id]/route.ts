@@ -1,19 +1,8 @@
 /**
  * @file route.ts — app/api/tasks/[id]
  *
- * v3 — оптимистичный параллелизм:
- *   Клиент добавляет expectedUpdatedAt в тело PATCH.
- *   Сервер обновляет задачу только если tasks.updated_at === expectedUpdatedAt.
- *   Если не совпадает → 409 Conflict с актуальным updatedAt (и задачей целиком).
- *
- * При успехе: обычный ответ { ok: true }.
- * При 409: { ok: false, code: "CONFLICT", currentUpdatedAt, currentTask }.
- *
- * Клиент (replayOfflineQueue) при 409:
- *   1. GET /api/tasks/:id → актуальная задача
- *   2. Применяет свой intended patch поверх неё
- *   3. Повторяет PATCH с новым expectedUpdatedAt
- * Это "rebase поверх актуального" — автоматически принимаем свои изменения.
+ * v4 — Audit logging added to PATCH and DELETE.
+ * All mutations now produce an audit record with before/after state.
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -24,6 +13,7 @@ import { eq } from "drizzle-orm";
 import { updateTask, deleteTask, getTaskById } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
+import { auditMutation } from "@/shared/lib/auditHelpers";
 
 const PatchTaskSchema = z.object({
   title:              z.string().min(1).max(200).optional(),
@@ -33,7 +23,6 @@ const PatchTaskSchema = z.object({
   dueDate:            z.string().datetime().nullable().optional(),
   epicId:             z.number().int().positive().optional(),
   sortOrder:          z.number().int().min(0).optional(),
-  // Optimistic concurrency — опциональный для обратной совместимости
   expectedUpdatedAt:  z.string().datetime().optional(),
 });
 
@@ -66,7 +55,7 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Invalid task id" }, { status: 400 });
     }
 
-    const body   = await req.json();
+    const body   = await req.json() as unknown;
     const parsed = PatchTaskSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -93,13 +82,11 @@ export async function PATCH(req: Request, { params }: Params) {
         return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
       }
 
-      // Нормализуем формат дат для сравнения (SQLite хранит без 'Z')
       const serverTs = current.updatedAt.replace("Z", "");
       const clientTs = expectedUpdatedAt.replace("Z", "").replace("T", " ").slice(0, 19);
       const serverNorm = serverTs.replace("T", " ").slice(0, 19);
 
       if (serverNorm !== clientTs) {
-        // 409 — задача изменилась другим пользователем
         const currentTask = await getTaskById(taskId);
         return NextResponse.json(
           {
@@ -113,10 +100,30 @@ export async function PATCH(req: Request, { params }: Params) {
       }
     }
 
+    // Capture before-state for audit
+    const beforeTask = await getTaskById(taskId);
+
     await updateTask(taskId, patch);
     revalidateTag(EPICS_CACHE_TAG, "max");
-
     broadcast("task:updated", { taskId, patch });
+
+    // ── Audit log ──────────────────────────────────────────────────────────
+    const action = patch.status && patch.status !== beforeTask?.status
+      ? "STATUS_CHANGE" as const
+      : "UPDATE" as const;
+
+    await auditMutation(req, {
+      action,
+      entityType:  "task",
+      entityId:    taskId,
+      entityTitle: beforeTask?.title,
+      details: {
+        before: patch.status ? { status: beforeTask?.status } : undefined,
+        patch: Object.fromEntries(
+          Object.entries(patch).filter(([k]) => k !== "sortOrder")
+        ),
+      },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
@@ -124,7 +131,7 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   try {
     const { id } = await params;
     const taskId  = Number(id);
@@ -133,10 +140,21 @@ export async function DELETE(_req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Invalid task id" }, { status: 400 });
     }
 
+    // Capture before deletion for audit
+    const task = await getTaskById(taskId);
+
     await deleteTask(taskId);
     revalidateTag(EPICS_CACHE_TAG, "max");
-
     broadcast("task:deleted", { taskId });
+
+    // ── Audit log ──────────────────────────────────────────────────────────
+    await auditMutation(req, {
+      action:      "DELETE",
+      entityType:  "task",
+      entityId:    taskId,
+      entityTitle: task?.title,
+      details:     { deletedStatus: task?.status, deletedPriority: task?.priority },
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {

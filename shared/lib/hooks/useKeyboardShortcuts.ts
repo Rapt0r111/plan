@@ -61,7 +61,10 @@ export function useKeyboardShortcuts(shortcuts: Shortcut[]) {
     const handleKeyDown = useCallback(
         (e: KeyboardEvent) => {
             for (const shortcut of shortcuts) {
-                const keyMatch = e.key.toLowerCase() === shortcut.key.toLowerCase();
+                const keyMatch =
+                    typeof e.key === "string" &&
+                    typeof shortcut.key === "string" &&
+                    e.key.toLowerCase() === shortcut.key.toLowerCase();
 
                 // Meta key: Cmd on macOS, Ctrl on Windows/Linux
                 const metaMatch = shortcut.meta

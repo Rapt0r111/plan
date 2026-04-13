@@ -1,19 +1,8 @@
 /**
  * @file route.ts — app/api/tasks/[id]
  *
- * v3 — оптимистичный параллелизм:
- *   Клиент добавляет expectedUpdatedAt в тело PATCH.
- *   Сервер обновляет задачу только если tasks.updated_at === expectedUpdatedAt.
- *   Если не совпадает → 409 Conflict с актуальным updatedAt (и задачей целиком).
- *
- * При успехе: обычный ответ { ok: true }.
- * При 409: { ok: false, code: "CONFLICT", currentUpdatedAt, currentTask }.
- *
- * Клиент (replayOfflineQueue) при 409:
- *   1. GET /api/tasks/:id → актуальная задача
- *   2. Применяет свой intended patch поверх неё
- *   3. Повторяет PATCH с новым expectedUpdatedAt
- * Это "rebase поверх актуального" — автоматически принимаем свои изменения.
+ * v4 — Audit logging added to PATCH and DELETE.
+ * All mutations now produce an audit record with before/after state.
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -35,7 +24,6 @@ const PatchTaskSchema = z.object({
   dueDate:            z.string().datetime().nullable().optional(),
   epicId:             z.number().int().positive().optional(),
   sortOrder:          z.number().int().min(0).optional(),
-  // Optimistic concurrency — опциональный для обратной совместимости
   expectedUpdatedAt:  z.string().datetime().optional(),
 });
 
@@ -69,7 +57,7 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Invalid task id" }, { status: 400 });
     }
 
-    const body   = await req.json();
+    const body   = await req.json() as unknown;
     const parsed = PatchTaskSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -96,13 +84,11 @@ export async function PATCH(req: Request, { params }: Params) {
         return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
       }
 
-      // Нормализуем формат дат для сравнения (SQLite хранит без 'Z')
       const serverTs = current.updatedAt.replace("Z", "");
       const clientTs = expectedUpdatedAt.replace("Z", "").replace("T", " ").slice(0, 19);
       const serverNorm = serverTs.replace("T", " ").slice(0, 19);
 
       if (serverNorm !== clientTs) {
-        // 409 — задача изменилась другим пользователем
         const currentTask = await getTaskById(taskId);
         return NextResponse.json(
           {
@@ -120,7 +106,6 @@ export async function PATCH(req: Request, { params }: Params) {
     await updateTask(taskId, patch);
     const after = await getTaskById(taskId);
     revalidateTag(EPICS_CACHE_TAG, "max");
-
     broadcast("task:updated", { taskId, patch });
     await writeAuditLog({
       actor: { userId: session.user.id, role: session.user.role },
@@ -131,6 +116,24 @@ export async function PATCH(req: Request, { params }: Params) {
       after,
     });
 
+    // ── Audit log ──────────────────────────────────────────────────────────
+    const action = patch.status && patch.status !== beforeTask?.status
+      ? "STATUS_CHANGE" as const
+      : "UPDATE" as const;
+
+    await auditMutation(req, {
+      action,
+      entityType:  "task",
+      entityId:    taskId,
+      entityTitle: beforeTask?.title,
+      details: {
+        before: patch.status ? { status: beforeTask?.status } : undefined,
+        patch: Object.fromEntries(
+          Object.entries(patch).filter(([k]) => k !== "sortOrder")
+        ),
+      },
+    });
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     const authErr = authErrorToResponse(e);
@@ -139,7 +142,7 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   try {
     const session = await requireAdminSession();
     const { id } = await params;
@@ -152,7 +155,6 @@ export async function DELETE(_req: Request, { params }: Params) {
     const before = await getTaskById(taskId);
     await deleteTask(taskId);
     revalidateTag(EPICS_CACHE_TAG, "max");
-
     broadcast("task:deleted", { taskId });
     await writeAuditLog({
       actor: { userId: session.user.id, role: session.user.role },
@@ -161,6 +163,15 @@ export async function DELETE(_req: Request, { params }: Params) {
       entityId: taskId,
       before,
       after: null,
+    });
+
+    // ── Audit log ──────────────────────────────────────────────────────────
+    await auditMutation(req, {
+      action:      "DELETE",
+      entityType:  "task",
+      entityId:    taskId,
+      entityTitle: task?.title,
+      details:     { deletedStatus: task?.status, deletedPriority: task?.priority },
     });
 
     return NextResponse.json({ ok: true });

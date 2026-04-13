@@ -1,10 +1,8 @@
 /**
  * @file route.ts — app/api/operative-tasks/[id]
  *
- * ИСПРАВЛЕНИЯ:
- *   1. Добавлена проверка аутентификации на PATCH
- *   2. Только администраторы могут менять статус/дедлайн
- *   Раньше маршрут был открыт без авторизации.
+ * v3 — Audit logging added to PATCH.
+ * Admin-only route (existing check preserved).
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -12,6 +10,7 @@ import { z } from "zod";
 import {
   updateOperativeTaskStatus,
   updateOperativeTaskDueDate,
+  getOperativeTaskById,
 } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
 import { OPERATIVE_CACHE_TAG } from "../route";
@@ -31,7 +30,6 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    // ── Проверка аутентификации ──────────────────────────────────────────────
     const session = await auth.api.getSession({ headers: await headers() });
 
     if (!session?.user) {
@@ -48,7 +46,7 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Invalid task id" }, { status: 400 });
     }
 
-    const body   = await req.json();
+    const body   = await req.json() as unknown;
     const parsed = PatchSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -57,6 +55,9 @@ export async function PATCH(req: Request, { params }: Params) {
         { status: 422 },
       );
     }
+
+    // Capture before state for audit
+    const beforeTask = await getOperativeTaskById(taskId);
 
     const { status, dueDate } = parsed.data;
     if (session.user.role !== "admin" && dueDate !== undefined) {
@@ -80,8 +81,21 @@ export async function PATCH(req: Request, { params }: Params) {
     broadcast("task:updated", {
       source: "operative",
       taskId,
-      ...(status   !== undefined && { status }),
-      ...(dueDate  !== undefined && { dueDate }),
+      ...(status  !== undefined && { status }),
+      ...(dueDate !== undefined && { dueDate }),
+    });
+
+    // ── Audit log ──────────────────────────────────────────────────────────
+    const action = status !== undefined ? "STATUS_CHANGE" as const : "UPDATE" as const;
+    await auditMutation(req, {
+      action,
+      entityType:  "operative_task",
+      entityId:    taskId,
+      entityTitle: beforeTask?.title,
+      details: {
+        before: status !== undefined ? { status: beforeTask?.status } : { dueDate: beforeTask?.dueDate },
+        after:  status !== undefined ? { status } : { dueDate },
+      },
     });
     await writeAuditLog({
       actor: { userId: session.user.id, role: session.user.role },

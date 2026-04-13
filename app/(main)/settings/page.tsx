@@ -1,22 +1,29 @@
 /**
  * @file page.tsx — app/(main)/settings
  *
- * UPDATED v2: fetches epics with tasks for Epics & Tasks CRUD tabs.
+ * UPDATED v3:
+ *   - Passes isAdmin and currentUserEmail to SettingsTabs
+ *   - Shows Audit tab only for admin users
  */
 import { getAllRoles } from "@/entities/role/roleRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
 import { getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { Header } from "@/widgets/header/Header";
 import { SettingsTabs } from "./SettingsTabs";
+import { auth } from "@/shared/lib/auth";
+import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [roles, users, epics] = await Promise.all([
+  const [roles, users, epics, session] = await Promise.all([
     getAllRoles(),
     getAllUsers(),
     getAllEpicsWithTasks(),
+    auth.api.getSession({ headers: await headers() }),
   ]);
+
+  const isAdmin = session?.user?.role === "admin";
 
   return (
     <div className="flex flex-col h-full">
@@ -28,6 +35,8 @@ export default async function SettingsPage() {
         initialRoles={roles}
         initialUsers={users}
         initialEpics={epics}
+        isAdmin={isAdmin}
+        currentUserEmail={session?.user?.email}
       />
     </div>
   );

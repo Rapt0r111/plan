@@ -1,8 +1,9 @@
 /**
  * @file route.ts — app/api/subtasks/[id]
  *
- * PATCH  /api/subtasks/:id — переключить isCompleted
- * DELETE /api/subtasks/:id — удалить подзадачу
+ * Permissions:
+ *   PATCH  — anyone (toggle isCompleted)
+ *   DELETE — admin only
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -12,7 +13,7 @@ import { subtasks } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, optionalSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const ToggleSubtaskSchema = z.object({
@@ -23,7 +24,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const session = await requireSession();
+    const session = await optionalSession();
     const { id } = await params;
     const subtaskId = Number(id);
 
@@ -58,7 +59,9 @@ export async function PATCH(req: Request, { params }: Params) {
       isCompleted: parsed.data.isCompleted,
     });
     await writeAuditLog({
-      actor: { userId: session.user.id, role: session.user.role },
+      actor: session
+        ? { userId: session.user.id, role: session.user.role }
+        : { userId: null, role: null },
       action: "update_status",
       entityType: "subtask",
       entityId: subtaskId,
@@ -67,8 +70,6 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    const authErr = authErrorToResponse(e);
-    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

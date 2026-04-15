@@ -1,7 +1,6 @@
 /**
  * @file route.ts — app/api/tasks/[id]/assignees
- *
- * РЕФАКТОРИНГ v2 — Real-time broadcast при добавлении/удалении исполнителя.
+ * POST — anyone; DELETE — admin only
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -9,7 +8,7 @@ import { z } from "zod";
 import { addTaskAssignee } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, optionalSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const AddAssigneeSchema = z.object({
@@ -20,7 +19,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    const session = await requireSession();
+    const session = await optionalSession();
     const { id } = await params;
     const taskId = Number(id);
 
@@ -43,7 +42,9 @@ export async function POST(req: Request, { params }: Params) {
 
     broadcast("task:assignee:added", { taskId, userId: parsed.data.userId });
     await writeAuditLog({
-      actor: { userId: session.user.id, role: session.user.role },
+      actor: session
+        ? { userId: session.user.id, role: session.user.role }
+        : { userId: null, role: null },
       action: "add_assignee",
       entityType: "task",
       entityId: taskId,

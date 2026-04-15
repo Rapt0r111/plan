@@ -4,13 +4,6 @@ import type { NextRequest } from "next/server";
 // better-auth default session cookie name
 const SESSION_COOKIE = "better-auth.session_token";
 
-// Paths that do NOT require authentication
-const PUBLIC_PATHS = ["/login", "/register", "/api/auth"];
-
-function isPublic(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
-}
-
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -37,18 +30,8 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Public API routes
-  if (isPublic(pathname)) {
-    return NextResponse.next();
-  }
-
-  // Protected routes: redirect to login if not authenticated
-  if (!isAuthenticated) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
+  // All other routes are publicly accessible.
+  // Authorization (delete = admin only, etc.) is enforced at the API layer.
   return NextResponse.next();
 }
 

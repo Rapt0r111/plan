@@ -1,9 +1,9 @@
 /**
  * @file route.ts — app/api/operative-subtasks/[id]
  *
- * ИСПРАВЛЕНИЯ:
- *   1. Добавлена проверка аутентификации на PATCH
- *   2. Только администраторы могут переключать статус подзадач
+ * Permissions:
+ *   PATCH (toggle isCompleted) — anyone (even unauthenticated)
+ *   DELETE — admin only (not implemented here, but would require admin)
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -11,8 +11,8 @@ import { z } from "zod";
 import { toggleOperativeSubtask } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
 import { OPERATIVE_CACHE_TAG } from "../../operative-tasks/route";
-import { auth } from "@/shared/lib/auth";
-import { headers } from "next/headers";
+import { optionalSession } from "@/shared/lib/route-auth";
+import { writeAuditLog } from "@/shared/lib/audit";
 
 const ToggleSchema = z.object({
   isCompleted: z.boolean(),
@@ -22,23 +22,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    // ── Проверка аутентификации ──────────────────────────────────────────────
-    const session = await auth.api.getSession({ headers: await headers() });
-
-    if (!session?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    if (session.user.role !== "admin") {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden: requires admin role" },
-        { status: 403 },
-      );
-    }
-
+    const session = await optionalSession();
     const { id }     = await params;
     const subtaskId  = Number(id);
 
@@ -63,6 +47,15 @@ export async function PATCH(req: Request, { params }: Params) {
       subtaskId,
       taskId:      subtask.taskId,
       isCompleted: parsed.data.isCompleted,
+    });
+    await writeAuditLog({
+      actor: session
+        ? { userId: session.user.id, role: session.user.role }
+        : { userId: null, role: null },
+      action: "update_status",
+      entityType: "operative_subtask",
+      entityId: subtaskId,
+      after: { ...subtask, isCompleted: parsed.data.isCompleted },
     });
 
     return NextResponse.json({ ok: true, data: subtask });

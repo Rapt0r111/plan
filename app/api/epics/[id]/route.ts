@@ -1,12 +1,10 @@
 /**
  * @file route.ts — app/api/epics/[id]
  *
- * ИСПРАВЛЕНИЕ: добавлена Zod-валидация для PATCH.
- *   БЫЛО: body -> updateEpic(Number(id), body) — без проверки.
- *         Принимал любые поля, включая несуществующие колонки в БД.
- *   СТАЛО: PatchEpicSchema — whitelist допустимых полей.
- *          color: regex /^#[0-9a-fA-F]{6}$/ — отклоняет невалидные hex.
- *          startDate/endDate: z.string().datetime() — ISO-8601 строго.
+ * Permissions:
+ *   GET    — anyone
+ *   PATCH  — anyone (actor logged as anonymous if unauthenticated)
+ *   DELETE — admin only
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -17,7 +15,7 @@ import {
   deleteEpic,
   EPICS_CACHE_TAG,
 } from "@/entities/epic/epicRepository";
-import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, optionalSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchEpicSchema = z.object({
@@ -50,7 +48,7 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const session = await requireSession();
+    const session = await optionalSession();
     const { id } = await params;
     const epicId = Number(id);
 
@@ -76,7 +74,9 @@ export async function PATCH(req: Request, { params }: Params) {
     const epic = await updateEpic(epicId, parsed.data);
     revalidateTag(EPICS_CACHE_TAG, "max");
     await writeAuditLog({
-      actor: { userId: session.user.id, role: session.user.role },
+      actor: session
+        ? { userId: session.user.id, role: session.user.role }
+        : { userId: null, role: null },
       action: "update",
       entityType: "epic",
       entityId: epicId,
@@ -86,8 +86,6 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: epic });
   } catch (e) {
-    const authErr = authErrorToResponse(e);
-    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     if (String(e).includes("not found")) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }

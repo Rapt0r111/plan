@@ -1,12 +1,8 @@
 /**
  * @file route.ts — app/api/tasks
  *
- * v3 — create-with-relations:
- *   POST теперь принимает опциональные поля:
- *     assigneeIds?: number[]
- *     subtasks?: Array<{ isCompleted: boolean; sortOrder?: number }>
- *   Сервер генерирует title для каждой подзадачи ("Подзадача 1", "Подзадача 2", …).
- *   Всё выполняется в одной транзакции SQLite.
+ * Permissions:
+ *   POST — anyone (no auth required); actor logged as anonymous if unauthenticated
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -14,7 +10,7 @@ import { z } from "zod";
 import { createTaskWithRelations } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, optionalSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const SubtaskInputSchema = z.object({
@@ -30,14 +26,13 @@ const CreateTaskSchema = z.object({
   priority:    z.enum(["low", "medium", "high", "critical"]).default("medium"),
   dueDate:     z.string().datetime().nullable().optional(),
   sortOrder:   z.number().int().min(0).default(0),
-  // v3: relations
   assigneeIds: z.array(z.number().int().positive()).optional(),
   subtasks:    z.array(SubtaskInputSchema).optional(),
 });
 
 export async function POST(req: Request) {
   try {
-    const session = await requireSession();
+    const session = await optionalSession();
     const body   = await req.json();
     const parsed = CreateTaskSchema.safeParse(body);
 
@@ -54,7 +49,7 @@ export async function POST(req: Request) {
       task:        taskData,
       assigneeIds: assigneeIds ?? [],
       subtasks:    (subtasks ?? []).map((s, i) => ({
-        title:       `Подзадача ${i + 1}`,   // server-generated, NOT NULL
+        title:       `Подзадача ${i + 1}`,
         isCompleted: s.isCompleted,
         sortOrder:   s.sortOrder ?? i,
       })),
@@ -68,7 +63,9 @@ export async function POST(req: Request) {
       title:  parsed.data.title,
     });
     await writeAuditLog({
-      actor: { userId: session.user.id, role: session.user.role },
+      actor: session
+        ? { userId: session.user.id, role: session.user.role }
+        : { userId: null, role: null },
       action: "create",
       entityType: "task",
       entityId: result.taskId,

@@ -1,17 +1,14 @@
 /**
  * @file route.ts — app/api/operative-tasks
  *
- * ИСПРАВЛЕНИЯ:
- *   1. Добавлена проверка аутентификации — неавторизованные получают 401
- *   2. POST только для администраторов — остальные получают 403
- *   Раньше маршрут был полностью открыт без авторизации.
+ * Permissions:
+ *   POST — admin only (creating operative tasks is an admin operation)
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createOperativeTask } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { auth } from "@/shared/lib/auth";
-import { headers } from "next/headers";
+import { authErrorToResponse, requireAdminSession } from "@/shared/lib/route-auth";
 
 export const OPERATIVE_CACHE_TAG = "operative-tasks";
 
@@ -25,23 +22,7 @@ const CreateSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    // ── Проверка аутентификации ──────────────────────────────────────────────
-    const session = await auth.api.getSession({ headers: await headers() });
-
-    if (!session?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    // ── Проверка прав администратора ─────────────────────────────────────────
-    if (session.user.role !== "admin") {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden: requires admin role" },
-        { status: 403 },
-      );
-    }
+    await requireAdminSession();
 
     const body = await req.json();
     const parsed = CreateSchema.safeParse(body);
@@ -76,6 +57,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, data: task }, { status: 201 });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) {
+      return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
+    }
     console.error("[operative-tasks POST] ERROR:", e);
     return NextResponse.json(
       { ok: false, error: String(e) },

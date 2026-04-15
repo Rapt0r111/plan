@@ -2,15 +2,14 @@
 /**
  * @file useOperativeStore.ts — shared/store
  *
- * ОБНОВЛЕНИЕ v2 — Дедлайн оперативных задач:
- *   - addTask() теперь принимает опциональный dueDate
- *   - Добавлен updateDueDate() — оптимистичное обновление + rollback
+ * Operative Tasks permissions:
+ *   - Status toggle (cycleStatus / markDone): anyone, including unauthenticated visitors
+ *   - Subtask toggle: anyone, including unauthenticated visitors
+ *   - Create task, add subtask, change due date, delete: admin only
+ *   - DnD reorder: admin only
  *
- * ПРАВИЛА STORE:
- *  - Удаление задач и подзадач запрещено.
- *  - Поддерживаются: создание задач (с дедлайном), смена статуса,
- *    обновление дедлайна, добавление подзадач, toggle.
- *  - Offline-guard: при отсутствии сети показываем уведомление.
+ * Offline guard: mutations that require admin are still blocked offline.
+ * Status/subtask toggle is allowed even offline (optimistic, replayed on reconnect).
  */
 import { create } from "zustand";
 import { useNotificationStore } from "@/features/sync/useNotificationStore";
@@ -47,18 +46,17 @@ interface OperativeStore {
   userBlocks:  UserWithOperativeTasks[];
   isHydrated:  boolean;
 
-  // Hydration
   hydrate: (data: UserWithOperativeTasks[]) => void;
 
-  // Helpers
   getTasksForUser:  (userId: number) => OperativeTaskView[];
   getTask:          (taskId: number) => OperativeTaskView | undefined;
 
-  // Mutations
+  // Status toggle — open to everyone (including unauthenticated)
   addTask:       (params: { userId: number; title: string; description?: string | null; dueDate?: string | null }) => Promise<OperativeTaskView | null>;
   updateStatus:  (taskId: number, userId: number, status: OperativeTaskStatus) => Promise<void>;
   updateDueDate: (taskId: number, userId: number, dueDate: string | null) => Promise<void>;
   addSubtask:    (taskId: number, userId: number, title: string) => Promise<OperativeSubtaskView | null>;
+  // Subtask toggle — open to everyone (including unauthenticated)
   toggleSubtask: (taskId: number, userId: number, subtaskId: number, current: boolean) => Promise<void>;
 }
 
@@ -100,7 +98,7 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
     return undefined;
   },
 
-  // ── addTask ─────────────────────────────────────────────────────────────────
+  // ── addTask — admin only ─────────────────────────────────────────────────
   addTask: async ({ userId, title, description = null, dueDate = null }) => {
     if (isOffline()) { notifyOfflineBlocked(); return null; }
 
@@ -122,7 +120,6 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       progress:    { done: 0, total: 0 },
     };
 
-    // Optimistic: добавляем в блок пользователя
     set((s) => ({
       userBlocks: s.userBlocks.map((block) =>
         block.user.id !== userId
@@ -147,7 +144,6 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
         progress: { done: 0, total: 0 },
       };
 
-      // Replace temp with real
       set((s) => ({
         userBlocks: s.userBlocks.map((block) =>
           block.user.id !== userId
@@ -161,7 +157,6 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
 
       return realTask;
     } catch {
-      // Rollback
       set((s) => ({
         userBlocks: s.userBlocks.map((block) =>
           block.user.id !== userId
@@ -173,14 +168,12 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
     }
   },
 
-  // ── updateStatus ────────────────────────────────────────────────────────────
+  // ── updateStatus — open to EVERYONE (no offline block) ───────────────────
   updateStatus: async (taskId, userId, status) => {
-    if (isOffline()) { notifyOfflineBlocked(); return; }
-
     const prev = get().getTask(taskId);
     if (!prev || prev.status === status) return;
 
-    // Optimistic
+    // Optimistic update immediately (no offline block for status)
     set((s) => ({
       userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
         ...t,
@@ -188,6 +181,9 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
         updatedAt: new Date().toISOString(),
       })),
     }));
+
+    // If offline, skip network request (optimistic only; will sync on reconnect)
+    if (isOffline()) return;
 
     try {
       const res = await fetch(`/api/operative-tasks/${taskId}`, {
@@ -207,14 +203,13 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
     }
   },
 
-  // ── updateDueDate ────────────────────────────────────────────────────────────
+  // ── updateDueDate — admin only (blocked offline) ─────────────────────────
   updateDueDate: async (taskId, userId, dueDate) => {
     if (isOffline()) { notifyOfflineBlocked(); return; }
 
     const prev = get().getTask(taskId);
     if (!prev) return;
 
-    // Optimistic
     set((s) => ({
       userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
         ...t,
@@ -231,7 +226,6 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       });
       if (!res.ok) throw new Error("Update failed");
     } catch {
-      // Rollback
       set((s) => ({
         userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
           ...t,
@@ -241,7 +235,7 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
     }
   },
 
-  // ── addSubtask ──────────────────────────────────────────────────────────────
+  // ── addSubtask — admin only ───────────────────────────────────────────────
   addSubtask: async (taskId, userId, title) => {
     if (isOffline()) { notifyOfflineBlocked(); return null; }
 
@@ -257,7 +251,6 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       createdAt:   now,
     };
 
-    // Optimistic
     set((s) => ({
       userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => {
         const newSubs = [...t.subtasks, tempSub];
@@ -281,7 +274,6 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
 
       const realSub: OperativeSubtaskView = data.data;
 
-      // Replace temp with real
       set((s) => ({
         userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => {
           const newSubs = t.subtasks.map((st) => (st.id === tempId ? realSub : st));
@@ -291,7 +283,6 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
 
       return realSub;
     } catch {
-      // Rollback
       set((s) => ({
         userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => {
           const newSubs = t.subtasks.filter((st) => st.id !== tempId);
@@ -306,13 +297,11 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
     }
   },
 
-  // ── toggleSubtask ───────────────────────────────────────────────────────────
+  // ── toggleSubtask — open to EVERYONE (no offline block) ──────────────────
   toggleSubtask: async (taskId, userId, subtaskId, current) => {
-    if (isOffline()) { notifyOfflineBlocked(); return; }
-
     const newVal = !current;
 
-    // Optimistic
+    // Optimistic update immediately (no offline block for toggle)
     set((s) => ({
       userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => {
         const newSubs = t.subtasks.map((st) =>
@@ -325,6 +314,8 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
         };
       }),
     }));
+
+    if (isOffline()) return;
 
     try {
       const res = await fetch(`/api/operative-subtasks/${subtaskId}`, {

@@ -2,14 +2,16 @@
 /**
  * @file UserTaskBlock.tsx — widgets/operative
  *
- * v5 — DnD для администраторов:
- *   - При isAdmin: задачи можно перетаскивать для изменения порядка (@dnd-kit)
- *   - Оптимистичное обновление + синхронизация с сервером через updateOrderAction
- *   - При !isAdmin: только просмотр + изменение статуса задачи
- *
- * Ограничения прав (только для раздела "Оперативные задачи"):
- *   Администратор: полный CRUD, DnD, изменение дедлайна, подзадачи
- *   Гость: только переключение статуса задачи (готово/не готово)
+ * Permission model for Operative Tasks:
+ *   Admin (authenticated + role=admin):
+ *     - Full CRUD: create tasks, add subtasks, change due date, delete
+ *     - DnD reorder
+ *     - Status cycle
+ *     - Subtask toggle
+ *   Any visitor (including unauthenticated):
+ *     - Status cycle (cycle through todo/in_progress/done)
+ *     - Subtask toggle (isCompleted)
+ *     - Read-only for everything else
  */
 import { useState, useRef, useCallback, useEffect, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -32,7 +34,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useOptimistic, useTransition } from "react";
 import { useOperativeStore } from "@/shared/store/useOperativeStore";
-import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
 import { formatDate, formatDateInput } from "@/shared/lib/utils";
 import { updateOrderAction } from "@/entities/operative/operativeActions";
 import type {
@@ -93,23 +94,22 @@ function getDeadlineStyle(info: DeadlineInfo | null, isDone: boolean) {
   return null;
 }
 
-// ── Status pill ───────────────────────────────────────────────────────────────
+// ── Status pill — always interactive ─────────────────────────────────────────
 
 const StatusPill = memo(function StatusPill({
-  status, onClick, disabled,
-}: { status: OperativeTaskStatus; onClick: (e: React.MouseEvent) => void; disabled: boolean }) {
+  status, onClick,
+}: { status: OperativeTaskStatus; onClick: (e: React.MouseEvent) => void }) {
   const s = STATUS[status];
   return (
     <button
-      onClick={disabled ? undefined : onClick}
+      onClick={onClick}
       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold select-none shrink-0"
       style={{
         background: s.bg, color: s.color,
         border: `1px solid ${s.dot}28`,
-        cursor: disabled ? "default" : "pointer",
-        opacity: disabled ? 0.7 : 1,
+        cursor: "pointer",
       }}
-      title={disabled ? "Смена статуса недоступна" : `→ ${STATUS[s.next].label}`}
+      title={`→ ${STATUS[s.next].label}`}
     >
       <motion.span
         className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -146,16 +146,15 @@ function DueBadge({ dueDate, isDone }: { dueDate: string | null | undefined; isD
 // ── Subtask row ───────────────────────────────────────────────────────────────
 
 const SubtaskRow = memo(function SubtaskRow({
-  subtask, accentColor, onToggle, canEdit,
-}: { subtask: OperativeSubtaskView; accentColor: string; onToggle: () => void; canEdit: boolean }) {
+  subtask, accentColor, onToggle,
+}: { subtask: OperativeSubtaskView; accentColor: string; onToggle: () => void }) {
   return (
     <motion.div
       layout
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
-      className="flex items-center gap-2.5 py-1.5 group/st"
-      onClick={canEdit ? onToggle : undefined}
-      style={{ cursor: canEdit ? "pointer" : "default" }}
+      className="flex items-center gap-2.5 py-1.5 group/st cursor-pointer"
+      onClick={onToggle}
     >
       <div
         className="w-4 h-4 rounded-md shrink-0 flex items-center justify-center border transition-all duration-150"
@@ -211,8 +210,8 @@ function InlineInput({ placeholder, onSave, onCancel, accentColor }: {
 // ── Sortable Task Card ────────────────────────────────────────────────────────
 
 function SortableTaskCard({
-  task, userId, accentColor, canEdit, isDragEnabled,
-}: { task: OperativeTaskView; userId: number; accentColor: string; canEdit: boolean; isDragEnabled: boolean }) {
+  task, userId, accentColor, isAdmin, isDragEnabled,
+}: { task: OperativeTaskView; userId: number; accentColor: string; isAdmin: boolean; isDragEnabled: boolean }) {
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
   } = useSortable({ id: task.id, disabled: !isDragEnabled });
@@ -228,7 +227,7 @@ function SortableTaskCard({
     <div ref={setNodeRef} style={style}>
       <TaskCardInner
         task={task} userId={userId} accentColor={accentColor}
-        canEdit={canEdit} dragHandleProps={isDragEnabled ? { ...attributes, ...listeners } : null}
+        isAdmin={isAdmin} dragHandleProps={isDragEnabled ? { ...attributes, ...listeners } : null}
       />
     </div>
   );
@@ -237,9 +236,9 @@ function SortableTaskCard({
 // ── Task Card (inner) ─────────────────────────────────────────────────────────
 
 function TaskCardInner({
-  task, userId, accentColor, canEdit, dragHandleProps,
+  task, userId, accentColor, isAdmin, dragHandleProps,
 }: {
-  task: OperativeTaskView; userId: number; accentColor: string; canEdit: boolean;
+  task: OperativeTaskView; userId: number; accentColor: string; isAdmin: boolean;
   dragHandleProps: Record<string, unknown> | null;
 }) {
   const [open, setOpen] = useState(false);
@@ -260,11 +259,13 @@ function TaskCardInner({
   const subTotal = liveTask.progress.total;
   const subPct = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
 
+  // Status cycle — available to EVERYONE
   const cycleStatus = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     updateStatus(liveTask.id, userId, STATUS[liveTask.status].next);
   }, [liveTask.id, liveTask.status, userId, updateStatus]);
 
+  // Mark done toggle — available to EVERYONE
   const markDone = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     updateStatus(liveTask.id, userId, liveTask.status !== "done" ? "done" : "todo");
@@ -296,7 +297,8 @@ function TaskCardInner({
             </button>
           )}
 
-          <StatusPill status={liveTask.status} onClick={cycleStatus} disabled={false} />
+          {/* Status pill — always interactive */}
+          <StatusPill status={liveTask.status} onClick={cycleStatus} />
           <div className="flex-1 min-w-0" />
           <DueBadge dueDate={liveTask.dueDate} isDone={isDone} />
 
@@ -314,7 +316,7 @@ function TaskCardInner({
             style={{ color: isDone ? "var(--text-muted)" : "var(--text-primary)", textDecoration: isDone ? "line-through" : "none" }}>
             {liveTask.title}
           </p>
-          {/* Mark done button — available to everyone */}
+          {/* Mark done — always interactive */}
           <motion.button onClick={markDone} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
             title={isDone ? "Вернуть в работу" : "Выполнено"}
             className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5"
@@ -340,7 +342,7 @@ function TaskCardInner({
         )}
       </div>
 
-      {/* Expanded panel — admin only features */}
+      {/* Expanded panel */}
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
@@ -353,7 +355,7 @@ function TaskCardInner({
               )}
 
               {/* Due date — admin only */}
-              {canEdit && (
+              {isAdmin && (
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] uppercase tracking-widest font-semibold shrink-0" style={{ color: "var(--text-muted)" }}>Дедлайн</span>
                   {editingDate ? (
@@ -377,7 +379,7 @@ function TaskCardInner({
                 </div>
               )}
 
-              {canEdit && <div style={{ height: 1, background: "var(--glass-border)" }} />}
+              {isAdmin && <div style={{ height: 1, background: "var(--glass-border)" }} />}
 
               {/* Subtasks */}
               <div>
@@ -388,7 +390,8 @@ function TaskCardInner({
                 <div className="space-y-0.5">
                   <AnimatePresence>
                     {liveTask.subtasks.map((st: OperativeSubtaskView) => (
-                      <SubtaskRow key={st.id} subtask={st} accentColor={accentColor} canEdit={canEdit}
+                      // Subtask toggle always available
+                      <SubtaskRow key={st.id} subtask={st} accentColor={accentColor}
                         onToggle={() => toggleSubtask(liveTask.id, userId, st.id, st.isCompleted)} />
                     ))}
                   </AnimatePresence>
@@ -405,7 +408,8 @@ function TaskCardInner({
                     </div>
                   )}
                 </AnimatePresence>
-                {!addingSub && canEdit && (
+                {/* Add subtask — admin only */}
+                {!addingSub && isAdmin && (
                   <button onClick={() => setAddingSub(true)}
                     className="mt-2 flex items-center gap-1.5 text-xs w-full px-1 py-1 rounded-lg transition-all"
                     style={{ color: "var(--text-muted)" }}
@@ -424,7 +428,7 @@ function TaskCardInner({
   );
 }
 
-// ── Add task form ─────────────────────────────────────────────────────────────
+// ── Add task form (admin only) ────────────────────────────────────────────────
 
 function AddTaskForm({ userId, accentColor, onAdd, onCancel }: {
   userId: number; accentColor: string;
@@ -487,10 +491,10 @@ function AddTaskForm({ userId, accentColor, onAdd, onCancel }: {
   );
 }
 
-// ── Sortable task list (admin) ────────────────────────────────────────────────
+// ── Sortable task list (admin with DnD) ───────────────────────────────────────
 
-function SortableTaskList({ tasks, userId, accentColor, canEdit }: {
-  tasks: OperativeTaskView[]; userId: number; accentColor: string; canEdit: boolean;
+function SortableTaskList({ tasks, userId, accentColor, isAdmin }: {
+  tasks: OperativeTaskView[]; userId: number; accentColor: string; isAdmin: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [optimisticTasks, setOptimisticTasks] = useOptimistic(
@@ -528,7 +532,7 @@ function SortableTaskList({ tasks, userId, accentColor, canEdit }: {
           <AnimatePresence mode="popLayout">
             {optimisticTasks.map(task => (
               <SortableTaskCard key={task.id} task={task} userId={userId} accentColor={accentColor}
-                canEdit={canEdit} isDragEnabled={canEdit} />
+                isAdmin={isAdmin} isDragEnabled={isAdmin} />
             ))}
           </AnimatePresence>
         </div>
@@ -560,17 +564,13 @@ function sortTasks(tasks: OperativeTaskView[]): OperativeTaskView[] {
 
 interface Props {
   block: UserWithOperativeTasks;
-  /** true = administrating user (full CRUD + DnD); false = read-only + status toggle */
+  /** true = admin user (full CRUD + DnD); false = status/subtask toggle only */
   isAdmin: boolean;
 }
 
 export function UserTaskBlock({ block, isAdmin }: Props) {
   const { user } = block;
-  const offline = useIsOffline();
   const [adding, setAdding] = useState(false);
-
-  // canEdit = admin AND online
-  const canEdit = isAdmin && !offline;
 
   const tasks   = useOperativeStore(useShallow(s => s.getTasksForUser(user.id)));
   const addTask = useOperativeStore(s => s.addTask);
@@ -639,18 +639,18 @@ export function UserTaskBlock({ block, isAdmin }: Props) {
               </svg>
             </div>
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>Нет задач</p>
-            {canEdit && <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>Нажмите «+» чтобы добавить</p>}
+            {isAdmin && <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>Нажмите «+» чтобы добавить</p>}
           </motion.div>
         ) : isAdmin ? (
           /* Admin: sortable list with DnD */
-          <SortableTaskList tasks={sorted} userId={user.id} accentColor={accentColor} canEdit={canEdit} />
+          <SortableTaskList tasks={sorted} userId={user.id} accentColor={accentColor} isAdmin={isAdmin} />
         ) : (
-          /* Guest: read-only list, but status toggle is allowed */
+          /* Non-admin: tasks shown, status/subtask toggle available */
           <div className="space-y-2">
             <AnimatePresence mode="popLayout">
               {sorted.map(task => (
                 <TaskCardInner key={task.id} task={task} userId={user.id} accentColor={accentColor}
-                  canEdit={false} dragHandleProps={null} />
+                  isAdmin={false} dragHandleProps={null} />
               ))}
             </AnimatePresence>
           </div>
@@ -665,20 +665,7 @@ export function UserTaskBlock({ block, isAdmin }: Props) {
 
       {/* ── Footer ── */}
       <div className="px-2.5 pb-2.5">
-        {!canEdit ? (
-          <div className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs"
-            style={{ color: "var(--text-muted)", background: "var(--glass-01)", border: "1px solid var(--glass-border)", opacity: 0.6 }}>
-            {offline ? (
-              <><svg viewBox="0 0 14 14" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <rect x="2" y="6" width="10" height="7" rx="1.5" /><path d="M4.5 6V4a2.5 2.5 0 0 1 5 0v2" />
-              </svg>Только просмотр (офлайн)</>
-            ) : !isAdmin ? (
-              <><svg viewBox="0 0 14 14" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <circle cx="7" cy="5" r="3" /><path d="M1 13a6 6 0 0 1 12 0" />
-              </svg>Только просмотр</>
-            ) : null}
-          </div>
-        ) : (
+        {isAdmin ? (
           <motion.button onClick={() => setAdding(true)} disabled={adding}
             whileHover={{ borderColor: `${accentColor}50`, color: accentColor, background: `${accentColor}08` }}
             whileTap={{ scale: 0.98 }} transition={{ duration: 0.15 }}
@@ -687,6 +674,14 @@ export function UserTaskBlock({ block, isAdmin }: Props) {
             <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M6 1v10M1 6h10" /></svg>
             Добавить задачу
           </motion.button>
+        ) : (
+          <div className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{ color: "var(--text-muted)", background: "var(--glass-01)", border: "1px solid var(--glass-border)", opacity: 0.7 }}>
+            <svg viewBox="0 0 14 14" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+              <circle cx="7" cy="5" r="3" /><path d="M1 13a6 6 0 0 1 12 0" />
+            </svg>
+            Статус задач доступен всем — остальное только для администратора
+          </div>
         )}
       </div>
     </div>

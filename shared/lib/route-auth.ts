@@ -1,6 +1,10 @@
 import { headers } from "next/headers";
 import { auth } from "@/shared/lib/auth";
 
+export async function optionalSession() {
+  return auth.api.getSession({ headers: await headers() });
+}
+
 export async function getCurrentSession() {
   return auth.api.getSession({ headers: await headers() });
 }

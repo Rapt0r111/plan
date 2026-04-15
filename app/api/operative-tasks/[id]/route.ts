@@ -1,10 +1,14 @@
 /**
  * @file route.ts — app/api/operative-tasks/[id]
  *
- * ИСПРАВЛЕНИЯ:
- *   1. Добавлена проверка аутентификации на PATCH
- *   2. Только администраторы могут менять статус/дедлайн
- *   Раньше маршрут был открыт без авторизации.
+ * Permissions:
+ *   PATCH status — anyone (even unauthenticated)
+ *   PATCH dueDate — admin only
+ *   DELETE — admin only (handled elsewhere)
+ *
+ * Operative tasks page has tighter restrictions:
+ *   - Status toggle = anyone
+ *   - Due date, delete, create = admin only
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -15,8 +19,7 @@ import {
 } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
 import { OPERATIVE_CACHE_TAG } from "../route";
-import { auth } from "@/shared/lib/auth";
-import { headers } from "next/headers";
+import { authErrorToResponse, requireAdminSession, optionalSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchSchema = z.object({
@@ -31,16 +34,6 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    // ── Проверка аутентификации ──────────────────────────────────────────────
-    const session = await auth.api.getSession({ headers: await headers() });
-
-    if (!session?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
     const { id } = await params;
     const taskId = Number(id);
 
@@ -59,12 +52,24 @@ export async function PATCH(req: Request, { params }: Params) {
     }
 
     const { status, dueDate } = parsed.data;
-    if (session.user.role !== "admin" && dueDate !== undefined) {
-      return NextResponse.json(
-        { ok: false, error: "Forbidden: only admin can change due date" },
-        { status: 403 },
-      );
+
+    // dueDate changes require admin auth
+    if (dueDate !== undefined) {
+      try {
+        await requireAdminSession();
+      } catch (e) {
+        const authErr = authErrorToResponse(e);
+        if (authErr) {
+          return NextResponse.json(
+            { ok: false, error: "Forbidden: only admin can change due date" },
+            { status: 403 },
+          );
+        }
+      }
     }
+
+    // Status changes are open to everyone (even unauthenticated)
+    const session = await optionalSession();
 
     let task;
 
@@ -84,7 +89,9 @@ export async function PATCH(req: Request, { params }: Params) {
       ...(dueDate  !== undefined && { dueDate }),
     });
     await writeAuditLog({
-      actor: { userId: session.user.id, role: session.user.role },
+      actor: session
+        ? { userId: session.user.id, role: session.user.role }
+        : { userId: null, role: null },
       action: "update",
       entityType: "operative_task",
       entityId: taskId,
@@ -94,6 +101,8 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: task });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     if (String(e).includes("not found")) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }

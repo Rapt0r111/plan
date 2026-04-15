@@ -1,18 +1,15 @@
 /**
  * @file route.ts — app/api/epics
  *
- * ИСПРАВЛЕНИЕ: добавлена Zod-валидация для POST.
- *   БЫЛО: if (!body.title) — минимальная проверка.
- *         body.color мог быть "red", "javascript:alert(1)", произвольной строкой.
- *         body.startDate мог быть невалидной датой.
- *   СТАЛО: CreateEpicSchema — color с regex /^#[0-9a-fA-F]{6}$/,
- *          даты через z.string().datetime(), title с min/max.
+ * Permissions:
+ *   GET  — anyone
+ *   POST — anyone (actor logged as anonymous if unauthenticated)
  */
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { getAllEpics, createEpic, EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
-import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { optionalSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const CreateEpicSchema = z.object({
@@ -34,7 +31,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await requireSession();
+    const session = await optionalSession();
     const body = await req.json();
     const parsed = CreateEpicSchema.safeParse(body);
 
@@ -48,7 +45,9 @@ export async function POST(req: Request) {
     const epic = await createEpic(parsed.data);
     revalidateTag(EPICS_CACHE_TAG, "max");
     await writeAuditLog({
-      actor: { userId: session.user.id, role: session.user.role },
+      actor: session
+        ? { userId: session.user.id, role: session.user.role }
+        : { userId: null, role: null },
       action: "create",
       entityType: "epic",
       entityId: epic.id,
@@ -57,8 +56,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, data: epic }, { status: 201 });
   } catch (e) {
-    const authErr = authErrorToResponse(e);
-    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

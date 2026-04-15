@@ -1,23 +1,7 @@
 /**
  * @file layout.tsx — app/(main)
- *
- * ИЗМЕНЕНИЯ v2 — Real-time:
- *   Добавлен <RealtimeProvider /> рядом с другими "невидимыми" клиентскими
- *   эффектами (OfflineHydrator, SyncOrchestrator, PrefsApplicator).
- *
- *   RealtimeProvider монтирует SSE-подписку к /api/realtime и вызывает
- *   router.refresh() при получении push-обновления от сервера.
- *   Это означает что все пользователи видят изменения коллег в реальном времени
- *   без ручного обновления страницы.
- *
- * ПОРЯДОК МОНТИРОВАНИЯ:
- *   PrefsApplicator      — CSS vars из localStorage (первым, до paint)
- *   OfflineHydrator      — IndexedDB cold-start восстановление
- *   SyncOrchestrator     — replay offline queue при online
- *   RealtimeProvider     — SSE push-обновления от других пользователей  ← НОВОЕ
- *   SidebarLoader        — Server Component с данными
+ * Updated v3: passes session to SidebarLoader for user menu + logout.
  */
-
 import { Suspense } from "react";
 import { Sidebar } from "@/widgets/sidebar/Sidebar";
 import { getAllEpics } from "@/entities/epic/epicRepository";
@@ -27,16 +11,21 @@ import { RoleHydrator } from "@/shared/store/RoleHydrator";
 import { getAllRoles } from "@/entities/role/roleRepository";
 import { PrefsApplicator } from "@/shared/ui/PrefsApplicator";
 import { SyncOrchestrator } from "@/shared/store/SyncOrchestrator";
-import { RealtimeProvider } from "@/shared/store/RealtimeProvider"; // ← НОВОЕ
+import { RealtimeProvider } from "@/shared/store/RealtimeProvider";
+import { auth } from "@/shared/lib/auth";
+import { headers } from "next/headers";
 
 async function SidebarLoader() {
-  const [epics, users, roles] = await Promise.all([
-    getAllEpics(), getAllUsers(), getAllRoles(),
+  const [epics, users, roles, session] = await Promise.all([
+    getAllEpics(),
+    getAllUsers(),
+    getAllRoles(),
+    auth.api.getSession({ headers: await headers() }),
   ]);
   return (
     <>
       <RoleHydrator roles={roles} />
-      <Sidebar epics={epics} users={users} />
+      <Sidebar epics={epics} users={users} session={session} />
     </>
   );
 }
@@ -52,7 +41,6 @@ function SidebarSkeleton() {
         style={{ background: "linear-gradient(to bottom, var(--sidebar-top), var(--bg-base))" }}
       />
       <div className="absolute inset-y-0 right-0 w-px bg-(--glass-border)" />
-
       <div className="relative flex flex-col h-full px-3 pt-4 gap-3 animate-pulse">
         <div className="h-14 rounded-xl mx-2 mb-2" style={{ background: "var(--glass-02)" }} />
         {[1, 2].map((i) => (
@@ -61,11 +49,7 @@ function SidebarSkeleton() {
         <div className="h-14 rounded-xl mt-1" style={{ background: "var(--glass-01)" }} />
         <div className="flex flex-col gap-1 flex-1 mt-2">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={i}
-              className="h-9 rounded-xl"
-              style={{ background: "var(--glass-01)", opacity: 1 - i * 0.12 }}
-            />
+            <div key={i} className="h-9 rounded-xl" style={{ background: "var(--glass-01)", opacity: 1 - i * 0.12 }} />
           ))}
         </div>
         <div className="h-10 rounded-xl mb-2" style={{ background: "var(--glass-01)" }} />
@@ -80,7 +64,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <PrefsApplicator />
       <OfflineHydrator />
       <SyncOrchestrator />
-      <RealtimeProvider /> {/* ← ДОБАВЛЕНО: SSE real-time push */}
+      <RealtimeProvider />
       <Suspense fallback={<SidebarSkeleton />}>
         <SidebarLoader />
       </Suspense>

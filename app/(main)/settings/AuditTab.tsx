@@ -23,13 +23,13 @@ interface AuditEntry {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const ACTION_META: Record<string, { color: string; bg: string; icon: string }> = {
-  create:        { color: "#34d399", bg: "rgba(52,211,153,0.12)",  icon: "+" },
-  update:        { color: "#38bdf8", bg: "rgba(56,189,248,0.12)",  icon: "✎" },
-  delete:        { color: "#f87171", bg: "rgba(239,68,68,0.12)",   icon: "✕" },
+  create: { color: "#34d399", bg: "rgba(52,211,153,0.12)", icon: "+" },
+  update: { color: "#38bdf8", bg: "rgba(56,189,248,0.12)", icon: "✎" },
+  delete: { color: "#f87171", bg: "rgba(239,68,68,0.12)", icon: "✕" },
   update_status: { color: "#a78bfa", bg: "rgba(139,92,246,0.12)", icon: "◉" },
-  add_assignee:  { color: "#fbbf24", bg: "rgba(251,191,36,0.12)", icon: "+" },
+  add_assignee: { color: "#fbbf24", bg: "rgba(251,191,36,0.12)", icon: "+" },
   remove_assignee: { color: "#fb923c", bg: "rgba(251,146,60,0.12)", icon: "−" },
-  reorder:       { color: "#64748b", bg: "rgba(100,116,139,0.12)", icon: "↕" },
+  reorder: { color: "#64748b", bg: "rgba(100,116,139,0.12)", icon: "↕" },
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -123,7 +123,7 @@ function DiffView({ before, after }: { before: unknown; after: unknown }) {
             className="overflow-hidden"
           >
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {before && (
+              {Boolean(before) && (
                 <div>
                   <p className="text-[9px] font-semibold uppercase tracking-widest mb-1" style={{ color: "#f87171" }}>
                     До
@@ -140,7 +140,7 @@ function DiffView({ before, after }: { before: unknown; after: unknown }) {
                   </pre>
                 </div>
               )}
-              {after && (
+              {Boolean(after) && (
                 <div>
                   <p className="text-[9px] font-semibold uppercase tracking-widest mb-1" style={{ color: "#34d399" }}>
                     После

@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     });
 
     const [adminCount] = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(authUsers)
       .where(eq(authUsers.role, "admin"));
 

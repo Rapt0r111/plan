@@ -27,6 +27,7 @@ const CreateUserSchema = z.object({
 
 export async function GET() {
   try {
+    await requireSession();
     const data = await getAllUsers();
     return NextResponse.json({ ok: true, data });
   } catch (e) {

@@ -1,12 +1,13 @@
 /**
  * @file page.tsx — app/(main)/operative
  *
- * ИСПРАВЛЕНИЯ v3:
+ * v4 ИСПРАВЛЕНИЯ:
  *  1. isAdmin теперь РЕАЛЬНО определён через server session
- *     (был undefined → runtime crash)
- *  2. Session получается через better-auth server API
- *  3. isAdmin передаётся в OperativePage корректно
+ *  2. Авторизация передаётся в OperativePage
+ *  3. Заголовок показывает текущего пользователя и кнопку выхода (или вход)
+ *     в разделе "Оперативные задачи" — раздел доступен всем, но CRUD только для admin
  */
+import Link from "next/link";
 import { getAllUsersWithOperativeTasks } from "@/entities/operative/operativeRepository";
 import { Header } from "@/widgets/header/Header";
 import { OperativePage } from "./OperativePage";
@@ -15,10 +16,101 @@ import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
+// ── Server-side logout button (form action) ───────────────────────────────────
+// We keep it as a plain <form> POST so it works without JS too.
+async function SessionBadge() {
+  const session = await auth.api.getSession({ headers: await headers() });
+
+  if (!session?.user) {
+    // Show a compact "Войти" link if the user isn't authenticated
+    return (
+      <Link
+        href="/login"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+        style={{
+          background: "rgba(139,92,246,0.12)",
+          border: "1px solid rgba(139,92,246,0.3)",
+          color: "#a78bfa",
+        }}
+      >
+        <svg
+          className="w-3 h-3"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        >
+          <path d="M8 2H10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8M5 9l3-3-3-3M8 6H1" />
+        </svg>
+        Войти
+      </Link>
+    );
+  }
+
+  const initials = session.user.name
+    .trim()
+    .split(/\s+/)
+    .map((w: string) => w[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const isAdmin = session.user.role === "admin";
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* User badge */}
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium"
+        style={{
+          background: isAdmin ? "rgba(139,92,246,0.10)" : "rgba(100,116,139,0.10)",
+          border: `1px solid ${isAdmin ? "rgba(139,92,246,0.25)" : "rgba(100,116,139,0.25)"}`,
+          color: isAdmin ? "#a78bfa" : "#94a3b8",
+        }}>
+        <div
+          className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+          style={{ backgroundColor: isAdmin ? "#8b5cf6" : "#64748b" }}
+        >
+          {initials}
+        </div>
+        <span className="max-w-25 truncate">{session.user.name.split(" ")[0]}</span>
+        {isAdmin && (
+          <span className="text-[9px] font-semibold opacity-75">· Адм.</span>
+        )}
+      </div>
+
+      {/* Logout form */}
+      <form action="/api/auth/signout" method="POST">
+        <button
+          type="submit"
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all"
+          style={{
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.2)",
+            color: "#f87171",
+            cursor: "pointer",
+          }}
+          title="Выйти"
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          >
+            <path d="M4 2H2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2M7 9l3-3-3-3M10 6H3" />
+          </svg>
+          Выйти
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default async function OperativeRoute() {
   // ── Получаем сессию текущего пользователя ────────────────────────────────
-  // auth.api.getSession — server-side вызов better-auth.
-  // Возвращает null если пользователь не авторизован.
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -84,22 +176,10 @@ export default async function OperativeRoute() {
                 {inProgress} в работе
               </div>
             )}
-            {/* Показываем Admin badge если пользователь — администратор */}
-            {isAdmin && (
-              <div
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold"
-                style={{
-                  background: "rgba(139,92,246,0.12)",
-                  border: "1px solid rgba(139,92,246,0.3)",
-                  color: "#a78bfa",
-                }}
-              >
-                <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M6 1l1.5 3H11L8.5 6l1 3L6 7.5 2.5 9l1-3L1 4h3.5z" />
-                </svg>
-                Администратор
-              </div>
-            )}
+
+            {/* ── Login / User + Logout badge ── */}
+            {/* @ts-expect-error Server Component */}
+            <SessionBadge />
           </div>
         }
       />

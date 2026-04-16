@@ -4,6 +4,17 @@ import { db } from "@/shared/db/client";
 import * as schema from "@/shared/db/schema";
 
 export const auth = betterAuth({
+  /**
+   * baseURL is required by Better Auth for callback URLs and redirects.
+   * Set BETTER_AUTH_URL in your environment:
+   *   - Local dev:  http://localhost:3000
+   *   - Docker:     https://taskflow.local  (or http://192.168.99.101:38701)
+   */
+  baseURL:
+    process.env.BETTER_AUTH_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    "http://localhost:3000",
+
   database: drizzleAdapter(db, {
     provider: "sqlite",
     schema: {

@@ -26,6 +26,12 @@ services:
       DATABASE_URL: /app/data/taskflow.db
       # Set to "false" to skip seeding after first run
       SEED_ON_FIRST_RUN: "true"
+      # REQUIRED by Better Auth for session cookies and redirect URLs.
+      # Use the URL clients actually use to reach this service.
+      # With Caddy HTTPS proxy use: https://taskflow.local
+      # Without Caddy (direct port):
+      BETTER_AUTH_URL: "http://192.168.99.101:38701"
+      NEXT_PUBLIC_APP_URL: "http://192.168.99.101:38701"
 
     volumes:
       # Named volume — SQLite database persists across container restarts/upgrades

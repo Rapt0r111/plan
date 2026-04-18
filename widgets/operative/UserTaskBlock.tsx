@@ -2,16 +2,14 @@
 /**
  * @file UserTaskBlock.tsx — widgets/operative
  *
- * Permission model for Operative Tasks:
- *   Admin (authenticated + role=admin):
- *     - Full CRUD: create tasks, add subtasks, change due date, delete
- *     - DnD reorder
- *     - Status cycle
- *     - Subtask toggle
- *   Any visitor (including unauthenticated):
- *     - Status cycle (cycle through todo/in_progress/done)
- *     - Subtask toggle (isCompleted)
- *     - Read-only for everything else
+ * v2 — добавлено удаление задач и подзадач (только администратор).
+ *
+ * Permission model:
+ *   Admin:    полный CRUD + DnD + status + subtask toggle + DELETE
+ *   Visitor:  status cycle + subtask toggle (только чтение остального)
+ *
+ * DELETE task:    двухшаговое подтверждение (первый клик — «Удалить?», второй — подтверждение)
+ * DELETE subtask: кнопка × появляется при hover (только admin)
  */
 import { useState, useRef, useCallback, useEffect, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -74,13 +72,7 @@ function deadlineInfo(dueDate: string | null | undefined): DeadlineInfo | null {
   const isOverdue  = diffMs < 0;
   const isToday    = !isOverdue && Math.floor(daysLeft) === 0;
   const isSoon     = !isOverdue && daysLeft <= 3;
-  return {
-    label: formatDate(dueDate),
-    isOverdue,
-    isSoon,
-    isToday,
-    daysLeft: Math.max(0, Math.floor(daysLeft)),
-  };
+  return { label: formatDate(dueDate), isOverdue, isSoon, isToday, daysLeft: Math.max(0, Math.floor(daysLeft)) };
 }
 
 function getDeadlineStyle(info: DeadlineInfo | null, isDone: boolean) {
@@ -94,7 +86,7 @@ function getDeadlineStyle(info: DeadlineInfo | null, isDone: boolean) {
   return null;
 }
 
-// ── Status pill — always interactive ─────────────────────────────────────────
+// ── Status pill ───────────────────────────────────────────────────────────────
 
 const StatusPill = memo(function StatusPill({
   status, onClick,
@@ -104,11 +96,7 @@ const StatusPill = memo(function StatusPill({
     <button
       onClick={onClick}
       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold select-none shrink-0"
-      style={{
-        background: s.bg, color: s.color,
-        border: `1px solid ${s.dot}28`,
-        cursor: "pointer",
-      }}
+      style={{ background: s.bg, color: s.color, border: `1px solid ${s.dot}28`, cursor: "pointer" }}
       title={`→ ${STATUS[s.next].label}`}
     >
       <motion.span
@@ -131,10 +119,8 @@ function DueBadge({ dueDate, isDone }: { dueDate: string | null | undefined; isD
   if (isDone) return <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>{info.label}</span>;
   if (!style) return <span className="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded" style={{ color: "#64748b" }}>{info.label}</span>;
   return (
-    <span
-      className="flex items-center gap-1 text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded-md font-semibold"
-      style={{ color: style.color, background: style.bg, border: `1px solid ${style.border}` }}
-    >
+    <span className="flex items-center gap-1 text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded-md font-semibold"
+      style={{ color: style.color, background: style.bg, border: `1px solid ${style.border}` }}>
       {style.pulse
         ? <motion.span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: style.color }} animate={{ scale: [1, 1.6, 1], opacity: [1, 0.4, 1] }} transition={{ duration: 1.2, repeat: Infinity }} />
         : <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: style.color }} />}
@@ -146,27 +132,39 @@ function DueBadge({ dueDate, isDone }: { dueDate: string | null | undefined; isD
 // ── Subtask row ───────────────────────────────────────────────────────────────
 
 const SubtaskRow = memo(function SubtaskRow({
-  subtask, accentColor, onToggle,
-}: { subtask: OperativeSubtaskView; accentColor: string; onToggle: () => void }) {
+  subtask, accentColor, onToggle, onDelete, isAdmin,
+}: {
+  subtask:    OperativeSubtaskView;
+  accentColor: string;
+  onToggle:   () => void;
+  onDelete:   () => void;
+  isAdmin:    boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+
   return (
     <motion.div
       layout
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
-      className="flex items-center gap-2.5 py-1.5 group/st cursor-pointer"
-      onClick={onToggle}
+      className="flex items-center gap-2.5 py-1.5 group/st"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
+      {/* Checkbox — toggle always available */}
       <div
-        className="w-4 h-4 rounded-md shrink-0 flex items-center justify-center border transition-all duration-150"
+        className="w-4 h-4 rounded-md shrink-0 flex items-center justify-center border transition-all duration-150 cursor-pointer"
         style={{
-          background: subtask.isCompleted ? accentColor : "transparent",
+          background:  subtask.isCompleted ? accentColor : "transparent",
           borderColor: subtask.isCompleted ? accentColor : "var(--glass-border-active)",
-          boxShadow: subtask.isCompleted ? `0 0 6px ${accentColor}50` : "none",
+          boxShadow:   subtask.isCompleted ? `0 0 6px ${accentColor}50` : "none",
         }}
+        onClick={onToggle}
       >
         <AnimatePresence>
           {subtask.isCompleted && (
-            <motion.svg initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
+            <motion.svg
+              initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
               transition={{ duration: 0.12, ease: "backOut" }}
               className="w-2.5 h-2.5 text-white" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
               <path d="M1.5 5l2.5 2.5 4.5-4.5" />
@@ -174,10 +172,40 @@ const SubtaskRow = memo(function SubtaskRow({
           )}
         </AnimatePresence>
       </div>
-      <span className="text-xs leading-snug flex-1 transition-colors"
-        style={{ color: subtask.isCompleted ? "var(--text-muted)" : "var(--text-secondary)", textDecoration: subtask.isCompleted ? "line-through" : "none", opacity: subtask.isCompleted ? 0.6 : 1 }}>
+
+      <span
+        className="text-xs leading-snug flex-1 cursor-pointer transition-colors"
+        style={{
+          color:          subtask.isCompleted ? "var(--text-muted)" : "var(--text-secondary)",
+          textDecoration: subtask.isCompleted ? "line-through" : "none",
+          opacity:        subtask.isCompleted ? 0.6 : 1,
+        }}
+        onClick={onToggle}
+      >
         {subtask.title}
       </span>
+
+      {/* Delete subtask — admin only, hover */}
+      <AnimatePresence>
+        {isAdmin && hovered && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.1 }}
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="shrink-0 w-5 h-5 rounded-md flex items-center justify-center transition-colors"
+            style={{ color: "var(--text-muted)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#f87171"; (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.10)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            title="Удалить подзадачу"
+          >
+            <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M2 2l8 8M10 2L2 10" />
+            </svg>
+          </motion.button>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 });
@@ -192,29 +220,31 @@ function InlineInput({ placeholder, onSave, onCancel, accentColor }: {
   useEffect(() => { ref.current?.focus(); }, []);
   const submit = () => { const v = val.trim(); if (v) onSave(v); else onCancel(); };
   return (
-    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }}
+    <motion.div
+      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }}
       className="flex items-center gap-2 px-3 py-2 rounded-xl"
       style={{ background: "var(--glass-01)", border: `1px solid ${accentColor}45`, boxShadow: `0 0 0 3px ${accentColor}10` }}>
-      <input ref={ref} value={val} onChange={e => setVal(e.target.value)}
+      <input
+        ref={ref} value={val} onChange={e => setVal(e.target.value)}
         onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submit(); } if (e.key === "Escape") { e.preventDefault(); onCancel(); } }}
         onBlur={() => { if (!val.trim()) onCancel(); }}
         placeholder={placeholder} maxLength={200}
         className="flex-1 text-sm bg-transparent outline-none" style={{ color: "var(--text-primary)" }} />
-      <button onMouseDown={e => { e.preventDefault(); onCancel(); }} style={{ color: "var(--text-muted)", lineHeight: 1 }}>
+      <button onMouseDown={e => { e.preventDefault(); onCancel(); }} style={{ color: "var(--text-muted)" }}>
         <svg viewBox="0 0 10 10" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M2 2l6 6M8 2L2 8" /></svg>
       </button>
     </motion.div>
   );
 }
 
-// ── Sortable Task Card ────────────────────────────────────────────────────────
+// ── Sortable Task Card wrapper ─────────────────────────────────────────────────
 
 function SortableTaskCard({
   task, userId, accentColor, isAdmin, isDragEnabled,
 }: { task: OperativeTaskView; userId: number; accentColor: string; isAdmin: boolean; isDragEnabled: boolean }) {
-  const {
-    attributes, listeners, setNodeRef, transform, transition, isDragging,
-  } = useSortable({ id: task.id, disabled: !isDragEnabled });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: task.id, disabled: !isDragEnabled,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -241,50 +271,56 @@ function TaskCardInner({
   task: OperativeTaskView; userId: number; accentColor: string; isAdmin: boolean;
   dragHandleProps: Record<string, unknown> | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const [addingSub, setAddingSub] = useState(false);
+  const [open, setOpen]               = useState(false);
+  const [addingSub, setAddingSub]     = useState(false);
   const [editingDate, setEditingDate] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const liveTask      = useOperativeStore(s => s.getTask(task.id)) ?? task;
   const updateStatus  = useOperativeStore(s => s.updateStatus);
   const updateDueDate = useOperativeStore(s => s.updateDueDate);
   const addSubtask    = useOperativeStore(s => s.addSubtask);
   const toggleSubtask = useOperativeStore(s => s.toggleSubtask);
+  const deleteTask    = useOperativeStore(s => s.deleteTask);
+  const deleteSubtask = useOperativeStore(s => s.deleteSubtask);
 
   const isDone = liveTask.status === "done";
   const dl = deadlineInfo(liveTask.dueDate);
   const dlStyle = getDeadlineStyle(dl, isDone);
   const s = STATUS[liveTask.status];
-  const subDone = liveTask.progress.done;
+  const subDone  = liveTask.progress.done;
   const subTotal = liveTask.progress.total;
-  const subPct = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
+  const subPct   = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
 
-  // Status cycle — available to EVERYONE
   const cycleStatus = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     updateStatus(liveTask.id, userId, STATUS[liveTask.status].next);
   }, [liveTask.id, liveTask.status, userId, updateStatus]);
 
-  // Mark done toggle — available to EVERYONE
   const markDone = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     updateStatus(liveTask.id, userId, liveTask.status !== "done" ? "done" : "todo");
   }, [liveTask.id, liveTask.status, userId, updateStatus]);
 
-  return (
-    <motion.div layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
-      className="rounded-xl overflow-hidden relative"
-      style={{
-        background: "var(--bg-overlay)",
-        border: `1px solid ${dlStyle && !isDone ? dlStyle.border : "var(--glass-border)"}`,
-        borderLeft: `2px solid ${dlStyle?.border && !isDone ? dlStyle.border.replace("0.4", "1") : isDone ? "#34d399" : s.dot}`,
-        opacity: isDone ? 0.72 : 1,
-      }}>
+  const handleDeleteTask = useCallback(() => {
+    deleteTask(liveTask.id, userId);
+  }, [liveTask.id, userId, deleteTask]);
 
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
+      className="rounded-xl overflow-hidden relative group/card"
+      style={{
+        background:  "var(--bg-overlay)",
+        border:      `1px solid ${dlStyle && !isDone ? dlStyle.border : "var(--glass-border)"}`,
+        borderLeft:  `2px solid ${dlStyle?.border && !isDone ? dlStyle.border.replace("0.4", "1") : isDone ? "#34d399" : s.dot}`,
+        opacity:     isDone ? 0.72 : 1,
+      }}
+    >
       {/* Main row */}
       <div className="px-3 py-2.5 space-y-2">
         <div className="flex items-center gap-2">
-          {/* Drag handle — admin only */}
           {dragHandleProps && (
             <button
               {...dragHandleProps}
@@ -297,13 +333,15 @@ function TaskCardInner({
             </button>
           )}
 
-          {/* Status pill — always interactive */}
           <StatusPill status={liveTask.status} onClick={cycleStatus} />
           <div className="flex-1 min-w-0" />
           <DueBadge dueDate={liveTask.dueDate} isDone={isDone} />
 
-          <button onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
-            className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center" style={{ color: "var(--text-muted)" }}>
+          <button
+            onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
+            className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ color: "var(--text-muted)" }}
+          >
             <motion.svg viewBox="0 0 12 12" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
               animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>
               <path d="M2 4.5l4 4 4-4" />
@@ -316,14 +354,14 @@ function TaskCardInner({
             style={{ color: isDone ? "var(--text-muted)" : "var(--text-primary)", textDecoration: isDone ? "line-through" : "none" }}>
             {liveTask.title}
           </p>
-          {/* Mark done — always interactive */}
-          <motion.button onClick={markDone} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+          <motion.button
+            onClick={markDone} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
             title={isDone ? "Вернуть в работу" : "Выполнено"}
             className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5"
             style={{
               background: isDone ? "rgba(52,211,153,0.15)" : "var(--glass-01)",
-              border: isDone ? "1.5px solid #34d399" : "1.5px solid var(--glass-border-active)",
-              color: isDone ? "#34d399" : "var(--text-muted)",
+              border:     isDone ? "1.5px solid #34d399" : "1.5px solid var(--glass-border-active)",
+              color:      isDone ? "#34d399" : "var(--text-muted)",
             }}>
             <svg viewBox="0 0 10 10" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
               <path d="M1.5 5l2.5 2.5 4.5-4.5" />
@@ -345,7 +383,8 @@ function TaskCardInner({
       {/* Expanded panel */}
       <AnimatePresence initial={false}>
         {open && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             style={{ overflow: "hidden", borderTop: "1px solid var(--glass-border)" }}>
             <div className="px-3 py-3 space-y-3" onClick={e => e.stopPropagation()}>
@@ -390,15 +429,21 @@ function TaskCardInner({
                 <div className="space-y-0.5">
                   <AnimatePresence>
                     {liveTask.subtasks.map((st: OperativeSubtaskView) => (
-                      // Subtask toggle always available
-                      <SubtaskRow key={st.id} subtask={st} accentColor={accentColor}
-                        onToggle={() => toggleSubtask(liveTask.id, userId, st.id, st.isCompleted)} />
+                      <SubtaskRow
+                        key={st.id}
+                        subtask={st}
+                        accentColor={accentColor}
+                        isAdmin={isAdmin}
+                        onToggle={() => toggleSubtask(liveTask.id, userId, st.id, st.isCompleted)}
+                        onDelete={() => deleteSubtask(liveTask.id, userId, st.id)}
+                      />
                     ))}
                   </AnimatePresence>
                   {liveTask.subtasks.length === 0 && !addingSub && (
                     <p className="text-xs py-1" style={{ color: "var(--text-muted)" }}>Нет подзадач</p>
                   )}
                 </div>
+
                 <AnimatePresence>
                   {addingSub && (
                     <div className="mt-2">
@@ -408,7 +453,7 @@ function TaskCardInner({
                     </div>
                   )}
                 </AnimatePresence>
-                {/* Add subtask — admin only */}
+
                 {!addingSub && isAdmin && (
                   <button onClick={() => setAddingSub(true)}
                     className="mt-2 flex items-center gap-1.5 text-xs w-full px-1 py-1 rounded-lg transition-all"
@@ -420,6 +465,55 @@ function TaskCardInner({
                   </button>
                 )}
               </div>
+
+              {/* ── DELETE TASK — admin only ─────────────────────────────── */}
+              {isAdmin && (
+                <div className="pt-1" style={{ borderTop: "1px solid var(--glass-border)" }}>
+                  <AnimatePresence mode="wait">
+                    {confirmDelete ? (
+                      <motion.div
+                        key="confirm"
+                        initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                        className="flex items-center gap-2 flex-wrap"
+                      >
+                        <span className="text-xs" style={{ color: "#f87171" }}>
+                          Удалить задачу{liveTask.subtasks.length > 0 ? ` и ${liveTask.subtasks.length} подзадач` : ""}?
+                        </span>
+                        <button
+                          onClick={() => setConfirmDelete(false)}
+                          className="px-2.5 py-1 rounded-lg text-xs font-medium"
+                          style={{ background: "var(--glass-02)", color: "var(--text-muted)", border: "1px solid var(--glass-border)" }}
+                        >
+                          Нет
+                        </button>
+                        <motion.button
+                          whileTap={{ scale: 0.95 }}
+                          onClick={handleDeleteTask}
+                          className="px-2.5 py-1 rounded-lg text-xs font-medium"
+                          style={{ background: "rgba(239,68,68,0.15)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}
+                        >
+                          Да, удалить
+                        </motion.button>
+                      </motion.div>
+                    ) : (
+                      <motion.button
+                        key="trigger"
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        onClick={() => setConfirmDelete(true)}
+                        className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg w-full transition-all"
+                        style={{ color: "var(--text-muted)" }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#f87171"; (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.08)"; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                          <path d="M2 4h10M5 4V2h4v2M6 7v4M8 7v4M3 4l1 8h6l1-8" />
+                        </svg>
+                        Удалить задачу
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -430,12 +524,12 @@ function TaskCardInner({
 
 // ── Add task form (admin only) ────────────────────────────────────────────────
 
-function AddTaskForm({ userId, accentColor, onAdd, onCancel }: {
+function AddTaskForm({ accentColor, onAdd, onCancel }: {
   userId: number; accentColor: string;
   onAdd: (title: string, dueDate: string | null) => Promise<void>; onCancel: () => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [dueDate, setDate] = useState("");
+  const [title, setTitle]   = useState("");
+  const [dueDate, setDate]  = useState("");
   const [saving, setSaving] = useState(false);
   const [showDate, setShowDate] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
@@ -450,7 +544,8 @@ function AddTaskForm({ userId, accentColor, onAdd, onCancel }: {
   }, [title, dueDate, saving, onAdd]);
 
   return (
-    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}
+    <motion.div
+      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}
       className="rounded-xl overflow-hidden"
       style={{ background: "var(--bg-overlay)", border: `1px solid ${accentColor}50`, boxShadow: `0 0 0 3px ${accentColor}10` }}>
       <div className="px-3 pt-2.5 pb-2 space-y-2">
@@ -519,9 +614,7 @@ function SortableTaskList({ tasks, userId, accentColor, isAdmin }: {
 
     startTransition(async () => {
       setOptimisticTasks(reordered);
-      await updateOrderAction({
-        items: reordered.map((t, i) => ({ id: t.id, order: i })),
-      });
+      await updateOrderAction({ items: reordered.map((t, i) => ({ id: t.id, order: i })) });
     });
   }, [optimisticTasks, setOptimisticTasks]);
 
@@ -563,8 +656,7 @@ function sortTasks(tasks: OperativeTaskView[]): OperativeTaskView[] {
 // ── Main: UserTaskBlock ───────────────────────────────────────────────────────
 
 interface Props {
-  block: UserWithOperativeTasks;
-  /** true = admin user (full CRUD + DnD); false = status/subtask toggle only */
+  block:   UserWithOperativeTasks;
   isAdmin: boolean;
 }
 
@@ -578,9 +670,9 @@ export function UserTaskBlock({ block, isAdmin }: Props) {
   const accentColor = user.roleMeta.hex;
   const sorted = sortTasks(tasks);
 
-  const total  = tasks.length;
-  const done   = tasks.filter(t => t.status === "done").length;
-  const inProg = tasks.filter(t => t.status === "in_progress").length;
+  const total   = tasks.length;
+  const done    = tasks.filter(t => t.status === "done").length;
+  const inProg  = tasks.filter(t => t.status === "in_progress").length;
   const overdue = tasks.filter(t => { const dl = deadlineInfo(t.dueDate); return dl?.isOverdue && t.status !== "done"; }).length;
   const urgent  = tasks.filter(t => { const dl = deadlineInfo(t.dueDate); return dl?.isSoon && !dl.isOverdue && t.status !== "done"; }).length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -642,10 +734,8 @@ export function UserTaskBlock({ block, isAdmin }: Props) {
             {isAdmin && <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>Нажмите «+» чтобы добавить</p>}
           </motion.div>
         ) : isAdmin ? (
-          /* Admin: sortable list with DnD */
           <SortableTaskList tasks={sorted} userId={user.id} accentColor={accentColor} isAdmin={isAdmin} />
         ) : (
-          /* Non-admin: tasks shown, status/subtask toggle available */
           <div className="space-y-2">
             <AnimatePresence mode="popLayout">
               {sorted.map(task => (

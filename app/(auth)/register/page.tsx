@@ -26,8 +26,8 @@ export default function RegisterPage() {
         setError("Пароли не совпадают");
         return;
       }
-      if (password.length < 6) {
-        setError("Пароль должен содержать не менее 6 символов");
+      if (password.length < 8) {
+        setError("Пароль должен содержать не менее 8 символов");
         return;
       }
       if (!/^[a-zA-Z0-9_.-]+$/.test(login.trim())) {
@@ -224,10 +224,10 @@ export default function RegisterPage() {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Не менее 6 символов"
+                placeholder="Не менее 8 символов"
                 autoComplete="new-password"
                 required
-                minLength={6}
+                minLength={8}
                 className="w-full px-4 py-3 pr-11 rounded-xl text-sm outline-none transition-all"
                 style={{
                   background: "var(--glass-01)",

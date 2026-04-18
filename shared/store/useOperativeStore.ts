@@ -2,14 +2,11 @@
 /**
  * @file useOperativeStore.ts — shared/store
  *
- * Operative Tasks permissions:
- *   - Status toggle (cycleStatus / markDone): anyone, including unauthenticated visitors
- *   - Subtask toggle: anyone, including unauthenticated visitors
- *   - Create task, add subtask, change due date, delete: admin only
- *   - DnD reorder: admin only
+ * v2 — добавлены deleteTask и deleteSubtask (admin only).
  *
- * Offline guard: mutations that require admin are still blocked offline.
- * Status/subtask toggle is allowed even offline (optimistic, replayed on reconnect).
+ * Permissions:
+ *   deleteTask / deleteSubtask: admin only (API тоже проверяет)
+ *   Status toggle / subtask toggle: anyone
  */
 import { create } from "zustand";
 import { useNotificationStore } from "@/features/sync/useNotificationStore";
@@ -51,13 +48,15 @@ interface OperativeStore {
   getTasksForUser:  (userId: number) => OperativeTaskView[];
   getTask:          (taskId: number) => OperativeTaskView | undefined;
 
-  // Status toggle — open to everyone (including unauthenticated)
   addTask:       (params: { userId: number; title: string; description?: string | null; dueDate?: string | null }) => Promise<OperativeTaskView | null>;
   updateStatus:  (taskId: number, userId: number, status: OperativeTaskStatus) => Promise<void>;
   updateDueDate: (taskId: number, userId: number, dueDate: string | null) => Promise<void>;
   addSubtask:    (taskId: number, userId: number, title: string) => Promise<OperativeSubtaskView | null>;
-  // Subtask toggle — open to everyone (including unauthenticated)
   toggleSubtask: (taskId: number, userId: number, subtaskId: number, current: boolean) => Promise<void>;
+  /** admin only — удалить задачу со всеми подзадачами */
+  deleteTask:    (taskId: number, userId: number) => Promise<void>;
+  /** admin only — удалить подзадачу */
+  deleteSubtask: (taskId: number, userId: number, subtaskId: number) => Promise<void>;
 }
 
 // ── Helpers to update nested state ────────────────────────────────────────────
@@ -168,12 +167,11 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
     }
   },
 
-  // ── updateStatus — open to EVERYONE (no offline block) ───────────────────
+  // ── updateStatus — open to EVERYONE ──────────────────────────────────────
   updateStatus: async (taskId, userId, status) => {
     const prev = get().getTask(taskId);
     if (!prev || prev.status === status) return;
 
-    // Optimistic update immediately (no offline block for status)
     set((s) => ({
       userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
         ...t,
@@ -182,7 +180,6 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       })),
     }));
 
-    // If offline, skip network request (optimistic only; will sync on reconnect)
     if (isOffline()) return;
 
     try {
@@ -193,7 +190,6 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       });
       if (!res.ok) throw new Error("Update failed");
     } catch {
-      // Rollback
       set((s) => ({
         userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
           ...t,
@@ -203,7 +199,7 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
     }
   },
 
-  // ── updateDueDate — admin only (blocked offline) ─────────────────────────
+  // ── updateDueDate — admin only ────────────────────────────────────────────
   updateDueDate: async (taskId, userId, dueDate) => {
     if (isOffline()) { notifyOfflineBlocked(); return; }
 
@@ -297,11 +293,10 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
     }
   },
 
-  // ── toggleSubtask — open to EVERYONE (no offline block) ──────────────────
+  // ── toggleSubtask — open to EVERYONE ─────────────────────────────────────
   toggleSubtask: async (taskId, userId, subtaskId, current) => {
     const newVal = !current;
 
-    // Optimistic update immediately (no offline block for toggle)
     set((s) => ({
       userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => {
         const newSubs = t.subtasks.map((st) =>
@@ -338,6 +333,79 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
           };
         }),
       }));
+    }
+  },
+
+  // ── deleteTask — admin only ───────────────────────────────────────────────
+  deleteTask: async (taskId, userId) => {
+    if (isOffline()) { notifyOfflineBlocked(); return; }
+
+    // Snapshot для rollback
+    const snapshot = get().userBlocks;
+
+    // Оптимистичное удаление
+    set((s) => ({
+      userBlocks: s.userBlocks.map((block) =>
+        block.user.id !== userId
+          ? block
+          : { ...block, tasks: block.tasks.filter((t) => t.id !== taskId) }
+      ),
+    }));
+
+    try {
+      const res = await fetch(`/api/operative-tasks/${taskId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      // Rollback
+      set({ userBlocks: snapshot });
+      useNotificationStore.getState().push({
+        kind:  "error",
+        title: "Ошибка удаления",
+        body:  err instanceof Error ? err.message : "Не удалось удалить задачу",
+      });
+    }
+  },
+
+  // ── deleteSubtask — admin only ────────────────────────────────────────────
+  deleteSubtask: async (taskId, userId, subtaskId) => {
+    if (isOffline()) { notifyOfflineBlocked(); return; }
+
+    // Snapshot подзадач для rollback
+    const prevTask = get().getTask(taskId);
+
+    // Оптимистичное удаление
+    set((s) => ({
+      userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => {
+        const newSubs = t.subtasks.filter((st) => st.id !== subtaskId);
+        return {
+          ...t,
+          subtasks: newSubs,
+          progress: { done: newSubs.filter((st) => st.isCompleted).length, total: newSubs.length },
+        };
+      }),
+    }));
+
+    try {
+      const res = await fetch(`/api/operative-subtasks/${subtaskId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      // Rollback
+      if (prevTask) {
+        set((s) => ({
+          userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, () => prevTask),
+        }));
+      }
+      useNotificationStore.getState().push({
+        kind:  "error",
+        title: "Ошибка удаления",
+        body:  err instanceof Error ? err.message : "Не удалось удалить подзадачу",
+      });
     }
   },
 }));

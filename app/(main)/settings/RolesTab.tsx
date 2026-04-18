@@ -23,6 +23,7 @@ import { useState, useCallback } from "react";
 import { useRoleStore } from "@/shared/store/useRoleStore";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
 import type { DbRole } from "@/shared/types";
+import { useShallow } from "zustand/react/shallow";
 
 interface Props {
   initialRoles: DbRole[];
@@ -39,13 +40,13 @@ export function RolesTab({ initialRoles }: Props) {
     optimisticUpdate,
     optimisticDelete,
     rollbackRoles,
-  } = useRoleStore((s) => ({
-    storeRoles:      s.roles.length > 0 ? s.roles : initialRoles,
+  } = useRoleStore(useShallow((s) => ({
+    storeRoles: s.roles.length > 0 ? s.roles : initialRoles,
     optimisticCreate: s.optimisticCreate,
     optimisticUpdate: s.optimisticUpdate,
     optimisticDelete: s.optimisticDelete,
-    rollbackRoles:   s.rollbackRoles,
-  }));
+    rollbackRoles: s.rollbackRoles,
+  })));
 
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -214,13 +215,13 @@ function RoleCard({
               if (e.key === "Enter") e.currentTarget.blur();
               if (e.key === "Escape") setEditingLabel(false);
             }}
-            className="w-full text-sm font-medium bg-[var(--glass-01)] border border-[var(--accent-500)] rounded px-2 py-0.5 outline-none"
+            className="w-full text-sm font-medium bg-(--glass-01) border border-(--accent-500) rounded px-2 py-0.5 outline-none"
             style={{ color: "var(--text-primary)" }}
           />
         ) : (
           <button
             onClick={startEdit}
-            className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent-400)] transition-colors group/lbl"
+            className="text-sm font-medium text-(--text-primary) hover:text-(--accent-400) transition-colors group/lbl"
           >
             {role.label}
             <span className="ml-1 opacity-0 group-hover/lbl:opacity-40 text-xs">✎</span>
@@ -362,7 +363,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-[var(--glass-01)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-sm text-[var(--text-primary)] placeholder:text-(--text-muted) outline-none focus:border-[var(--accent-500)] transition-colors"
+        className="w-full bg-(--glass-01) border border-(--glass-border) rounded-lg px-3 py-1.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) outline-none focus:border-(--accent-500) transition-colors"
       />
     </div>
   );

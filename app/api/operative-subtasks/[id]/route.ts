@@ -3,15 +3,17 @@
  *
  * Permissions:
  *   PATCH (toggle isCompleted) — anyone (even unauthenticated)
- *   DELETE — admin only (not implemented here, but would require admin)
+ *   DELETE                     — admin only (added v2)
  */
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { db } from "@/shared/db/client";
+import { operativeSubtasks } from "@/shared/db/schema";
+import { eq } from "drizzle-orm";
 import { toggleOperativeSubtask } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { OPERATIVE_CACHE_TAG } from "../../operative-tasks/route";
-import { optionalSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, optionalSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const ToggleSchema = z.object({
@@ -34,14 +36,11 @@ export async function PATCH(req: Request, { params }: Params) {
     const parsed = ToggleSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { ok: false, error: parsed.error.flatten() },
-        { status: 422 },
-      );
+      return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 422 });
     }
 
     const subtask = await toggleOperativeSubtask(subtaskId, parsed.data.isCompleted);
-    revalidateTag(OPERATIVE_CACHE_TAG, "max");
+    revalidatePath("/operative");
     broadcast("task:subtask:toggled", {
       source:      "operative",
       subtaskId,
@@ -63,6 +62,57 @@ export async function PATCH(req: Request, { params }: Params) {
     if (String(e).includes("not found")) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/operative-subtasks/:id — admin only.
+ * Полностью логируется в audit_logs.
+ */
+export async function DELETE(_req: Request, { params }: Params) {
+  try {
+    const session = await requireAdminSession();
+    const { id } = await params;
+    const subtaskId = Number(id);
+
+    if (!Number.isInteger(subtaskId) || subtaskId <= 0) {
+      return NextResponse.json({ ok: false, error: "Invalid subtask id" }, { status: 400 });
+    }
+
+    // Снапшот для аудит-лога
+    const [subtask] = await db
+      .select()
+      .from(operativeSubtasks)
+      .where(eq(operativeSubtasks.id, subtaskId));
+
+    if (!subtask) {
+      return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    }
+
+    await db.delete(operativeSubtasks).where(eq(operativeSubtasks.id, subtaskId));
+
+    revalidatePath("/operative");
+    broadcast("task:updated", {
+      source:         "operative",
+      taskId:         subtask.taskId,
+      subtaskDeleted: subtaskId,
+    });
+
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "delete",
+      entityType: "operative_subtask",
+      entityId: subtaskId,
+      before: subtask,
+      after: null,
+      metadata: { taskId: subtask.taskId, title: subtask.title },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

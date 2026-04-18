@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { adminActionClient, authActionClient } from "@/shared/lib/safe-action";
 import { db } from "@/shared/db/client";
 import { operativeTasks } from "@/shared/db/schema";
-import { eq, asc, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { broadcast } from "@/shared/server/eventBus";
 import { writeAuditLog } from "@/shared/lib/audit";
 
@@ -31,7 +31,6 @@ const DeleteTaskSchema = z.object({
 });
 
 const UpdateOrderSchema = z.object({
-  // Массив { id, order } — новый порядок задач после DnD
   items: z.array(
     z.object({
       id:    z.number().int().positive(),
@@ -47,7 +46,7 @@ const UpdateOrderSchema = z.object({
  */
 export const createOperativeTaskAction = adminActionClient
   .schema(CreateTaskSchema)
-  .action(async ({ parsedInput }) => {
+  .action(async ({ parsedInput, ctx }) => {
     const maxOrderRow = await db
       .select({ maxOrder: sql<number>`MAX("order")` })
       .from(operativeTasks)
@@ -69,11 +68,21 @@ export const createOperativeTaskAction = adminActionClient
     revalidatePath("/operative");
     broadcast("task:created", { source: "operative", taskId: task.id });
 
+    // ✅ FIX: writeAuditLog was missing here
+    await writeAuditLog({
+      actor:      { userId: ctx.user.id, role: ctx.user.role },
+      action:     "create",
+      entityType: "operative_task",
+      entityId:   task.id,
+      after:      task,
+      metadata:   { userId: parsedInput.userId },
+    });
+
     return { task };
   });
 
 /**
- * updateOperativeTaskAction — только администратор
+ * updateOperativeTaskAction — только администратор (кроме смены статуса)
  */
 export const updateOperativeTaskAction = authActionClient
   .schema(UpdateTaskSchema)
@@ -96,13 +105,18 @@ export const updateOperativeTaskAction = authActionClient
 
     revalidatePath("/operative");
     broadcast("task:updated", { source: "operative", taskId: id });
+
+    const action = patch.status && Object.keys(patch).length === 1
+      ? "update_status"
+      : "update";
+
     await writeAuditLog({
-      actor: { userId: ctx.user.id, role: ctx.user.role },
-      action: "update",
+      actor:      { userId: ctx.user.id, role: ctx.user.role },
+      action,
       entityType: "operative_task",
-      entityId: id,
+      entityId:   id,
       before,
-      after: task,
+      after:      task,
     });
 
     return { task };
@@ -114,20 +128,25 @@ export const updateOperativeTaskAction = authActionClient
 export const deleteOperativeTaskAction = adminActionClient
   .schema(DeleteTaskSchema)
   .action(async ({ parsedInput, ctx }) => {
-    const [before] = await db.select().from(operativeTasks).where(eq(operativeTasks.id, parsedInput.id));
+    const [before] = await db
+      .select()
+      .from(operativeTasks)
+      .where(eq(operativeTasks.id, parsedInput.id));
+
     await db
       .delete(operativeTasks)
       .where(eq(operativeTasks.id, parsedInput.id));
 
     revalidatePath("/operative");
     broadcast("task:deleted", { taskId: parsedInput.id });
+
     await writeAuditLog({
-      actor: { userId: ctx.user.id, role: ctx.user.role },
-      action: "delete",
+      actor:      { userId: ctx.user.id, role: ctx.user.role },
+      action:     "delete",
       entityType: "operative_task",
-      entityId: parsedInput.id,
+      entityId:   parsedInput.id,
       before,
-      after: null,
+      after:      null,
     });
 
     return { success: true };
@@ -135,13 +154,10 @@ export const deleteOperativeTaskAction = adminActionClient
 
 /**
  * updateOrderAction — только администратор
- * Вызывается после DnD — обновляет поле order для всех затронутых задач.
- * Используем atomic batch update.
  */
 export const updateOrderAction = adminActionClient
   .schema(UpdateOrderSchema)
   .action(async ({ parsedInput, ctx }) => {
-    // SQLite не поддерживает batch UPDATE нативно — делаем в транзакции
     await db.transaction(async (tx) => {
       for (const { id, order } of parsedInput.items) {
         await tx
@@ -152,11 +168,13 @@ export const updateOrderAction = adminActionClient
     });
 
     revalidatePath("/operative");
+
     await writeAuditLog({
-      actor: { userId: ctx.user.id, role: ctx.user.role },
-      action: "reorder",
+      actor:      { userId: ctx.user.id, role: ctx.user.role },
+      action:     "reorder",
       entityType: "operative_task",
-      metadata: { items: parsedInput.items },
+      metadata:   { items: parsedInput.items },
     });
+
     return { success: true };
   });

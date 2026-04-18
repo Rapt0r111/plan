@@ -6,6 +6,7 @@ import { EpicsTab } from "./EpicsTab";
 import { TasksTab } from "./TasksTab";
 import { AppearanceTab } from "./AppearanceTab";
 import { AuditTab } from "./AuditTab";
+import { SecurityTab } from "./SecurityTab";
 import type { DbRole, UserWithMeta, EpicWithTasks } from "@/shared/types";
 import { StoreHydrator } from "@/shared/store/StoreHydrator";
 
@@ -18,10 +19,11 @@ interface Props {
 
 const TABS_BASE = [
   { key: "appearance" as const, label: "Внешний вид" },
-  { key: "roles"      as const, label: "Роли"         },
+  { key: "security"   as const, label: "Безопасность" },
+  { key: "roles"      as const, label: "Роли"          },
   { key: "users"      as const, label: "Пользователи"  },
-  { key: "epics"      as const, label: "Эпики"         },
-  { key: "tasks"      as const, label: "Задачи"        },
+  { key: "epics"      as const, label: "Эпики"          },
+  { key: "tasks"      as const, label: "Задачи"         },
 ] as const;
 
 const ADMIN_TABS = [
@@ -64,6 +66,7 @@ export function SettingsTabs({ initialRoles, initialUsers, initialEpics, isAdmin
 
       <div className="flex-1 overflow-y-auto p-6">
         {tab === "appearance" && <AppearanceTab />}
+        {tab === "security"   && <SecurityTab />}
         {tab === "roles"      && <RolesTab initialRoles={initialRoles} />}
         {tab === "users"      && <UsersTab initialUsers={initialUsers} roles={initialRoles} />}
         {tab === "epics"      && <EpicsTab initialEpics={initialEpics} />}

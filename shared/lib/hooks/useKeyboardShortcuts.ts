@@ -1,100 +1,127 @@
 "use client";
-/**
- * @file useKeyboardShortcuts.ts — shared/lib/hooks
- *
- * Centralised keyboard shortcut manager.
- *
- * WHY THIS EXISTS (2026 context):
- *  Power-users in modern B2B tools expect keyboard-first navigation.
- *  Linear, Notion, Vercel Dashboard — all prove that Cmd+K reduces
- *  the average "time-to-action" from ~4 clicks to ~1.2 keystrokes.
- *  This hook owns that contract for the entire app.
- *
- * DESIGN:
- *  - Single event listener on `document` — no per-component leakage.
- *  - Respects OS: Cmd on macOS, Ctrl everywhere else.
- *  - Guards against firing inside <input>, <textarea>, [contenteditable].
- *  - Returns a cleanup fn — safe for React 19 strict-mode double-invoke.
- */
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useRef } from "react";
 
 export type ShortcutHandler = (e: KeyboardEvent) => void;
 
 export interface Shortcut {
-    /** Key to listen for (case-insensitive) */
-    key: string;
-    /** Require Cmd (Mac) / Ctrl (Win/Linux)? Default: false */
-    meta?: boolean;
-    /** Require Shift? Default: false */
-    shift?: boolean;
-    /** Suppress default browser action? Default: true when meta=true */
-    preventDefault?: boolean;
-    handler: ShortcutHandler;
+  key: string;
+  meta?: boolean;
+  shift?: boolean;
+  preventDefault?: boolean;
+  handler: ShortcutHandler;
 }
 
 /**
- * Returns true if the active element is a text input,
- * where we should NOT intercept most shortcuts.
+ * Normalize key safely
+ */
+function normalizeKey(key: unknown): string {
+  if (typeof key !== "string") return "";
+  if (key === "Unidentified") return "";
+  return key.toLowerCase();
+}
+
+/**
+ * Check if user is typing in editable element
  */
 function isEditableElement(): boolean {
-    const el = document.activeElement;
-    if (!el) return false;
-    const tag = el.tagName.toLowerCase();
-    return (
-        tag === "input" ||
-        tag === "textarea" ||
-        (el as HTMLElement).isContentEditable
-    );
+  const el = document.activeElement;
+  if (!el) return false;
+
+  const tag = el.tagName?.toLowerCase?.();
+  if (!tag) return false;
+
+  return (
+    tag === "input" ||
+    tag === "textarea" ||
+    (el as HTMLElement).isContentEditable === true
+  );
 }
 
 /**
- * useKeyboardShortcuts — register one or many global shortcuts.
- *
- * @example
- * useKeyboardShortcuts([
- *   { key: "k", meta: true, handler: openPalette },
- *   { key: "Escape", handler: closePalette },
- * ]);
+ * Dev-only warning (tree-shaken in prod)
  */
+function warnDev(message: string, data?: unknown) {
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(`[useKeyboardShortcuts] ${message}`, data);
+  }
+}
+
 export function useKeyboardShortcuts(shortcuts: Shortcut[]) {
-    const handleKeyDown = useCallback(
-        (e: KeyboardEvent) => {
-            for (const shortcut of shortcuts) {
-                const keyMatch = e.key.toLowerCase() === shortcut.key.toLowerCase();
+  // 🔒 Avoid stale closures & re-binding listeners
+  const shortcutsRef = useRef<Shortcut[]>(shortcuts);
 
-                // Meta key: Cmd on macOS, Ctrl on Windows/Linux
-                const metaMatch = shortcut.meta
-                    ? e.metaKey || e.ctrlKey
-                    : true;
+  useEffect(() => {
+    shortcutsRef.current = shortcuts;
+  }, [shortcuts]);
 
-                const shiftMatch = shortcut.shift ? e.shiftKey : true;
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const key = normalizeKey(e.key);
+      if (!key) return;
 
-                // For non-meta shortcuts, skip if user is typing
-                const skipEditable = !shortcut.meta && isEditableElement();
+      const isTyping = isEditableElement();
 
-                if (keyMatch && metaMatch && shiftMatch && !skipEditable) {
-                    // Default: prevent browser action when meta is held
-                    const shouldPrevent = shortcut.preventDefault ?? !!shortcut.meta;
-                    if (shouldPrevent) e.preventDefault();
+      for (const shortcut of shortcutsRef.current) {
+        // 🛡️ Hard validation
+        if (!shortcut || typeof shortcut !== "object") {
+          warnDev("Invalid shortcut object", shortcut);
+          continue;
+        }
 
-                    shortcut.handler(e);
-                    // Don't break — allow multiple shortcuts on the same key
-                }
-            }
-        },
-        [shortcuts]
-    );
+        const shortcutKey = normalizeKey(shortcut.key);
+        if (!shortcutKey) {
+          warnDev("Shortcut missing valid key", shortcut);
+          continue;
+        }
 
-    useEffect(() => {
-        document.addEventListener("keydown", handleKeyDown);
-        return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [handleKeyDown]);
+        // Skip typing context unless meta is required
+        if (!shortcut.meta && isTyping) continue;
+
+        const keyMatch = key === shortcutKey;
+        if (!keyMatch) continue;
+
+        const metaMatch = shortcut.meta
+          ? e.metaKey || e.ctrlKey
+          : true;
+
+        if (!metaMatch) continue;
+
+        const shiftMatch = shortcut.shift
+          ? e.shiftKey
+          : true;
+
+        if (!shiftMatch) continue;
+
+        const shouldPrevent =
+          shortcut.preventDefault ?? !!shortcut.meta;
+
+        if (shouldPrevent) {
+          e.preventDefault();
+        }
+
+        try {
+          shortcut.handler(e);
+        } catch (err) {
+          warnDev("Shortcut handler crashed", {
+            shortcut,
+            error: err,
+          });
+        }
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 }
 
 /**
- * useSingleShortcut — convenience wrapper for one shortcut.
+ * Single shortcut wrapper
  */
 export function useSingleShortcut(shortcut: Shortcut) {
-    useKeyboardShortcuts([shortcut]);
+  useKeyboardShortcuts([shortcut]);
 }

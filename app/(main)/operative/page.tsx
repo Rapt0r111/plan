@@ -6,6 +6,9 @@
  *  2. Авторизация передаётся в OperativePage
  *  3. Заголовок показывает текущего пользователя и кнопку выхода (или вход)
  *     в разделе "Оперативные задачи" — раздел доступен всем, но CRUD только для admin
+ *
+ * v5 ИСПРАВЛЕНИЯ:
+ *  - Убран @ts-expect-error Server Component (устарел в новых версиях TypeScript)
  */
 import Link from "next/link";
 import { getAllUsersWithOperativeTasks } from "@/entities/operative/operativeRepository";
@@ -178,7 +181,6 @@ export default async function OperativeRoute() {
             )}
 
             {/* ── Login / User + Logout badge ── */}
-            {/* @ts-expect-error Server Component */}
             <SessionBadge />
           </div>
         }

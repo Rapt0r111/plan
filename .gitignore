@@ -44,3 +44,5 @@ next-env.d.ts
 # Misc
 состав.txt
 next.txt
+
+local.*

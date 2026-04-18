@@ -61,19 +61,10 @@ export default function RegisterPage() {
           return;
         }
 
-        // Auto-login after successful registration
-        const loginRes = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ login: login.trim(), password }),
-        });
-
-        if (loginRes.ok) {
-          router.push("/dashboard");
-          router.refresh();
-        } else {
-          router.push("/login");
-        }
+        // ИСПРАВЛЕНИЕ: register route теперь сам выдаёт Set-Cookie (auto-login на сервере).
+        // Отдельный fetch к /api/auth/login больше не нужен — cookie уже установлен.
+        router.push("/dashboard");
+        router.refresh();
       } catch {
         setError("Ошибка соединения. Попробуйте снова.");
       } finally {

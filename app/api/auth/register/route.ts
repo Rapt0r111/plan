@@ -27,6 +27,8 @@ export async function POST(req: Request) {
     const login = parsed.data.login.trim();
     const email = makeSyntheticEmail(login);
 
+    // Регистрируем пользователя (asResponse: false — нам не нужны cookies здесь,
+    // потому что сразу после этого делаем auto-login с asResponse: true)
     const result = await auth.api.signUpEmail({
       body: {
         email,
@@ -37,6 +39,7 @@ export async function POST(req: Request) {
       asResponse: false,
     });
 
+    // Назначаем права администратора первому пользователю
     const [adminCount] = await db
       .select({ count: sql<number>`count(*)`.mapWith(Number) })
       .from(authUsers)
@@ -49,7 +52,30 @@ export async function POST(req: Request) {
         .where(eq(authUsers.id, result.user.id));
     }
 
-    return NextResponse.json({ ok: true, data: result }, { status: 201 });
+    // ИСПРАВЛЕНИЕ: auto-login с asResponse: true, чтобы Set-Cookie дошёл до браузера.
+    // Раньше авторизация на клиенте шла через отдельный fetch к /api/auth/login,
+    // и если тот маршрут не пробрасывал cookie — пользователь оставался незалогиненным.
+    const loginResponse = await auth.api.signInEmail({
+      body: { email, password: parsed.data.password },
+      asResponse: true,
+    });
+
+    if (!loginResponse.ok) {
+      // Регистрация прошла, но auto-login не удался — клиент сам может войти
+      return NextResponse.json({ ok: true, data: result, autoLoginFailed: true }, { status: 201 });
+    }
+
+    const loginData = await loginResponse.json();
+    const nextResponse = NextResponse.json({ ok: true, data: loginData }, { status: 201 });
+
+    // Пробрасываем Set-Cookie браузеру
+    loginResponse.headers.forEach((value, name) => {
+      if (name.toLowerCase() === "set-cookie") {
+        nextResponse.headers.append("set-cookie", value);
+      }
+    });
+
+    return nextResponse;
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }

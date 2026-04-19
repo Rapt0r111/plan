@@ -32,6 +32,7 @@ services:
       # Without Caddy (direct port):
       BETTER_AUTH_URL: "http://192.168.99.101:38701"
       NEXT_PUBLIC_APP_URL: "http://192.168.99.101:38701"
+      BETTER_AUTH_SECRET: "c3HobtgU/L0pl46ukoEyGyfFkuvXPg6+uDIGkTXLnF8="
 
     volumes:
       # Named volume — SQLite database persists across container restarts/upgrades

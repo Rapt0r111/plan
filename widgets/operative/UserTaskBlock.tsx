@@ -2,14 +2,17 @@
 /**
  * @file UserTaskBlock.tsx — widgets/operative
  *
- * v3 — три улучшения UX:
- *   1. Кнопка «+» в заголовке — быстрое добавление задачи без скролла
- *   2. Collapse/expand блока — кнопка «˅» скрывает список задач
- *   3. Drag handle prop — иконка «⣿» для reorder блоков (управляется родителем)
+ * v4 — добавление задач доступно ВСЕМ пользователям (в т.ч. неавторизованным).
+ *   Убраны isAdmin-guard'ы с кнопки «+» в заголовке и «Добавить задачу» в футере.
+ *   API /api/operative-tasks уже использует optionalSession — auth не требуется.
  *
- * Permission model:
- *   Admin:    полный CRUD + DnD + status + subtask toggle + DELETE
- *   Visitor:  status cycle + subtask toggle (только чтение остального)
+ *   Только для isAdmin по-прежнему:
+ *   - Drag handle блоков (reorder)
+ *   - DnD внутри списка задач
+ *   - Кнопка удаления задачи
+ *   - Кнопка удаления подзадачи
+ *   - Редактирование дедлайна
+ *   - Добавление подзадач
  */
 import { useState, useRef, useCallback, useEffect, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -232,7 +235,7 @@ function InlineInput({ placeholder, onSave, onCancel, accentColor }: {
   );
 }
 
-// ── Quick Add Form (inline, compact — for header + button) ────────────────────
+// ── Quick Add Form (доступна всем пользователям) ──────────────────────────────
 
 function QuickAddForm({ accentColor, onAdd, onCancel }: {
   userId: number; accentColor: string;
@@ -526,6 +529,7 @@ function TaskCardInner({
                   )}
                 </AnimatePresence>
 
+                {/* Добавление подзадач — только для администратора */}
                 {!addingSub && isAdmin && (
                   <button onClick={() => setAddingSub(true)}
                     className="mt-2 flex items-center gap-1.5 text-xs w-full px-1 py-1 rounded-lg transition-all"
@@ -666,7 +670,6 @@ function sortTasks(tasks: OperativeTaskView[]): OperativeTaskView[] {
 interface Props {
   block:           UserWithOperativeTasks;
   isAdmin:         boolean;
-  /** Props from useSortable — passed down from OperativePage for block reordering */
   dragHandleProps?: Record<string, unknown> | null;
   isDragging?:     boolean;
 }
@@ -674,12 +677,10 @@ interface Props {
 export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: Props) {
   const { user } = block;
 
-  // ── collapse / expand ─────────────────────────────────────────────────────
   const [collapsed, setCollapsed] = useState(false);
 
-  // ── quick-add from header ─────────────────────────────────────────────────
+  // ── quick-add доступен всем пользователям ─────────────────────────────────
   const [addingFromHeader, setAddingFromHeader] = useState(false);
-  // footer add form — kept for legacy ergonomics when block is expanded
   const [addingFromFooter, setAddingFromFooter] = useState(false);
 
   const tasks    = useOperativeStore(useShallow(s => s.getTasksForUser(user.id)));
@@ -714,7 +715,6 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
         boxShadow:   isDragging ? `0 20px 48px rgba(0,0,0,0.5), 0 0 0 1px ${accentColor}40` : "none",
       }}
     >
-
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="px-4 py-3 flex items-start gap-3"
         style={{ background: `linear-gradient(135deg, ${accentColor}0c 0%, transparent 55%)`, borderBottom: collapsed ? "none" : "1px solid var(--glass-border)" }}>
@@ -770,30 +770,28 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
 
         {/* Header action buttons */}
         <div className="flex items-center gap-1 shrink-0 mt-0.5">
-          {/* Quick-add button in header (admin only) */}
-          {isAdmin && (
-            <motion.button
-              onClick={() => { setAddingFromHeader(v => !v); setAddingFromFooter(false); if (collapsed) setCollapsed(false); }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              title="Добавить задачу"
-              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
-              style={{
-                background: addingFromHeader ? `${accentColor}22` : "var(--glass-01)",
-                border:     `1px solid ${addingFromHeader ? accentColor + "50" : "var(--glass-border)"}`,
-                color:      addingFromHeader ? accentColor : "var(--text-muted)",
-                boxShadow:  addingFromHeader ? `0 0 10px ${accentColor}20` : "none",
-              }}
+          {/* ✅ Кнопка «+» доступна ВСЕМ пользователям (не только admin) */}
+          <motion.button
+            onClick={() => { setAddingFromHeader(v => !v); setAddingFromFooter(false); if (collapsed) setCollapsed(false); }}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            title="Добавить задачу"
+            className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+            style={{
+              background: addingFromHeader ? `${accentColor}22` : "var(--glass-01)",
+              border:     `1px solid ${addingFromHeader ? accentColor + "50" : "var(--glass-border)"}`,
+              color:      addingFromHeader ? accentColor : "var(--text-muted)",
+              boxShadow:  addingFromHeader ? `0 0 10px ${accentColor}20` : "none",
+            }}
+          >
+            <motion.svg
+              viewBox="0 0 12 12" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
+              animate={{ rotate: addingFromHeader ? 45 : 0 }}
+              transition={{ duration: 0.2 }}
             >
-              <motion.svg
-                viewBox="0 0 12 12" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
-                animate={{ rotate: addingFromHeader ? 45 : 0 }}
-                transition={{ duration: 0.2 }}
-              >
-                <path d="M6 1v10M1 6h10" />
-              </motion.svg>
-            </motion.button>
-          )}
+              <path d="M6 1v10M1 6h10" />
+            </motion.svg>
+          </motion.button>
 
           {/* Collapse / expand toggle */}
           <motion.button
@@ -898,7 +896,7 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
                     </svg>
                   </div>
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>Нет задач</p>
-                  {isAdmin && <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>Нажмите «+» в заголовке чтобы добавить</p>}
+                  <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>Нажмите «+» в заголовке чтобы добавить</p>
                 </motion.div>
               ) : isAdmin ? (
                 <SortableTaskList tasks={sorted} userId={user.id} accentColor={accentColor} isAdmin={isAdmin} />
@@ -923,8 +921,8 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
               </AnimatePresence>
             </div>
 
-            {/* Footer add button (legacy) */}
-            {isAdmin && !addingFromFooter && !addingFromHeader && (
+            {/* ✅ Кнопка «Добавить задачу» в футере доступна ВСЕМ пользователям */}
+            {!addingFromFooter && !addingFromHeader && (
               <div className="px-2.5 pb-2.5">
                 <motion.button
                   onClick={() => { setAddingFromFooter(true); setAddingFromHeader(false); }}

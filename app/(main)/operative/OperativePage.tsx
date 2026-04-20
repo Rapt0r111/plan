@@ -32,7 +32,7 @@ import { useState, useCallback } from "react";
 
 interface Props {
   initialData: UserWithOperativeTasks[];
-  isAdmin:     boolean;
+  isAdmin: boolean;
 }
 
 // ── Sortable wrapper for one user block ───────────────────────────────────────
@@ -40,17 +40,17 @@ interface Props {
 function SortableUserBlock({
   block, isAdmin, isDragEnabled,
 }: {
-  block:          UserWithOperativeTasks;
-  isAdmin:        boolean;
-  isDragEnabled:  boolean;
+  block: UserWithOperativeTasks;
+  isAdmin: boolean;
+  isDragEnabled: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id:       block.user.id,
+    id: block.user.id,
     disabled: !isDragEnabled,
   });
 
   const style = {
-    transform:  CSS.Transform.toString(transform),
+    transform: CSS.Transform.toString(transform),
     transition,
   } as React.CSSProperties;
 
@@ -69,7 +69,7 @@ function SortableUserBlock({
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function OperativePage({ initialData, isAdmin }: Props) {
-  const hydrate    = useOperativeStore((s) => s.hydrate);
+  const hydrate = useOperativeStore((s) => s.hydrate);
   const isHydrated = useOperativeStore((s) => s.isHydrated);
   const userBlocks = useOperativeStore((s) => s.userBlocks);
 
@@ -85,14 +85,12 @@ export function OperativePage({ initialData, isAdmin }: Props) {
   );
 
   // Sync orderedIds when hydration adds new users
-  useEffect(() => {
-    setOrderedIds((prev) => {
-      const existing = new Set(prev);
-      const newIds   = sourceBlocks.map((b) => b.user.id);
-      const toAdd    = newIds.filter((id) => !existing.has(id));
-      return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
-    });
-  }, [sourceBlocks]);
+  const currentIds = sourceBlocks.map((b) => b.user.id);
+  const existingSet = new Set(orderedIds);
+  const toAdd = currentIds.filter((id) => !existingSet.has(id));
+  if (toAdd.length > 0) {
+    setOrderedIds((prev) => [...prev, ...toAdd]);
+  }
 
   // Sort blocks by local order
   const blocks = orderedIds

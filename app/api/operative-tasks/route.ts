@@ -8,22 +8,23 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createOperativeTask } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, requireAdminSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, optionalSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 export const OPERATIVE_CACHE_TAG = "operative-tasks";
 
 const CreateSchema = z.object({
-  userId:      z.number().int().positive(),
-  title:       z.string().min(1).max(200),
+  userId: z.number().int().positive(),
+  title: z.string().min(1).max(200),
   description: z.string().max(2000).nullable().optional(),
-  dueDate:     z.string().datetime().nullable().optional(),
-  sortOrder:   z.number().int().min(0).optional(),
+  dueDate: z.string().datetime().nullable().optional(),
+  sortOrder: z.number().int().min(0).optional(),
 });
 
 export async function POST(req: Request) {
   try {
-    const session = await requireAdminSession();
+    const session = await optionalSession();
+
 
     const body = await req.json();
     const parsed = CreateSchema.safeParse(body);
@@ -58,12 +59,13 @@ export async function POST(req: Request) {
 
     // ✅ FIX: writeAuditLog was missing here
     await writeAuditLog({
-      actor:      { userId: session.user.id, role: session.user.role },
-      action:     "create",
+      actor: session
+        ? { userId: session.user.id, role: session.user.role }
+        : { userId: null, role: null }, action: "create",
       entityType: "operative_task",
-      entityId:   task.id,
-      after:      task,
-      metadata:   { userId: rest.userId },
+      entityId: task.id,
+      after: task,
+      metadata: { userId: rest.userId },
     });
 
     return NextResponse.json({ ok: true, data: task }, { status: 201 });

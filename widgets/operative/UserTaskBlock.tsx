@@ -48,9 +48,9 @@ const STATUS: Record<
   OperativeTaskStatus,
   { label: string; color: string; bg: string; dot: string; next: OperativeTaskStatus }
 > = {
-  todo:        { label: "К работе", color: "#94a3b8", bg: "rgba(100,116,139,0.14)", dot: "#64748b",  next: "in_progress" },
-  in_progress: { label: "В работе", color: "#38bdf8", bg: "rgba(14,165,233,0.14)",  dot: "#38bdf8",  next: "done"        },
-  done:        { label: "Готово",   color: "#34d399", bg: "rgba(16,185,129,0.14)",  dot: "#34d399",  next: "todo"        },
+  todo: { label: "К работе", color: "#94a3b8", bg: "rgba(100,116,139,0.14)", dot: "#64748b", next: "in_progress" },
+  in_progress: { label: "В работе", color: "#38bdf8", bg: "rgba(14,165,233,0.14)", dot: "#38bdf8", next: "done" },
+  done: { label: "Готово", color: "#34d399", bg: "rgba(16,185,129,0.14)", dot: "#34d399", next: "todo" },
 };
 
 // ── Deadline helpers ──────────────────────────────────────────────────────────
@@ -65,13 +65,13 @@ interface DeadlineInfo {
 
 function deadlineInfo(dueDate: string | null | undefined): DeadlineInfo | null {
   if (!dueDate) return null;
-  const due     = new Date(dueDate);
-  const now     = new Date();
-  const diffMs  = due.getTime() - now.getTime();
-  const daysLeft   = diffMs / (1000 * 60 * 60 * 24);
-  const isOverdue  = diffMs < 0;
-  const isToday    = !isOverdue && Math.floor(daysLeft) === 0;
-  const isSoon     = !isOverdue && daysLeft <= 3;
+  const due = new Date(dueDate);
+  const now = new Date();
+  const diffMs = due.getTime() - now.getTime();
+  const daysLeft = diffMs / (1000 * 60 * 60 * 24);
+  const isOverdue = diffMs < 0;
+  const isToday = !isOverdue && Math.floor(daysLeft) === 0;
+  const isSoon = !isOverdue && daysLeft <= 3;
   return { label: formatDate(dueDate), isOverdue, isSoon, isToday, daysLeft: Math.max(0, Math.floor(daysLeft)) };
 }
 
@@ -134,11 +134,11 @@ function DueBadge({ dueDate, isDone }: { dueDate: string | null | undefined; isD
 const SubtaskRow = memo(function SubtaskRow({
   subtask, accentColor, onToggle, onDelete, isAdmin,
 }: {
-  subtask:    OperativeSubtaskView;
+  subtask: OperativeSubtaskView;
   accentColor: string;
-  onToggle:   () => void;
-  onDelete:   () => void;
-  isAdmin:    boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+  isAdmin: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -155,9 +155,9 @@ const SubtaskRow = memo(function SubtaskRow({
       <div
         className="w-4 h-4 rounded-md shrink-0 flex items-center justify-center border transition-all duration-150 cursor-pointer"
         style={{
-          background:  subtask.isCompleted ? accentColor : "transparent",
+          background: subtask.isCompleted ? accentColor : "transparent",
           borderColor: subtask.isCompleted ? accentColor : "var(--glass-border-active)",
-          boxShadow:   subtask.isCompleted ? `0 0 6px ${accentColor}50` : "none",
+          boxShadow: subtask.isCompleted ? `0 0 6px ${accentColor}50` : "none",
         }}
         onClick={onToggle}
       >
@@ -176,9 +176,9 @@ const SubtaskRow = memo(function SubtaskRow({
       <span
         className="text-xs leading-snug flex-1 cursor-pointer transition-colors"
         style={{
-          color:          subtask.isCompleted ? "var(--text-muted)" : "var(--text-secondary)",
+          color: subtask.isCompleted ? "var(--text-muted)" : "var(--text-secondary)",
           textDecoration: subtask.isCompleted ? "line-through" : "none",
-          opacity:        subtask.isCompleted ? 0.6 : 1,
+          opacity: subtask.isCompleted ? 0.6 : 1,
         }}
         onClick={onToggle}
       >
@@ -271,26 +271,26 @@ function TaskCardInner({
   task: OperativeTaskView; userId: number; accentColor: string; isAdmin: boolean;
   dragHandleProps: Record<string, unknown> | null;
 }) {
-  const [open, setOpen]               = useState(false);
-  const [addingSub, setAddingSub]     = useState(false);
+  const [open, setOpen] = useState(false);
+  const [addingSub, setAddingSub] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const liveTask      = useOperativeStore(s => s.getTask(task.id)) ?? task;
-  const updateStatus  = useOperativeStore(s => s.updateStatus);
+  const liveTask = useOperativeStore(s => s.getTask(task.id)) ?? task;
+  const updateStatus = useOperativeStore(s => s.updateStatus);
   const updateDueDate = useOperativeStore(s => s.updateDueDate);
-  const addSubtask    = useOperativeStore(s => s.addSubtask);
+  const addSubtask = useOperativeStore(s => s.addSubtask);
   const toggleSubtask = useOperativeStore(s => s.toggleSubtask);
-  const deleteTask    = useOperativeStore(s => s.deleteTask);
+  const deleteTask = useOperativeStore(s => s.deleteTask);
   const deleteSubtask = useOperativeStore(s => s.deleteSubtask);
 
   const isDone = liveTask.status === "done";
   const dl = deadlineInfo(liveTask.dueDate);
   const dlStyle = getDeadlineStyle(dl, isDone);
   const s = STATUS[liveTask.status];
-  const subDone  = liveTask.progress.done;
+  const subDone = liveTask.progress.done;
   const subTotal = liveTask.progress.total;
-  const subPct   = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
+  const subPct = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
 
   const cycleStatus = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -312,10 +312,10 @@ function TaskCardInner({
       initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
       className="rounded-xl overflow-hidden relative group/card"
       style={{
-        background:  "var(--bg-overlay)",
-        border:      `1px solid ${dlStyle && !isDone ? dlStyle.border : "var(--glass-border)"}`,
-        borderLeft:  `2px solid ${dlStyle?.border && !isDone ? dlStyle.border.replace("0.4", "1") : isDone ? "#34d399" : s.dot}`,
-        opacity:     isDone ? 0.72 : 1,
+        background: "var(--bg-overlay)",
+        border: `1px solid ${dlStyle && !isDone ? dlStyle.border : "var(--glass-border)"}`,
+        borderLeft: `2px solid ${dlStyle?.border && !isDone ? dlStyle.border.replace("0.4", "1") : isDone ? "#34d399" : s.dot}`,
+        opacity: isDone ? 0.72 : 1,
       }}
     >
       {/* Main row */}
@@ -360,8 +360,8 @@ function TaskCardInner({
             className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5"
             style={{
               background: isDone ? "rgba(52,211,153,0.15)" : "var(--glass-01)",
-              border:     isDone ? "1.5px solid #34d399" : "1.5px solid var(--glass-border-active)",
-              color:      isDone ? "#34d399" : "var(--text-muted)",
+              border: isDone ? "1.5px solid #34d399" : "1.5px solid var(--glass-border-active)",
+              color: isDone ? "#34d399" : "var(--text-muted)",
             }}>
             <svg viewBox="0 0 10 10" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
               <path d="M1.5 5l2.5 2.5 4.5-4.5" />
@@ -528,8 +528,8 @@ function AddTaskForm({ accentColor, onAdd, onCancel }: {
   userId: number; accentColor: string;
   onAdd: (title: string, dueDate: string | null) => Promise<void>; onCancel: () => void;
 }) {
-  const [title, setTitle]   = useState("");
-  const [dueDate, setDate]  = useState("");
+  const [title, setTitle] = useState("");
+  const [dueDate, setDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [showDate, setShowDate] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
@@ -656,7 +656,7 @@ function sortTasks(tasks: OperativeTaskView[]): OperativeTaskView[] {
 // ── Main: UserTaskBlock ───────────────────────────────────────────────────────
 
 interface Props {
-  block:   UserWithOperativeTasks;
+  block: UserWithOperativeTasks;
   isAdmin: boolean;
 }
 
@@ -664,17 +664,17 @@ export function UserTaskBlock({ block, isAdmin }: Props) {
   const { user } = block;
   const [adding, setAdding] = useState(false);
 
-  const tasks   = useOperativeStore(useShallow(s => s.getTasksForUser(user.id)));
+  const tasks = useOperativeStore(useShallow(s => s.getTasksForUser(user.id)));
   const addTask = useOperativeStore(s => s.addTask);
 
   const accentColor = user.roleMeta.hex;
   const sorted = sortTasks(tasks);
 
-  const total   = tasks.length;
-  const done    = tasks.filter(t => t.status === "done").length;
-  const inProg  = tasks.filter(t => t.status === "in_progress").length;
+  const total = tasks.length;
+  const done = tasks.filter(t => t.status === "done").length;
+  const inProg = tasks.filter(t => t.status === "in_progress").length;
   const overdue = tasks.filter(t => { const dl = deadlineInfo(t.dueDate); return dl?.isOverdue && t.status !== "done"; }).length;
-  const urgent  = tasks.filter(t => { const dl = deadlineInfo(t.dueDate); return dl?.isSoon && !dl.isOverdue && t.status !== "done"; }).length;
+  const urgent = tasks.filter(t => { const dl = deadlineInfo(t.dueDate); return dl?.isSoon && !dl.isOverdue && t.status !== "done"; }).length;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const handleAdd = useCallback(async (title: string, dueDate: string | null) => {
@@ -755,24 +755,14 @@ export function UserTaskBlock({ block, isAdmin }: Props) {
 
       {/* ── Footer ── */}
       <div className="px-2.5 pb-2.5">
-        {isAdmin ? (
-          <motion.button onClick={() => setAdding(true)} disabled={adding}
-            whileHover={{ borderColor: `${accentColor}50`, color: accentColor, background: `${accentColor}08` }}
-            whileTap={{ scale: 0.98 }} transition={{ duration: 0.15 }}
-            className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-xl text-xs font-medium"
-            style={{ border: "1px dashed var(--glass-border)", color: "var(--text-muted)", background: "transparent", opacity: adding ? 0 : 1 }}>
-            <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M6 1v10M1 6h10" /></svg>
-            Добавить задачу
-          </motion.button>
-        ) : (
-          <div className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs"
-            style={{ color: "var(--text-muted)", background: "var(--glass-01)", border: "1px solid var(--glass-border)", opacity: 0.7 }}>
-            <svg viewBox="0 0 14 14" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <circle cx="7" cy="5" r="3" /><path d="M1 13a6 6 0 0 1 12 0" />
-            </svg>
-            Статус задач доступен всем — остальное только для администратора
-          </div>
-        )}
+        <motion.button onClick={() => setAdding(true)} disabled={adding}
+          whileHover={{ borderColor: `${accentColor}50`, color: accentColor, background: `${accentColor}08` }}
+          whileTap={{ scale: 0.98 }} transition={{ duration: 0.15 }}
+          className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-xl text-xs font-medium"
+          style={{ border: "1px dashed var(--glass-border)", color: "var(--text-muted)", background: "transparent", opacity: adding ? 0 : 1 }}>
+          <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M6 1v10M1 6h10" /></svg>
+          Добавить задачу
+        </motion.button>
       </div>
     </div>
   );

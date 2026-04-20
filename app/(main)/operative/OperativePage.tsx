@@ -2,22 +2,71 @@
 /**
  * @file OperativePage.tsx — app/(main)/operative
  *
- * ИСПРАВЛЕНИЯ v3:
- *   1. isAdmin деструктурируется из props (раньше игнорировался)
- *   2. isAdmin передаётся в UserTaskBlock (раньше не передавался)
- *   Без этого все пользователи видели UI администратора и получали
- *   ошибку "Forbidden" при попытке что-либо сделать.
+ * v4 — drag-and-drop для reorder блоков пользователей.
+ *   Порядок хранится локально в useState (сессионный, не персистентный).
+ *   DnD через @dnd-kit/sortable — тот же стек что у задач внутри блоков.
  */
 import { useEffect } from "react";
 import { motion } from "framer-motion";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  rectSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useOperativeStore } from "@/shared/store/useOperativeStore";
 import { UserTaskBlock } from "@/widgets/operative/UserTaskBlock";
 import type { UserWithOperativeTasks } from "@/entities/operative/operativeRepository";
+import { useState, useCallback } from "react";
 
 interface Props {
   initialData: UserWithOperativeTasks[];
-  isAdmin: boolean;
+  isAdmin:     boolean;
 }
+
+// ── Sortable wrapper for one user block ───────────────────────────────────────
+
+function SortableUserBlock({
+  block, isAdmin, isDragEnabled,
+}: {
+  block:          UserWithOperativeTasks;
+  isAdmin:        boolean;
+  isDragEnabled:  boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id:       block.user.id,
+    disabled: !isDragEnabled,
+  });
+
+  const style = {
+    transform:  CSS.Transform.toString(transform),
+    transition,
+  } as React.CSSProperties;
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <UserTaskBlock
+        block={block}
+        isAdmin={isAdmin}
+        isDragging={isDragging}
+        dragHandleProps={isDragEnabled ? { ...attributes, ...listeners } : null}
+      />
+    </div>
+  );
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export function OperativePage({ initialData, isAdmin }: Props) {
   const hydrate    = useOperativeStore((s) => s.hydrate);
@@ -28,8 +77,46 @@ export function OperativePage({ initialData, isAdmin }: Props) {
     hydrate(initialData);
   }, [initialData, hydrate]);
 
-  const blocks = isHydrated ? userBlocks : initialData;
+  const sourceBlocks: UserWithOperativeTasks[] = isHydrated ? userBlocks : initialData;
 
+  // ── Local block order (session-only) ──────────────────────────────────────
+  const [orderedIds, setOrderedIds] = useState<number[]>(() =>
+    sourceBlocks.map((b) => b.user.id)
+  );
+
+  // Sync orderedIds when hydration adds new users
+  useEffect(() => {
+    setOrderedIds((prev) => {
+      const existing = new Set(prev);
+      const newIds   = sourceBlocks.map((b) => b.user.id);
+      const toAdd    = newIds.filter((id) => !existing.has(id));
+      return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+    });
+  }, [sourceBlocks]);
+
+  // Sort blocks by local order
+  const blocks = orderedIds
+    .map((id) => sourceBlocks.find((b) => b.user.id === id))
+    .filter(Boolean) as UserWithOperativeTasks[];
+
+  // ── DnD sensors ───────────────────────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setOrderedIds((prev) => {
+      const oldIdx = prev.indexOf(Number(active.id));
+      const newIdx = prev.indexOf(Number(over.id));
+      return oldIdx === -1 || newIdx === -1 ? prev : arrayMove(prev, oldIdx, newIdx);
+    });
+  }, []);
+
+  // ── Empty state ───────────────────────────────────────────────────────────
   if (blocks.length === 0) {
     return (
       <motion.div
@@ -39,10 +126,7 @@ export function OperativePage({ initialData, isAdmin }: Props) {
       >
         <div
           className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-          style={{
-            background: "var(--glass-02)",
-            border:     "1px solid var(--glass-border)",
-          }}
+          style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)" }}
         >
           <svg className="w-8 h-8" viewBox="0 0 32 32" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round">
             <circle cx="16" cy="10" r="5" />
@@ -63,24 +147,38 @@ export function OperativePage({ initialData, isAdmin }: Props) {
   }
 
   return (
-    <div
-      className="p-6 grid gap-5"
-      style={{
-        gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))",
-        alignItems: "start",
-      }}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
     >
-      {blocks.map((block, idx) => (
-        <motion.div
-          key={block.user.id}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: idx * 0.06, ease: [0.16, 1, 0.3, 1] }}
+      <SortableContext
+        items={orderedIds}
+        strategy={rectSortingStrategy}
+      >
+        <div
+          className="p-6 grid gap-5"
+          style={{
+            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))",
+            alignItems: "start",
+          }}
         >
-          {/* isAdmin теперь передаётся в UserTaskBlock */}
-          <UserTaskBlock block={block} isAdmin={isAdmin} />
-        </motion.div>
-      ))}
-    </div>
+          {blocks.map((block, idx) => (
+            <motion.div
+              key={block.user.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <SortableUserBlock
+                block={block}
+                isAdmin={isAdmin}
+                isDragEnabled={isAdmin}
+              />
+            </motion.div>
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }

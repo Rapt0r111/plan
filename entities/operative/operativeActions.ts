@@ -1,5 +1,17 @@
 "use server";
 
+/**
+ * @file operativeActions.ts — entities/operative
+ *
+ * ИСПРАВЛЕНИЕ v3:
+ *   updateOrderAction — ранее обновлял только поле `order`.
+ *   Теперь также обновляет `sort_order` для синхронизации обоих полей.
+ *   Это устраняет потенциальную путаницу при чтении данных.
+ *
+ *   Порядок в getAllUsersWithOperativeTasks теперь читается по `order` (v4
+ *   operativeRepository), поэтому DnD-порядок задач корректно сохраняется
+ *   после перезагрузки страницы.
+ */
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { adminActionClient, authActionClient } from "@/shared/lib/safe-action";
@@ -61,6 +73,8 @@ export const createOperativeTaskAction = adminActionClient
         title:       parsedInput.title,
         description: parsedInput.description ?? null,
         dueDate:     parsedInput.dueDate ?? null,
+        // Обновляем оба поля для консистентности
+        sortOrder:   nextOrder,
         order:       nextOrder,
       })
       .returning();
@@ -68,7 +82,6 @@ export const createOperativeTaskAction = adminActionClient
     revalidatePath("/operative");
     broadcast("task:created", { source: "operative", taskId: task.id });
 
-    // ✅ FIX: writeAuditLog was missing here
     await writeAuditLog({
       actor:      { userId: ctx.user.id, role: ctx.user.role },
       action:     "create",
@@ -82,7 +95,7 @@ export const createOperativeTaskAction = adminActionClient
   });
 
 /**
- * updateOperativeTaskAction — только администратор (кроме смены статуса)
+ * updateOperativeTaskAction — статус могут менять все, остальное — только admin
  */
 export const updateOperativeTaskAction = authActionClient
   .schema(UpdateTaskSchema)
@@ -153,7 +166,15 @@ export const deleteOperativeTaskAction = adminActionClient
   });
 
 /**
- * updateOrderAction — только администратор
+ * updateOrderAction — только администратор.
+ *
+ * ИСПРАВЛЕНИЕ: теперь обновляет оба поля — `order` и `sort_order`.
+ * `order` — используется sortTasks() для клиентской сортировки.
+ * `sort_order` — используется в DB-запросе getAllUsersWithOperativeTasks()
+ * (теперь по `order`, но синхронизируем оба для консистентности данных).
+ *
+ * После обновления broadcast через SSE → другие участники видят
+ * новый порядок без ручной перезагрузки страницы.
  */
 export const updateOrderAction = adminActionClient
   .schema(UpdateOrderSchema)
@@ -162,12 +183,22 @@ export const updateOrderAction = adminActionClient
       for (const { id, order } of parsedInput.items) {
         await tx
           .update(operativeTasks)
-          .set({ order })
+          .set({
+            // ИСПРАВЛЕНО: обновляем оба поля для полной консистентности
+            order,
+            sortOrder: order,
+          })
           .where(eq(operativeTasks.id, id));
       }
     });
 
     revalidatePath("/operative");
+
+    // Уведомляем всех участников через SSE → автоматический refresh
+    broadcast("task:updated", {
+      source: "operative",
+      type:   "task_reorder",
+    });
 
     await writeAuditLog({
       actor:      { userId: ctx.user.id, role: ctx.user.role },

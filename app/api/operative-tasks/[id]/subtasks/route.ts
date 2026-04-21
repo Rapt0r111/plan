@@ -4,14 +4,12 @@
  * POST /api/operative-tasks/:id/subtasks — добавить подзадачу.
  */
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import {
   createOperativeSubtask,
   getOperativeTaskById,
 } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { OPERATIVE_CACHE_TAG } from "../../route";
 import { authErrorToResponse, requireAdminSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
@@ -47,7 +45,6 @@ export async function POST(req: Request, { params }: Params) {
     }
 
     const subtask = await createOperativeSubtask({ taskId, title: parsed.data.title });
-    revalidateTag(OPERATIVE_CACHE_TAG, "max");
     broadcast("task:updated", { source: "operative", taskId, subtaskAdded: subtask.id });
 
     // ✅ FIX: writeAuditLog was missing here

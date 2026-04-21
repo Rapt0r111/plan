@@ -50,6 +50,13 @@
       "when": 1776076446548,
       "tag": "0006_auth_login_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1776750806631,
+      "tag": "0007_talented_starhawk",
+      "breakpoints": true
     }
   ]
 }

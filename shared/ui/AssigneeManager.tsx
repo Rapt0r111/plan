@@ -36,25 +36,18 @@ interface Props {
 
 export function AssigneeManager({ taskId, assignees, users }: Props) {
   const [adding, setAdding] = useState(false);
-  const addAssignee    = useTaskStore((s) => s.addAssignee);
+  const addAssignee = useTaskStore((s) => s.addAssignee);
   const removeAssignee = useTaskStore((s) => s.removeAssignee);
 
   const assignedIds = new Set(assignees.map((a) => a.id));
-  const available   = users.filter((u) => !assignedIds.has(u.id));
+  const available = users.filter((u) => !assignedIds.has(u.id));
 
   // ИСПРАВЛЕНО: используем store.addAssignee вместо прямого fetch
   // addAssignee делает: оптимистичный setState → fetch → rollback при ошибке
   const handleAdd = async (user: UserWithMeta) => {
     setAdding(false);
-    await addAssignee(taskId, {
-      id:        user.id,
-      name:      user.name,
-      initials:  user.initials,
-      login:     user.login,
-      roleId:    user.roleId,
-      createdAt: user.createdAt,
-      roleMeta:  user.roleMeta,
-    });
+    // Вместо ручного перечисления полей передаем весь объект user
+    await addAssignee(taskId, user);
   };
 
   // ИСПРАВЛЕНО: используем store.removeAssignee вместо прямого fetch

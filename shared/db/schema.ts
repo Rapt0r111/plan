@@ -1,9 +1,11 @@
 /**
  * @file schema.ts — shared/db
  *
- * v4 — Оперативные задачи с дедлайном:
- *   - Добавлен `due_date` в operative_tasks
- *   - Миграция: 0004_operative_due_date.sql
+ * v5 — Персистентный порядок блоков пользователей:
+ *   - Добавлен `block_order` в таблицу `users`
+ *   - Позволяет сохранять порядок блоков на странице оперативных задач
+ *     между сессиями и делиться им между всеми участниками
+ *   - Миграция: 0007_user_block_order.sql
  */
 import { sql } from "drizzle-orm";
 import {
@@ -35,6 +37,13 @@ export const users = sqliteTable("users", {
   roleId: integer("role_id").notNull().references(() => roles.id),
   initials: text("initials").notNull(),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  /**
+   * blockOrder — порядок блока пользователя на странице оперативных задач.
+   * Обновляется через PATCH /api/operative-blocks при перетаскивании.
+   * Общий для всех участников (хранится в БД).
+   * Инициализируется значением id при создании (см. миграцию 0007).
+   */
+  blockOrder: integer("block_order").notNull().default(0),
 });
 
 // ─── TABLE: epics ─────────────────────────────────────────────────────────────
@@ -159,8 +168,6 @@ export const verifications = sqliteTable("verification", {
 });
 
 // ─── TABLE: operative_tasks ──────────────────────────────────────────────────
-// Оперативные задачи, привязанные к конкретным пользователям.
-// Удаление запрещено — только добавление и смена статуса.
 export const OPERATIVE_STATUSES = ["todo", "in_progress", "done"] as const;
 export type OperativeTaskStatus = (typeof OPERATIVE_STATUSES)[number];
 
@@ -172,11 +179,16 @@ export const operativeTasks = sqliteTable(
     title: text("title").notNull(),
     description: text("description"),
     status: text("status").$type<OperativeTaskStatus>().notNull().default("todo"),
-    dueDate: text("due_date"),                          // ← НОВОЕ: v4
+    dueDate: text("due_date"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
-    order: integer("order").notNull().default(0), // ← НОВОЕ
+    /**
+     * order — поле для DnD-сортировки внутри блока пользователя.
+     * Обновляется через updateOrderAction при перетаскивании задач.
+     * Используется в sortTasks() как финальный ключ сортировки.
+     */
+    order: integer("order").notNull().default(0),
   },
   (t) => ({
     userIdIdx: index("op_tasks_user_id_idx").on(t.userId),

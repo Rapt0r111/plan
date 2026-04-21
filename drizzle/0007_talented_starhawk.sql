@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `block_order` integer DEFAULT 0 NOT NULL;

@@ -20,42 +20,21 @@ export const USERS_CACHE_TAG = "users";
 export async function getAllUsers(): Promise<UserWithMeta[]> {
   const rows = await db
     .select({
-      id:        users.id,
-      name:      users.name,
-      login:     users.login,
-      roleId:    users.roleId,
-      initials:  users.initials,
-      createdAt: users.createdAt,
-      role: {
-        id:          roles.id,
-        key:         roles.key,
-        label:       roles.label,
-        short:       roles.short,
-        hex:         roles.hex,
-        description: roles.description,
-        sortOrder:   roles.sortOrder,
-        createdAt:   roles.createdAt,
-        updatedAt:   roles.updatedAt,
-      },
+      user: users, // Выбирает все поля (id, name, login, initials, blockOrder, и т.д.)
+      role: roles,
     })
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
     .orderBy(users.name);
 
   return rows.map((r) => ({
-    id:        r.id,
-    name:      r.name,
-    login:     r.login,
-    roleId:    r.roleId,
-    initials:  r.initials,
-    createdAt: r.createdAt,
-    roleMeta:  r.role,
+    ...r.user,       // Разворачиваем все поля пользователя (включая blockOrder)
+    roleMeta: r.role,
   }));
 }
 
 export function buildUserWithMeta(
-  user: { id: number; name: string; login: string; roleId: number; initials: string; createdAt: string },
-  role: DbRole
+  user: DbUser, role: DbRole
 ): UserWithMeta {
   return { ...user, roleMeta: role };
 }

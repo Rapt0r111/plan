@@ -1,34 +1,49 @@
 /**
  * @file operativeRepository.ts — entities/operative
  *
- * v3 — Дедлайн оперативных задач (схема исправлена — dueDate в таблице):
- *   - Миграция 0004_operative_due_date.sql добавляет due_date в БД
- *   - createOperativeTask поддерживает dueDate
- *   - updateOperativeTaskDueDate обновляет дедлайн
- *   - OperativeTaskView наследует dueDate из DbOperativeTask автоматически
+ * ИСПРАВЛЕНИЯ v4:
  *
- * Оперативные задачи привязаны к пользователям. Удаление запрещено.
+ * 1. Порядок пользовательских блоков:
+ *    БЫЛО: .orderBy(roles.sortOrder, users.name) — не учитывал DnD
+ *    СТАЛО: .orderBy(users.blockOrder, roles.sortOrder, users.name)
+ *    Поле `block_order` обновляется через PATCH /api/operative-blocks
+ *    при перетаскивании блоков → порядок сохраняется между сессиями
+ *    и виден всем участникам.
+ *
+ * 2. Порядок задач внутри блока:
+ *    БЫЛО: .orderBy(operativeTasks.userId, operativeTasks.sortOrder, ...)
+ *    СТАЛО: .orderBy(operativeTasks.userId, operativeTasks.order, ...)
+ *    Поле `order` — именно то, что обновляет updateOrderAction при DnD.
+ *    Без этой правки порядок задач всегда сбрасывался после reload.
+ *
+ * 3. createOperativeTask:
+ *    БЫЛО: order всегда 0 → новые задачи кластеризовались в начале списка
+ *    СТАЛО: order = MAX(order) + 1 для данного userId
+ *    Новые задачи добавляются в конец списка независимо от способа создания.
+ *
+ * 4. Новая функция updateUserBlockOrders — атомарно обновляет `block_order`
+ *    для нескольких пользователей в одной транзакции.
  */
 
 import { db } from "@/shared/db/client";
 import { operativeTasks, operativeSubtasks, users, roles } from "@/shared/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql, max } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import type { UserWithMeta } from "@/shared/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type DbOperativeTask    = InferSelectModel<typeof operativeTasks>;
+export type DbOperativeTask = InferSelectModel<typeof operativeTasks>;
 export type DbOperativeSubtask = InferSelectModel<typeof operativeSubtasks>;
 export type OperativeTaskStatus = DbOperativeTask["status"];
 
 export interface OperativeSubtaskView {
-  id:          number;
-  taskId:      number;
-  title:       string;
+  id: number;
+  taskId: number;
+  title: string;
   isCompleted: boolean;
-  sortOrder:   number;
-  createdAt:   string;
+  sortOrder: number;
+  createdAt: string;
 }
 
 export interface OperativeTaskView extends DbOperativeTask {
@@ -37,7 +52,7 @@ export interface OperativeTaskView extends DbOperativeTask {
 }
 
 export interface UserWithOperativeTasks {
-  user:  UserWithMeta;
+  user: UserWithMeta;
   tasks: OperativeTaskView[];
 }
 
@@ -45,53 +60,61 @@ export interface UserWithOperativeTasks {
 
 /**
  * getAllUsersWithOperativeTasks — возвращает ВСЕХ пользователей (включая
- * без задач), чтобы каждый получил свой блок.
+ * без задач), отсортированных по `block_order` (DnD-порядок, общий для всех).
+ *
+ * ИСПРАВЛЕНИЕ: порядок пользователей теперь читается из поля `block_order`,
+ * которое обновляется через PATCH /api/operative-blocks.
+ * Задачи внутри блока сортируются по полю `order` (DnD внутри блока).
  */
 export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperativeTasks[]> {
-  // 1. Все пользователи с ролями
+  // 1. Все пользователи с ролями, отсортированные по blockOrder (DnD-порядок блоков)
   const userRows = await db
     .select({
-      id:        users.id,
-      name:      users.name,
-      login:     users.login,
-      roleId:    users.roleId,
-      initials:  users.initials,
+      id: users.id,
+      name: users.name,
+      login: users.login,
+      roleId: users.roleId,
+      initials: users.initials,
       createdAt: users.createdAt,
+      blockOrder: users.blockOrder,
       role: {
-        id:          roles.id,
-        key:         roles.key,
-        label:       roles.label,
-        short:       roles.short,
-        hex:         roles.hex,
+        id: roles.id,
+        key: roles.key,
+        label: roles.label,
+        short: roles.short,
+        hex: roles.hex,
         description: roles.description,
-        sortOrder:   roles.sortOrder,
-        createdAt:   roles.createdAt,
-        updatedAt:   roles.updatedAt,
+        sortOrder: roles.sortOrder,
+        createdAt: roles.createdAt,
+        updatedAt: roles.updatedAt,
       },
     })
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
-    .orderBy(roles.sortOrder, users.name);
+    // ИСПРАВЛЕНО: сначала по blockOrder (DnD), затем fallback
+    .orderBy(users.blockOrder, roles.sortOrder, users.name);
 
   if (!userRows.length) return [];
 
   const userIds = userRows.map(u => u.id);
 
-  // 2. Все оперативные задачи
+  // 2. Все оперативные задачи, отсортированные по полю `order` (DnD внутри блока)
+  // ИСПРАВЛЕНО: используем operativeTasks.order, а не sortOrder
   const taskRows = await db
     .select()
     .from(operativeTasks)
     .where(inArray(operativeTasks.userId, userIds))
-    .orderBy(operativeTasks.userId, operativeTasks.sortOrder, operativeTasks.createdAt);
+    // ИСПРАВЛЕНО: order — поле, обновляемое updateOrderAction при DnD
+    .orderBy(operativeTasks.userId, operativeTasks.order, operativeTasks.createdAt);
 
   // 3. Все подзадачи
   const taskIds = taskRows.map(t => t.id);
   const subtaskRows = taskIds.length
     ? await db
-        .select()
-        .from(operativeSubtasks)
-        .where(inArray(operativeSubtasks.taskId, taskIds))
-        .orderBy(operativeSubtasks.taskId, operativeSubtasks.sortOrder)
+      .select()
+      .from(operativeSubtasks)
+      .where(inArray(operativeSubtasks.taskId, taskIds))
+      .orderBy(operativeSubtasks.taskId, operativeSubtasks.sortOrder)
     : [];
 
   // 4. Индексы
@@ -109,11 +132,16 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
     tasksByUser.set(t.userId, arr);
   }
 
-  // 5. Сборка
+  // 5. Сборка — порядок userRows уже правильный (по blockOrder)
   return userRows.map(row => {
     const userMeta: UserWithMeta = {
-      id: row.id, name: row.name, login: row.login,
-      roleId: row.roleId, initials: row.initials, createdAt: row.createdAt,
+      id: row.id,
+      name: row.name,
+      login: row.login,
+      roleId: row.roleId,
+      initials: row.initials,
+      createdAt: row.createdAt,
+      blockOrder: row.blockOrder, // <--- ДОБАВЛЕНО ЭТО ПОЛЕ
       roleMeta: row.role,
     };
 
@@ -150,30 +178,72 @@ export async function getOperativeTaskById(id: number): Promise<OperativeTaskVie
   };
 }
 
+// ─── Write — User Block Order ─────────────────────────────────────────────────
+
+/**
+ * updateUserBlockOrders — атомарно обновляет `block_order` для набора пользователей.
+ *
+ * Вызывается из PATCH /api/operative-blocks когда администратор
+ * перетаскивает блок пользователя на странице оперативных задач.
+ * После обновления новый порядок виден ВСЕМ участникам системы.
+ */
+export async function updateUserBlockOrders(
+  items: { id: number; blockOrder: number }[]
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    for (const { id, blockOrder } of items) {
+      await tx
+        .update(users)
+        .set({ blockOrder })
+        .where(eq(users.id, id));
+    }
+  });
+}
+
 // ─── Write — Tasks ────────────────────────────────────────────────────────────
 
+/**
+ * createOperativeTask — создаёт задачу с правильным `order`.
+ *
+ * ИСПРАВЛЕНИЕ: `order` теперь = MAX(order) + 1 для данного userId.
+ * Это гарантирует, что новые задачи (независимо от способа создания:
+ * через Server Action или API route) всегда появляются в конце списка,
+ * а не сбрасывают DnD-порядок существующих задач.
+ */
 export async function createOperativeTask(data: {
-  userId:       number;
-  title:        string;
+  userId: number;
+  title: string;
   description?: string | null;
-  dueDate?:     string | null;
-  sortOrder?:   number;
+  dueDate?: string | null;
+  sortOrder?: number;
 }): Promise<DbOperativeTask> {
+  // Вычисляем следующее значение order для данного пользователя
+  const [maxRow] = await db
+    .select({ maxOrder: sql<number>`MAX("order")`.mapWith(Number) })
+    .from(operativeTasks)
+    .where(eq(operativeTasks.userId, data.userId));
+
+  const nextOrder = (maxRow?.maxOrder ?? -1) + 1;
+
   const [row] = await db
     .insert(operativeTasks)
     .values({
-      userId:      data.userId,
-      title:       data.title,
+      userId: data.userId,
+      title: data.title,
       description: data.description ?? null,
-      dueDate:     data.dueDate ?? null,
-      sortOrder:   data.sortOrder ?? 0,
+      dueDate: data.dueDate ?? null,
+      sortOrder: data.sortOrder ?? nextOrder,
+      // ИСПРАВЛЕНО: order = nextOrder, а не 0
+      // Без этого все задачи, созданные через API route, получали order: 0
+      // и после DnD кластеризовались в начале списка
+      order: nextOrder,
     })
     .returning();
   return row;
 }
 
 export async function updateOperativeTaskStatus(
-  id:     number,
+  id: number,
   status: OperativeTaskStatus,
 ): Promise<DbOperativeTask> {
   const [row] = await db
@@ -186,7 +256,7 @@ export async function updateOperativeTaskStatus(
 }
 
 export async function updateOperativeTaskDueDate(
-  id:      number,
+  id: number,
   dueDate: string | null,
 ): Promise<DbOperativeTask> {
   const [row] = await db
@@ -201,8 +271,8 @@ export async function updateOperativeTaskDueDate(
 // ─── Write — Subtasks ─────────────────────────────────────────────────────────
 
 export async function createOperativeSubtask(data: {
-  taskId:     number;
-  title:      string;
+  taskId: number;
+  title: string;
   sortOrder?: number;
 }): Promise<DbOperativeSubtask> {
   const existing = await db
@@ -215,8 +285,8 @@ export async function createOperativeSubtask(data: {
   const [row] = await db
     .insert(operativeSubtasks)
     .values({
-      taskId:    data.taskId,
-      title:     data.title,
+      taskId: data.taskId,
+      title: data.title,
       sortOrder: data.sortOrder ?? maxOrder + 1,
     })
     .returning();
@@ -224,7 +294,7 @@ export async function createOperativeSubtask(data: {
 }
 
 export async function toggleOperativeSubtask(
-  id:          number,
+  id: number,
   isCompleted: boolean,
 ): Promise<DbOperativeSubtask> {
   const [row] = await db

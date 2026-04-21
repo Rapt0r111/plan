@@ -11,8 +11,6 @@ import { broadcast } from "@/shared/server/eventBus";
 import { authErrorToResponse, optionalSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
-export const OPERATIVE_CACHE_TAG = "operative-tasks";
-
 const CreateSchema = z.object({
   userId: z.number().int().positive(),
   title: z.string().min(1).max(200),

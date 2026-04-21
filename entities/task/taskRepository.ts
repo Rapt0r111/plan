@@ -25,25 +25,8 @@ export async function getTaskById(id: number): Promise<TaskView | null> {
 
   const assigneeRows = await db
     .select({
-      user: {
-        id:        users.id,
-        name:      users.name,
-        login:     users.login,
-        roleId:    users.roleId,
-        initials:  users.initials,
-        createdAt: users.createdAt,
-      },
-      role: {
-        id:          roles.id,
-        key:         roles.key,
-        label:       roles.label,
-        short:       roles.short,
-        hex:         roles.hex,
-        description: roles.description,
-        sortOrder:   roles.sortOrder,
-        createdAt:   roles.createdAt,
-        updatedAt:   roles.updatedAt,
-      },
+      user: users, // Выбирает все поля таблицы users, включая blockOrder
+      role: roles, // Выбирает все поля таблицы roles
     })
     .from(taskAssignees)
     .innerJoin(users, eq(taskAssignees.userId, users.id))
@@ -53,9 +36,9 @@ export async function getTaskById(id: number): Promise<TaskView | null> {
   return {
     ...task,
     assignees: assigneeRows.map((r) => ({ ...r.user, roleMeta: r.role })),
-    subtasks:  taskSubtasks,
+    subtasks: taskSubtasks,
     progress: {
-      done:  taskSubtasks.filter((s) => s.isCompleted).length,
+      done: taskSubtasks.filter((s) => s.isCompleted).length,
       total: taskSubtasks.length,
     },
   };
@@ -78,9 +61,9 @@ export async function createTask(data: NewTask): Promise<{ id: number }> {
  * @returns { taskId, subtaskIds } — реальные id из БД
  */
 export async function createTaskWithRelations(params: {
-  task:        NewTask;
+  task: NewTask;
   assigneeIds: number[];
-  subtasks:    Array<{ title: string; isCompleted: boolean; sortOrder: number }>;
+  subtasks: Array<{ title: string; isCompleted: boolean; sortOrder: number }>;
 }): Promise<{ taskId: number; subtaskIds: number[] }> {
   const { task, assigneeIds, subtasks: subtaskInputs } = params;
 
@@ -103,9 +86,9 @@ export async function createTaskWithRelations(params: {
       .values(
         subtaskInputs.map((s) => ({
           taskId,
-          title:       s.title,
+          title: s.title,
           isCompleted: s.isCompleted,
-          sortOrder:   s.sortOrder,
+          sortOrder: s.sortOrder,
         }))
       )
       .returning({ id: subtasks.id });

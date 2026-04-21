@@ -1,14 +1,14 @@
 /**
  * @file userRepository.ts — entities/user
  *
- * ИСПРАВЛЕНИЕ v4 — удалены cacheTag() / cacheLife():
- *   Вызовы cacheTag/cacheLife требуют experimental.dynamicIO: true.
- *   Для локального SQLite этот уровень кеширования не нужен.
+ * ИСПРАВЛЕНИЕ v5 — автоматическое назначение blockOrder:
+ *   При создании пользователя вычисляется MAX(blockOrder) + 1,
+ *   чтобы новые пользователи всегда оказывались в конце списка.
  */
 
 import { db } from "@/shared/db/client";
 import { users, roles } from "@/shared/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, max } from "drizzle-orm"; // Добавлен импорт max
 import type { UserWithMeta, DbUser, DbRole } from "@/shared/types";
 
 export const USERS_CACHE_TAG = "users";
@@ -20,7 +20,7 @@ export const USERS_CACHE_TAG = "users";
 export async function getAllUsers(): Promise<UserWithMeta[]> {
   const rows = await db
     .select({
-      user: users, // Выбирает все поля (id, name, login, initials, blockOrder, и т.д.)
+      user: users,
       role: roles,
     })
     .from(users)
@@ -28,7 +28,7 @@ export async function getAllUsers(): Promise<UserWithMeta[]> {
     .orderBy(users.name);
 
   return rows.map((r) => ({
-    ...r.user,       // Разворачиваем все поля пользователя (включая blockOrder)
+    ...r.user,
     roleMeta: r.role,
   }));
 }
@@ -60,10 +60,26 @@ export async function createUser(data: {
   initials?: string;
 }): Promise<DbUser> {
   const initials = data.initials?.trim() || generateInitials(data.name);
+
+  // 1. Находим текущий максимальный blockOrder
+  const [result] = await db
+    .select({ maxOrder: max(users.blockOrder) })
+    .from(users);
+  
+  // 2. Если пользователей нет, начинаем с 1, иначе max + 1
+  const nextOrder = (result?.maxOrder ?? 0) + 1;
+  
   const [row] = await db
     .insert(users)
-    .values({ name: data.name.trim(), login: data.login.trim(), roleId: data.roleId, initials })
+    .values({ 
+      name: data.name.trim(), 
+      login: data.login.trim(), 
+      roleId: data.roleId, 
+      initials,
+      blockOrder: nextOrder // Явно задаем порядок
+    })
     .returning();
+
   return row;
 }
 

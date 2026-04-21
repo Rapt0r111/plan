@@ -86,7 +86,7 @@ function SortableUserBlock({
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function OperativePage({ initialData, isAdmin }: Props) {
-  const hydrate    = useOperativeStore((s) => s.hydrate);
+  const hydrate = useOperativeStore((s) => s.hydrate);
   const isHydrated = useOperativeStore((s) => s.isHydrated);
   const userBlocks = useOperativeStore((s) => s.userBlocks);
 
@@ -110,9 +110,9 @@ export function OperativePage({ initialData, isAdmin }: Props) {
   );
 
   // Sync: если появились новые пользователи (SSE + hydrate), добавляем в конец
-  const currentIds  = sourceBlocks.map((b) => b.user.id);
+  const currentIds = sourceBlocks.map((b) => b.user.id);
   const existingSet = new Set(orderedIds);
-  const toAdd       = currentIds.filter((id) => !existingSet.has(id));
+  const toAdd = currentIds.filter((id) => !existingSet.has(id));
   if (toAdd.length > 0) {
     setOrderedIds((prev) => [...prev, ...toAdd]);
   }
@@ -128,11 +128,13 @@ export function OperativePage({ initialData, isAdmin }: Props) {
       const prevKey = prev.join(",");
       if (prevKey === serverKey) return prev; // уже совпадают
       // Применяем server-порядок, добавляя новые userId в конец
-      const prevSet = new Set(prev);
-      const merged  = [...serverIds, ...prev.filter(id => !new Set(serverIds).has(id))];
-      return merged;
+      const serverIdSet = new Set(serverIds);
+      const merged = [
+        ...serverIds,
+        ...prev.filter(id => !serverIdSet.has(id)),  // O(n) total
+      ]; return merged;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
   // Собираем блоки в правильном порядке

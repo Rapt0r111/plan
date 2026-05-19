@@ -17,7 +17,8 @@ import { revalidatePath } from "next/cache";
 import { adminActionClient, authActionClient } from "@/shared/lib/safe-action";
 import { db } from "@/shared/db/client";
 import { operativeTasks } from "@/shared/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { createOperativeTask } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
 import { writeAuditLog } from "@/shared/lib/audit";
 
@@ -59,25 +60,7 @@ const UpdateOrderSchema = z.object({
 export const createOperativeTaskAction = adminActionClient
   .schema(CreateTaskSchema)
   .action(async ({ parsedInput, ctx }) => {
-    const maxOrderRow = await db
-      .select({ maxOrder: sql<number>`MAX("order")` })
-      .from(operativeTasks)
-      .where(eq(operativeTasks.userId, parsedInput.userId));
-
-    const nextOrder = (maxOrderRow[0]?.maxOrder ?? -1) + 1;
-
-    const [task] = await db
-      .insert(operativeTasks)
-      .values({
-        userId:      parsedInput.userId,
-        title:       parsedInput.title,
-        description: parsedInput.description ?? null,
-        dueDate:     parsedInput.dueDate ?? null,
-        // Обновляем оба поля для консистентности
-        sortOrder:   nextOrder,
-        order:       nextOrder,
-      })
-      .returning();
+    const task = await createOperativeTask(parsedInput);
 
     revalidatePath("/operative");
     broadcast("task:created", { source: "operative", taskId: task.id });

@@ -23,7 +23,7 @@
  *   - При обновлении страницы: порядок читается из БД → совпадает с тем, что видели
  *   - Другие участники: SSE → refresh → тот же порядок из БД
  */
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useMemo } from "react";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -105,37 +105,17 @@ export function OperativePage({ initialData, isAdmin }: Props) {
    * При следующем рендере (refresh/SSE) `initialData` снова приходит
    * в правильном порядке из БД → orderedIds переинициализируется корректно.
    */
-  const [orderedIds, setOrderedIds] = useState<number[]>(() =>
-    sourceBlocks.map((b) => b.user.id)
-  );
+  const serverIds = useMemo(() => sourceBlocks.map((b) => b.user.id), [sourceBlocks]);
+  const [localOrderedIds, setLocalOrderedIds] = useState<number[] | null>(null);
 
-  // Sync: если появились новые пользователи (SSE + hydrate), добавляем в конец
-  const currentIds = sourceBlocks.map((b) => b.user.id);
-  const existingSet = new Set(orderedIds);
-  const toAdd = currentIds.filter((id) => !existingSet.has(id));
-  if (toAdd.length > 0) {
-    setOrderedIds((prev) => [...prev, ...toAdd]);
-  }
-
-  // Sync: если initialData пришёл с новым server-порядком (после refresh/SSE),
-  // синхронизируем orderedIds — это нужно чтобы видеть порядок, сохранённый
-  // другим администратором
-  useEffect(() => {
-    const serverIds = initialData.map((b) => b.user.id);
-    // Проверяем, изменился ли server-порядок относительно текущего local
-    const serverKey = serverIds.join(",");
-    setOrderedIds((prev) => {
-      const prevKey = prev.join(",");
-      if (prevKey === serverKey) return prev; // уже совпадают
-      // Применяем server-порядок, добавляя новые userId в конец
-      const serverIdSet = new Set(serverIds);
-      const merged = [
-        ...serverIds,
-        ...prev.filter(id => !serverIdSet.has(id)),  // O(n) total
-      ]; return merged;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialData]);
+  const orderedIds = useMemo(() => {
+    const base = localOrderedIds ?? serverIds;
+    const serverIdSet = new Set(serverIds);
+    return [
+      ...base.filter((id) => serverIdSet.has(id)),
+      ...serverIds.filter((id) => !base.includes(id)),
+    ];
+  }, [localOrderedIds, serverIds]);
 
   // Собираем блоки в правильном порядке
   const blocks = orderedIds
@@ -159,7 +139,7 @@ export function OperativePage({ initialData, isAdmin }: Props) {
     const newOrderedIds = arrayMove(orderedIds, oldIdx, newIdx);
 
     // 1. Оптимистично обновляем UI (мгновенно)
-    setOrderedIds(newOrderedIds);
+    setLocalOrderedIds(newOrderedIds);
 
     // 2. Сохраняем в БД — только администратор может менять порядок
     //    (API также проверяет сессию через requireAdminSession)
@@ -176,12 +156,12 @@ export function OperativePage({ initialData, isAdmin }: Props) {
 
       if (!res.ok) {
         // При ошибке возвращаем прежний порядок
-        setOrderedIds(orderedIds);
+        setLocalOrderedIds(orderedIds);
       }
       // Успех → broadcast через SSE → другие участники увидят новый порядок
     } catch {
       // Сетевая ошибка — откатываем оптимистичный сдвиг
-      setOrderedIds(orderedIds);
+      setLocalOrderedIds(orderedIds);
     }
   }, [orderedIds, isAdmin]);
 

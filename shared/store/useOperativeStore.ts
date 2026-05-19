@@ -10,8 +10,10 @@
  */
 import { create } from "zustand";
 import { useNotificationStore } from "@/features/sync/useNotificationStore";
+import { getNextTopOrder } from "@/shared/lib/operative-task-groups";
 import type {
   UserWithOperativeTasks,
+  OperativeTaskCommentView,
   OperativeTaskView,
   OperativeSubtaskView,
   OperativeTaskStatus,
@@ -52,6 +54,7 @@ interface OperativeStore {
   updateStatus:  (taskId: number, userId: number, status: OperativeTaskStatus) => Promise<void>;
   updateDueDate: (taskId: number, userId: number, dueDate: string | null) => Promise<void>;
   addSubtask:    (taskId: number, userId: number, title: string) => Promise<OperativeSubtaskView | null>;
+  addComment:    (taskId: number, userId: number, body: string) => Promise<OperativeTaskCommentView | null>;
   toggleSubtask: (taskId: number, userId: number, subtaskId: number, current: boolean) => Promise<void>;
   /** admin only — удалить задачу со всеми подзадачами */
   deleteTask:    (taskId: number, userId: number) => Promise<void>;
@@ -104,6 +107,9 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
     const tempId = nextTempId();
     const now    = new Date().toISOString();
 
+    const currentTasks = get().getTasksForUser(userId);
+    const nextOrder = getNextTopOrder(currentTasks);
+
     const tempTask: OperativeTaskView = {
       id:          tempId,
       userId,
@@ -111,11 +117,12 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       description,
       dueDate,
       status:      "todo",
-      sortOrder:   Date.now(),
-      order:       Date.now(),
+      sortOrder:   nextOrder,
+      order:       nextOrder,
       createdAt:   now,
       updatedAt:   now,
       subtasks:    [],
+      comments:    [],
       progress:    { done: 0, total: 0 },
     };
 
@@ -123,7 +130,7 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       userBlocks: s.userBlocks.map((block) =>
         block.user.id !== userId
           ? block
-          : { ...block, tasks: [...block.tasks, tempTask] }
+          : { ...block, tasks: [tempTask, ...block.tasks] }
       ),
     }));
 
@@ -140,6 +147,7 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
       const realTask: OperativeTaskView = {
         ...data.data,
         subtasks: [],
+        comments: [],
         progress: { done: 0, total: 0 },
       };
 
@@ -288,6 +296,64 @@ export const useOperativeStore = create<OperativeStore>((set, get) => ({
             progress: { done: newSubs.filter((st) => st.isCompleted).length, total: newSubs.length },
           };
         }),
+      }));
+      return null;
+    }
+  },
+
+  addComment: async (taskId, userId, body) => {
+    if (isOffline()) { notifyOfflineBlocked(); return null; }
+
+    const trimmed = body.trim();
+    if (!trimmed) return null;
+
+    const tempId = nextTempId();
+    const now = new Date().toISOString();
+    const tempComment: OperativeTaskCommentView = {
+      id: tempId,
+      taskId,
+      authorUserId: null,
+      authorName: "Вы",
+      body: trimmed,
+      createdAt: now,
+    };
+
+    set((s) => ({
+      userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
+        ...t,
+        comments: [tempComment, ...(t.comments ?? [])],
+        updatedAt: now,
+      })),
+    }));
+
+    try {
+      const res = await fetch(`/api/operative-tasks/${taskId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: trimmed }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? "Create comment failed");
+
+      const realComment: OperativeTaskCommentView = data.data;
+
+      set((s) => ({
+        userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
+          ...t,
+          comments: (t.comments ?? []).map((comment) =>
+            comment.id === tempId ? realComment : comment
+          ),
+          updatedAt: now,
+        })),
+      }));
+
+      return realComment;
+    } catch {
+      set((s) => ({
+        userBlocks: updateTaskInBlocks(s.userBlocks, userId, taskId, (t) => ({
+          ...t,
+          comments: (t.comments ?? []).filter((comment) => comment.id !== tempId),
+        })),
       }));
       return null;
     }

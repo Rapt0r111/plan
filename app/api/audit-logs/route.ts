@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/shared/db/client";
 import { auditLogs } from "@/shared/db/schema";
-import { desc, eq, and, gte, like } from "drizzle-orm";
+import { desc, eq, and, gte } from "drizzle-orm";
 import { authErrorToResponse, requireAdminSession } from "@/shared/lib/route-auth";
 
 export const dynamic = "force-dynamic";

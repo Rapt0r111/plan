@@ -16,7 +16,7 @@ const CreateSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(2000).nullable().optional(),
   dueDate: z.string().datetime().nullable().optional(),
-  sortOrder: z.number().int().min(0).optional(),
+  sortOrder: z.number().int().optional(),
 });
 
 export async function POST(req: Request) {
@@ -34,12 +34,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { sortOrder, ...rest } = parsed.data;
-
-    const task = await createOperativeTask({
-      ...rest,
-      sortOrder: sortOrder ?? 0,
-    });
+    const task = await createOperativeTask(parsed.data);
 
     if (!task) {
       console.error("[operative-tasks POST] createOperativeTask returned undefined");
@@ -63,7 +58,7 @@ export async function POST(req: Request) {
       entityType: "operative_task",
       entityId: task.id,
       after: task,
-      metadata: { userId: rest.userId },
+      metadata: { userId: parsed.data.userId },
     });
 
     return NextResponse.json({ ok: true, data: task }, { status: 201 });

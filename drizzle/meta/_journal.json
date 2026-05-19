@@ -57,6 +57,13 @@
       "when": 1776750806631,
       "tag": "0007_talented_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1779199271000,
+      "tag": "0008_operative_task_comments",
+      "breakpoints": true
     }
   ]
 }

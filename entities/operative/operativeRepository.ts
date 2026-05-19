@@ -17,17 +17,17 @@
  *    Без этой правки порядок задач всегда сбрасывался после reload.
  *
  * 3. createOperativeTask:
- *    БЫЛО: order всегда 0 → новые задачи кластеризовались в начале списка
- *    СТАЛО: order = MAX(order) + 1 для данного userId
- *    Новые задачи добавляются в конец списка независимо от способа создания.
+ *    БЫЛО: новые задачи получали нижний order или конфликтовали с DnD
+ *    СТАЛО: order = MIN(order) - 1 для данного userId
+ *    Новые задачи добавляются сверху своей категории и не сбивают DnD.
  *
  * 4. Новая функция updateUserBlockOrders — атомарно обновляет `block_order`
  *    для нескольких пользователей в одной транзакции.
  */
 
 import { db } from "@/shared/db/client";
-import { operativeTasks, operativeSubtasks, users, roles } from "@/shared/db/schema";
-import { eq, inArray, sql, max } from "drizzle-orm";
+import { operativeTaskComments, operativeTasks, operativeSubtasks, users, roles } from "@/shared/db/schema";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import type { UserWithMeta } from "@/shared/types";
 
@@ -35,6 +35,7 @@ import type { UserWithMeta } from "@/shared/types";
 
 export type DbOperativeTask = InferSelectModel<typeof operativeTasks>;
 export type DbOperativeSubtask = InferSelectModel<typeof operativeSubtasks>;
+export type DbOperativeTaskComment = InferSelectModel<typeof operativeTaskComments>;
 export type OperativeTaskStatus = DbOperativeTask["status"];
 
 export interface OperativeSubtaskView {
@@ -46,8 +47,18 @@ export interface OperativeSubtaskView {
   createdAt: string;
 }
 
+export interface OperativeTaskCommentView {
+  id: number;
+  taskId: number;
+  authorUserId: string | null;
+  authorName: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface OperativeTaskView extends DbOperativeTask {
   subtasks: OperativeSubtaskView[];
+  comments: OperativeTaskCommentView[];
   progress: { done: number; total: number };
 }
 
@@ -117,12 +128,27 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
       .orderBy(operativeSubtasks.taskId, operativeSubtasks.sortOrder)
     : [];
 
+  const commentRows = taskIds.length
+    ? await db
+      .select()
+      .from(operativeTaskComments)
+      .where(inArray(operativeTaskComments.taskId, taskIds))
+      .orderBy(operativeTaskComments.taskId, desc(operativeTaskComments.createdAt), desc(operativeTaskComments.id))
+    : [];
+
   // 4. Индексы
   const subtasksByTask = new Map<number, DbOperativeSubtask[]>();
   for (const st of subtaskRows) {
     const arr = subtasksByTask.get(st.taskId) ?? [];
     arr.push(st);
     subtasksByTask.set(st.taskId, arr);
+  }
+
+  const commentsByTask = new Map<number, DbOperativeTaskComment[]>();
+  for (const comment of commentRows) {
+    const arr = commentsByTask.get(comment.taskId) ?? [];
+    arr.push(comment);
+    commentsByTask.set(comment.taskId, arr);
   }
 
   const tasksByUser = new Map<number, DbOperativeTask[]>();
@@ -147,9 +173,11 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
 
     const userTasks: OperativeTaskView[] = (tasksByUser.get(row.id) ?? []).map(t => {
       const subs = (subtasksByTask.get(t.id) ?? []) as OperativeSubtaskView[];
+      const comments = (commentsByTask.get(t.id) ?? []) as OperativeTaskCommentView[];
       return {
         ...t,
         subtasks: subs,
+        comments,
         progress: {
           done: subs.filter(s => s.isCompleted).length,
           total: subs.length,
@@ -171,9 +199,16 @@ export async function getOperativeTaskById(id: number): Promise<OperativeTaskVie
     .where(eq(operativeSubtasks.taskId, id))
     .orderBy(operativeSubtasks.sortOrder)) as OperativeSubtaskView[];
 
+  const comments = (await db
+    .select()
+    .from(operativeTaskComments)
+    .where(eq(operativeTaskComments.taskId, id))
+    .orderBy(desc(operativeTaskComments.createdAt), desc(operativeTaskComments.id))) as OperativeTaskCommentView[];
+
   return {
     ...task,
     subtasks: subs,
+    comments,
     progress: { done: subs.filter(s => s.isCompleted).length, total: subs.length },
   };
 }
@@ -205,10 +240,10 @@ export async function updateUserBlockOrders(
 /**
  * createOperativeTask — создаёт задачу с правильным `order`.
  *
- * ИСПРАВЛЕНИЕ: `order` теперь = MAX(order) + 1 для данного userId.
+ * ИСПРАВЛЕНИЕ: `order` теперь = MIN(order) - 1 для данного userId.
  * Это гарантирует, что новые задачи (независимо от способа создания:
- * через Server Action или API route) всегда появляются в конце списка,
- * а не сбрасывают DnD-порядок существующих задач.
+ * через Server Action или API route) всегда появляются сверху своей категории,
+ * а DnD-порядок существующих задач остаётся стабильным.
  */
 export async function createOperativeTask(data: {
   userId: number;
@@ -217,13 +252,12 @@ export async function createOperativeTask(data: {
   dueDate?: string | null;
   sortOrder?: number;
 }): Promise<DbOperativeTask> {
-  // Вычисляем следующее значение order для данного пользователя
-  const [maxRow] = await db
-    .select({ maxOrder: sql<number>`MAX("order")`.mapWith(Number) })
+  const [minRow] = await db
+    .select({ minOrder: sql<number>`MIN("order")`.mapWith(Number) })
     .from(operativeTasks)
     .where(eq(operativeTasks.userId, data.userId));
 
-  const nextOrder = (maxRow?.maxOrder ?? -1) + 1;
+  const nextOrder = (minRow?.minOrder ?? 1) - 1;
 
   const [row] = await db
     .insert(operativeTasks)
@@ -233,9 +267,6 @@ export async function createOperativeTask(data: {
       description: data.description ?? null,
       dueDate: data.dueDate ?? null,
       sortOrder: data.sortOrder ?? nextOrder,
-      // ИСПРАВЛЕНО: order = nextOrder, а не 0
-      // Без этого все задачи, созданные через API route, получали order: 0
-      // и после DnD кластеризовались в начале списка
       order: nextOrder,
     })
     .returning();
@@ -303,5 +334,23 @@ export async function toggleOperativeSubtask(
     .where(eq(operativeSubtasks.id, id))
     .returning();
   if (!row) throw new Error(`Operative subtask ${id} not found`);
+  return row;
+}
+
+export async function createOperativeTaskComment(data: {
+  taskId: number;
+  body: string;
+  authorUserId?: string | null;
+  authorName?: string | null;
+}): Promise<DbOperativeTaskComment> {
+  const [row] = await db
+    .insert(operativeTaskComments)
+    .values({
+      taskId: data.taskId,
+      body: data.body,
+      authorUserId: data.authorUserId ?? null,
+      authorName: data.authorName?.trim() || "Гость",
+    })
+    .returning();
   return row;
 }

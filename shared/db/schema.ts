@@ -212,6 +212,22 @@ export const operativeSubtasks = sqliteTable(
   })
 );
 
+export const operativeTaskComments = sqliteTable(
+  "operative_task_comments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    taskId: integer("task_id").notNull().references(() => operativeTasks.id, { onDelete: "cascade" }),
+    authorUserId: text("author_user_id"),
+    authorName: text("author_name").notNull().default("Гость"),
+    body: text("body").notNull(),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    taskIdIdx: index("op_task_comments_task_id_idx").on(t.taskId),
+    taskCreatedAtIdx: index("op_task_comments_task_created_idx").on(t.taskId, t.createdAt),
+  })
+);
+
 export const auditLogs = sqliteTable(
   "audit_logs",
   {

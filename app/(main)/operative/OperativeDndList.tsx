@@ -157,7 +157,7 @@ function SortableTaskCard({
 
 // ── Основной компонент со списком ─────────────────────────────────────────────
 
-export function OperativeDndList({ tasks: initialTasks, isAdmin, userId }: Props) {
+export function OperativeDndList({ tasks: initialTasks, isAdmin }: Props) {
   const [isPending, startTransition] = useTransition();
 
   /*

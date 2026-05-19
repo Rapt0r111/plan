@@ -35,6 +35,11 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useOptimistic, useTransition } from "react";
 import { useOperativeStore } from "@/shared/store/useOperativeStore";
+import {
+  OPERATIVE_TASK_GROUPS,
+  groupOperativeTasksByStatus,
+  type OperativeTaskGroupMeta,
+} from "@/shared/lib/operative-task-groups";
 import { formatDate, formatDateInput } from "@/shared/lib/utils";
 import { updateOrderAction } from "@/entities/operative/operativeActions";
 import type {
@@ -235,6 +240,63 @@ function InlineInput({ placeholder, onSave, onCancel, accentColor }: {
   );
 }
 
+function CommentComposer({ accentColor, onSave }: {
+  accentColor: string;
+  onSave: (body: string) => Promise<void>;
+}) {
+  const [body, setBody] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = useCallback(async () => {
+    const trimmed = body.trim();
+    if (!trimmed || saving) return;
+    setSaving(true);
+    try {
+      await onSave(trimmed);
+      setBody("");
+    } finally {
+      setSaving(false);
+    }
+  }, [body, onSave, saving]);
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        placeholder="Комментарий к задаче..."
+        maxLength={2000}
+        disabled={saving}
+        className="w-full min-h-16 resize-none bg-transparent px-3 py-2 text-xs outline-none"
+        style={{ color: "var(--text-primary)" }}
+      />
+      <div className="flex items-center gap-2 px-3 py-2" style={{ borderTop: "1px solid var(--glass-border)" }}>
+        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Ctrl/⌘ + Enter</span>
+        <div className="flex-1" />
+        <button
+          onClick={submit}
+          disabled={!body.trim() || saving}
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+          style={{
+            background: body.trim() ? `${accentColor}22` : "var(--glass-01)",
+            border: `1px solid ${body.trim() ? accentColor + "45" : "var(--glass-border)"}`,
+            color: body.trim() ? accentColor : "var(--text-muted)",
+            opacity: saving ? 0.65 : 1,
+          }}
+        >
+          {saving ? "..." : "Добавить"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Quick Add Form (доступна всем пользователям) ──────────────────────────────
 
 function QuickAddForm({ accentColor, onAdd, onCancel }: {
@@ -355,6 +417,7 @@ function TaskCardInner({
   const updateStatus = useOperativeStore(s => s.updateStatus);
   const updateDueDate = useOperativeStore(s => s.updateDueDate);
   const addSubtask   = useOperativeStore(s => s.addSubtask);
+  const addComment   = useOperativeStore(s => s.addComment);
   const toggleSubtask = useOperativeStore(s => s.toggleSubtask);
   const deleteTask   = useOperativeStore(s => s.deleteTask);
   const deleteSubtask = useOperativeStore(s => s.deleteSubtask);
@@ -366,6 +429,7 @@ function TaskCardInner({
   const subDone   = liveTask.progress.done;
   const subTotal  = liveTask.progress.total;
   const subPct    = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
+  const commentCount = liveTask.comments?.length ?? 0;
 
   const cycleStatus = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -380,6 +444,10 @@ function TaskCardInner({
   const handleDeleteTask = useCallback(() => {
     deleteTask(liveTask.id, userId);
   }, [liveTask.id, userId, deleteTask]);
+
+  const handleAddComment = useCallback(async (body: string) => {
+    await addComment(liveTask.id, userId, body);
+  }, [addComment, liveTask.id, userId]);
 
   return (
     <motion.div
@@ -399,8 +467,9 @@ function TaskCardInner({
           {dragHandleProps && (
             <button
               {...dragHandleProps}
-              className="shrink-0 w-5 h-5 flex items-center justify-center opacity-30 hover:opacity-70 cursor-grab active:cursor-grabbing"
+              className="shrink-0 w-6 h-8 rounded-lg flex items-center justify-center opacity-45 hover:opacity-90 cursor-grab active:cursor-grabbing transition-all"
               aria-label="Перетащить задачу"
+              style={{ background: "var(--glass-01)", color: "var(--text-muted)" }}
             >
               <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                 <path d="M6 4h.01M6 8h.01M6 12h.01M10 4h.01M10 8h.01M10 12h.01" />
@@ -411,6 +480,22 @@ function TaskCardInner({
           <StatusPill status={liveTask.status} onClick={cycleStatus} />
           <div className="flex-1 min-w-0" />
           <DueBadge dueDate={liveTask.dueDate} isDone={isDone} />
+
+          <button
+            onClick={e => { e.stopPropagation(); setOpen(true); }}
+            className="shrink-0 h-6 min-w-6 px-1.5 rounded-lg flex items-center justify-center gap-1"
+            style={{
+              color: commentCount > 0 ? accentColor : "var(--text-muted)",
+              background: commentCount > 0 ? `${accentColor}14` : "transparent",
+              border: commentCount > 0 ? `1px solid ${accentColor}30` : "1px solid transparent",
+            }}
+            title="Комментарии"
+          >
+            <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3.5h8M3 6.5h5M4 11l-2 1V3a1.5 1.5 0 0 1 1.5-1.5h7A1.5 1.5 0 0 1 12 3v5a1.5 1.5 0 0 1-1.5 1.5H5.2L4 11Z" />
+            </svg>
+            {commentCount > 0 && <span className="text-[10px] font-mono">{commentCount}</span>}
+          </button>
 
           <button
             onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
@@ -542,6 +627,37 @@ function TaskCardInner({
                 )}
               </div>
 
+              {/* Comments */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "var(--text-muted)" }}>Комментарии</span>
+                  {commentCount > 0 && <span className="text-[10px] font-mono" style={{ color: accentColor }}>{commentCount}</span>}
+                </div>
+                <CommentComposer accentColor={accentColor} onSave={handleAddComment} />
+                <div className="space-y-1.5">
+                  {(liveTask.comments ?? []).map((comment) => (
+                    <div
+                      key={comment.id}
+                      className="rounded-xl px-3 py-2"
+                      style={{ background: "rgba(255,255,255,0.035)", border: "1px solid var(--glass-border)" }}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] font-semibold truncate" style={{ color: "var(--text-secondary)" }}>{comment.authorName}</span>
+                        <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
+                          {formatDate(comment.createdAt)}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: "var(--text-primary)" }}>{comment.body}</p>
+                    </div>
+                  ))}
+                  {commentCount === 0 && (
+                    <p className="text-xs py-1" style={{ color: "var(--text-muted)" }}>Пока нет комментариев</p>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ height: 1, background: "var(--glass-border)" }} />
+
               {/* DELETE TASK — admin only */}
               {isAdmin && (
                 <div className="pt-1" style={{ borderTop: "1px solid var(--glass-border)" }}>
@@ -610,7 +726,7 @@ function SortableTaskList({ tasks, userId, accentColor, isAdmin }: {
   );
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -633,7 +749,7 @@ function SortableTaskList({ tasks, userId, accentColor, isAdmin }: {
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={optimisticTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-2" style={{ opacity: isPending ? 0.85 : 1, transition: "opacity 0.15s" }}>
+        <div className="grid gap-2" style={{ opacity: isPending ? 0.85 : 1, transition: "opacity 0.15s" }}>
           <AnimatePresence mode="popLayout">
             {optimisticTasks.map(task => (
               <SortableTaskCard key={task.id} task={task} userId={userId} accentColor={accentColor}
@@ -646,23 +762,93 @@ function SortableTaskList({ tasks, userId, accentColor, isAdmin }: {
   );
 }
 
-// ── Sort tasks ────────────────────────────────────────────────────────────────
+function TaskStatusSection({
+  group,
+  tasks,
+  userId,
+  accentColor,
+  isAdmin,
+  open,
+  onToggle,
+}: {
+  group: OperativeTaskGroupMeta;
+  tasks: OperativeTaskView[];
+  userId: number;
+  accentColor: string;
+  isAdmin: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <section
+      className="rounded-xl overflow-hidden"
+      style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${open ? group.border : "var(--glass-border)"}` }}
+    >
+      <button
+        onClick={onToggle}
+        className="w-full h-11 flex items-center gap-2 px-3 text-left"
+        style={{ background: open ? group.background : "rgba(255,255,255,0.025)" }}
+      >
+        <span className="w-1.5 h-5 rounded-full shrink-0" style={{ backgroundColor: group.color, boxShadow: open ? `0 0 10px ${group.color}45` : "none" }} />
+        <span className="text-xs font-semibold flex-1 truncate" style={{ color: "var(--text-primary)" }}>{group.label}</span>
+        <span
+          className="min-w-7 text-center text-[11px] font-mono px-2 py-0.5 rounded-full"
+          style={{ background: `${group.color}18`, color: group.color, border: `1px solid ${group.border}` }}
+        >
+          {tasks.length}
+        </span>
+        <motion.svg
+          viewBox="0 0 12 12"
+          className="w-3.5 h-3.5 shrink-0"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          style={{ color: "var(--text-muted)" }}
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <path d="M2 4.5l4 4 4-4" />
+        </motion.svg>
+      </button>
 
-const STATUS_ORDER_MAP: Record<OperativeTaskStatus, number> = { in_progress: 0, todo: 1, done: 2 };
-
-function sortTasks(tasks: OperativeTaskView[]): OperativeTaskView[] {
-  return [...tasks].sort((a, b) => {
-    const sd = STATUS_ORDER_MAP[a.status] - STATUS_ORDER_MAP[b.status];
-    if (sd !== 0) return sd;
-    const ao = !!(a.dueDate && new Date(a.dueDate) < new Date() && a.status !== "done");
-    const bo = !!(b.dueDate && new Date(b.dueDate) < new Date() && b.status !== "done");
-    if (ao && !bo) return -1;
-    if (!ao && bo) return 1;
-    if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-    if (a.dueDate && !b.dueDate) return -1;
-    if (!a.dueDate && b.dueDate) return 1;
-    return a.order - b.order;
-  });
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            style={{ overflow: "hidden" }}
+          >
+            <div className="p-2.5 max-h-[420px] overflow-y-auto" style={{ borderTop: "1px solid var(--glass-border)" }}>
+              {tasks.length > 0 ? (
+                isAdmin ? (
+                  <SortableTaskList tasks={tasks} userId={userId} accentColor={accentColor} isAdmin={isAdmin} />
+                ) : (
+                  <div className="grid gap-2">
+                    <AnimatePresence mode="popLayout">
+                      {tasks.map(task => (
+                        <TaskCardInner key={task.id} task={task} userId={userId} accentColor={accentColor}
+                          isAdmin={false} dragHandleProps={null} />
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                )
+              ) : (
+                <div
+                  className="h-20 flex items-center justify-center text-xs rounded-xl"
+                  style={{ color: "var(--text-muted)", background: "rgba(255,255,255,0.018)", border: "1px dashed var(--glass-border)" }}
+                >
+                  В этой категории пока пусто
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
 }
 
 // ── Main: UserTaskBlock ───────────────────────────────────────────────────────
@@ -678,6 +864,11 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
   const { user } = block;
 
   const [collapsed, setCollapsed] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<OperativeTaskStatus, boolean>>({
+    todo: false,
+    in_progress: false,
+    done: false,
+  });
 
   // ── quick-add доступен всем пользователям ─────────────────────────────────
   const [addingFromHeader, setAddingFromHeader] = useState(false);
@@ -687,7 +878,7 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
   const addTask  = useOperativeStore(s => s.addTask);
 
   const accentColor = user.roleMeta.hex;
-  const sorted      = sortTasks(tasks);
+  const groupedTasks = groupOperativeTasksByStatus(tasks);
 
   const total    = tasks.length;
   const done     = tasks.filter(t => t.status === "done").length;
@@ -701,6 +892,10 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
     setAddingFromFooter(false);
     await addTask({ userId: user.id, title, dueDate });
   }, [user.id, addTask]);
+
+  const toggleGroup = useCallback((status: OperativeTaskStatus) => {
+    setOpenGroups((prev) => ({ ...prev, [status]: !prev[status] }));
+  }, []);
 
   return (
     <motion.div
@@ -885,9 +1080,9 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             style={{ overflow: "hidden" }}
           >
-            {/* Task list */}
+            {/* Task groups */}
             <div className="flex-1 p-2.5" style={{ minHeight: 80 }}>
-              {sorted.length === 0 && !addingFromFooter ? (
+              {total === 0 && !addingFromFooter ? (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center py-6 text-center">
                   <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2"
                     style={{ background: `${accentColor}12`, border: `1px dashed ${accentColor}30` }}>
@@ -898,16 +1093,20 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>Нет задач</p>
                   <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>Нажмите «+» в заголовке чтобы добавить</p>
                 </motion.div>
-              ) : isAdmin ? (
-                <SortableTaskList tasks={sorted} userId={user.id} accentColor={accentColor} isAdmin={isAdmin} />
               ) : (
-                <div className="space-y-2">
-                  <AnimatePresence mode="popLayout">
-                    {sorted.map(task => (
-                      <TaskCardInner key={task.id} task={task} userId={user.id} accentColor={accentColor}
-                        isAdmin={false} dragHandleProps={null} />
-                    ))}
-                  </AnimatePresence>
+                <div className="space-y-2.5">
+                  {OPERATIVE_TASK_GROUPS.map((group) => (
+                    <TaskStatusSection
+                      key={group.status}
+                      group={group}
+                      tasks={groupedTasks[group.status]}
+                      userId={user.id}
+                      accentColor={accentColor}
+                      isAdmin={isAdmin}
+                      open={openGroups[group.status]}
+                      onToggle={() => toggleGroup(group.status)}
+                    />
+                  ))}
                 </div>
               )}
 

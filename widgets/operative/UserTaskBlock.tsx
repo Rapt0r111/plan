@@ -883,6 +883,7 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
   const total    = tasks.length;
   const done     = tasks.filter(t => t.status === "done").length;
   const inProg   = tasks.filter(t => t.status === "in_progress").length;
+  const hasNewTasks = groupedTasks.todo.length > 0;
   const overdue  = tasks.filter(t => { const dl = deadlineInfo(t.dueDate); return dl?.isOverdue && t.status !== "done"; }).length;
   const urgent   = tasks.filter(t => { const dl = deadlineInfo(t.dueDate); return dl?.isSoon && !dl.isOverdue && t.status !== "done"; }).length;
   const pct      = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -928,9 +929,22 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
           </button>
         )}
 
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white shrink-0 mt-0.5"
+        <div className="relative w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold text-white shrink-0 mt-0.5"
           style={{ backgroundColor: accentColor, boxShadow: `0 0 14px ${accentColor}45` }}>
           {user.initials}
+          {hasNewTasks && (
+            <motion.span
+              className="absolute -right-1 -top-1 w-3 h-3 rounded-full"
+              style={{
+                background: "#ef4444",
+                border: "2px solid var(--bg-elevated)",
+                boxShadow: "0 0 10px rgba(239,68,68,0.75)",
+              }}
+              animate={{ scale: [1, 1.18, 1], opacity: [1, 0.72, 1] }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+              aria-label="Появились новые задачи"
+            />
+          )}
         </div>
 
         <div className="flex-1 min-w-0">

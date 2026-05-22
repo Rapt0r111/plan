@@ -13,7 +13,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { getAllUsers, createUser, USERS_CACHE_TAG } from "@/entities/user/userRepository";
-import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const CreateUserSchema = z.object({
@@ -31,13 +31,15 @@ export async function GET() {
     const data = await getAllUsers();
     return NextResponse.json({ ok: true, data });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const session = await requireSession();
+    const session = await requireAdminSession();
     const body = await req.json();
     const parsed = CreateUserSchema.safeParse(body);
 

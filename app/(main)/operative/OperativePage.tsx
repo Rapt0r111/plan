@@ -46,10 +46,15 @@ import { CSS } from "@dnd-kit/utilities";
 import { useOperativeStore } from "@/shared/store/useOperativeStore";
 import { UserTaskBlock } from "@/widgets/operative/UserTaskBlock";
 import type { UserWithOperativeTasks } from "@/entities/operative/operativeRepository";
+import {
+  getUserComposition,
+  type PersonnelComposition,
+} from "@/shared/lib/personnel-composition";
 
 interface Props {
   initialData: UserWithOperativeTasks[];
   isAdmin: boolean;
+  composition: PersonnelComposition;
 }
 
 // ── Sortable wrapper for one user block ───────────────────────────────────────
@@ -85,7 +90,7 @@ function SortableUserBlock({
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export function OperativePage({ initialData, isAdmin }: Props) {
+export function OperativePage({ initialData, isAdmin, composition }: Props) {
   const hydrate = useOperativeStore((s) => s.hydrate);
   const isHydrated = useOperativeStore((s) => s.isHydrated);
   const userBlocks = useOperativeStore((s) => s.userBlocks);
@@ -117,10 +122,18 @@ export function OperativePage({ initialData, isAdmin }: Props) {
     ];
   }, [localOrderedIds, serverIds]);
 
-  // Собираем блоки в правильном порядке
-  const blocks = orderedIds
-    .map((id) => sourceBlocks.find((b) => b.user.id === id))
-    .filter(Boolean) as UserWithOperativeTasks[];
+  // Собираем блоки в правильном порядке, затем показываем выбранный подраздел состава.
+  const allBlocks = useMemo(
+    () => orderedIds
+      .map((id) => sourceBlocks.find((b) => b.user.id === id))
+      .filter(Boolean) as UserWithOperativeTasks[],
+    [orderedIds, sourceBlocks],
+  );
+
+  const blocks = useMemo(
+    () => allBlocks.filter((block) => getUserComposition(block.user) === composition),
+    [allBlocks, composition],
+  );
 
   // ── DnD sensors ───────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -132,11 +145,19 @@ export function OperativePage({ initialData, isAdmin }: Props) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIdx = orderedIds.indexOf(Number(active.id));
-    const newIdx = orderedIds.indexOf(Number(over.id));
+    const visibleIds = blocks.map((block) => block.user.id);
+    const oldIdx = visibleIds.indexOf(Number(active.id));
+    const newIdx = visibleIds.indexOf(Number(over.id));
     if (oldIdx === -1 || newIdx === -1) return;
 
-    const newOrderedIds = arrayMove(orderedIds, oldIdx, newIdx);
+    const reorderedVisibleIds = arrayMove(visibleIds, oldIdx, newIdx);
+    let visibleCursor = 0;
+    const newOrderedIds = allBlocks.map((block) => {
+      if (getUserComposition(block.user) !== composition) {
+        return block.user.id;
+      }
+      return reorderedVisibleIds[visibleCursor++] ?? block.user.id;
+    });
 
     // 1. Оптимистично обновляем UI (мгновенно)
     setLocalOrderedIds(newOrderedIds);
@@ -163,7 +184,7 @@ export function OperativePage({ initialData, isAdmin }: Props) {
       // Сетевая ошибка — откатываем оптимистичный сдвиг
       setLocalOrderedIds(orderedIds);
     }
-  }, [orderedIds, isAdmin]);
+  }, [allBlocks, blocks, composition, orderedIds, isAdmin]);
 
   // ── Empty state ───────────────────────────────────────────────────────────
   if (blocks.length === 0) {
@@ -183,10 +204,10 @@ export function OperativePage({ initialData, isAdmin }: Props) {
           </svg>
         </div>
         <p className="text-base font-semibold mb-1" style={{ color: "var(--text-secondary)" }}>
-          Нет пользователей
+          Нет участников
         </p>
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          Добавьте пользователей в разделе{" "}
+          Добавьте пользователей нужного состава в разделе{" "}
           <a href="/settings" className="underline" style={{ color: "var(--accent-400)" }}>
             Настройки → Пользователи
           </a>
@@ -202,7 +223,7 @@ export function OperativePage({ initialData, isAdmin }: Props) {
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        items={orderedIds}
+        items={blocks.map((block) => block.user.id)}
         strategy={rectSortingStrategy}
       >
         <div

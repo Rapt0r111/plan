@@ -34,6 +34,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   try {
+    await requireSession();
     const { id } = await params;
     const userId = Number(id);
 
@@ -46,13 +47,15 @@ export async function GET(_req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: user });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const session = await requireSession();
+    const session = await requireAdminSession();
     const { id } = await params;
     const userId = Number(id);
 
@@ -103,7 +106,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
 export async function DELETE(_req: Request, { params }: Params) {
   try {
-    await requireAdminSession();
+    const session = await requireAdminSession();
     const { id } = await params;
     const userId = Number(id);
 
@@ -111,12 +114,24 @@ export async function DELETE(_req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Invalid user id" }, { status: 400 });
     }
 
+    const before = await getUserById(userId);
+    if (!before) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+
     await deleteUser(userId);
     revalidateTag(USERS_CACHE_TAG, "max");
     revalidateTag(EPICS_CACHE_TAG, "max");
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "delete",
+      entityType: "user_profile",
+      entityId: userId,
+      before,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

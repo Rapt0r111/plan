@@ -98,6 +98,15 @@ const SEED_ROLES = [
     sortOrder: 6,
     description: null,
   },
+  {
+    key: "variable_member",
+    label: "Переменный состав",
+    short: "ПРС",
+    hex: "#34d399",
+    sortOrder: 50,
+    description: "Базовая роль для участников переменного состава.",
+    composition: "variable",
+  },
 ] as const;
 
 console.log("Seeding roles...");

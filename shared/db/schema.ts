@@ -16,18 +16,28 @@ import {
   index,
 } from "drizzle-orm/sqlite-core";
 
+export const PERSONNEL_COMPOSITION_KEYS = ["permanent", "variable"] as const;
+export type PersonnelComposition = (typeof PERSONNEL_COMPOSITION_KEYS)[number];
+
 // ─── TABLE: roles ─────────────────────────────────────────────────────────────
-export const roles = sqliteTable("roles", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  key: text("key").notNull().unique(),
-  label: text("label").notNull(),
-  short: text("short").notNull(),
-  hex: text("hex").notNull(),
-  description: text("description"),
-  sortOrder: integer("sort_order").notNull().default(0),
-  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
-});
+export const roles = sqliteTable(
+  "roles",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    key: text("key").notNull().unique(),
+    label: text("label").notNull(),
+    short: text("short").notNull(),
+    hex: text("hex").notNull(),
+    description: text("description"),
+    composition: text("composition").$type<PersonnelComposition>().notNull().default("permanent"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    compositionIdx: index("roles_composition_idx").on(t.composition),
+  })
+);
 
 // ─── TABLE: users ─────────────────────────────────────────────────────────────
 export const users = sqliteTable("users", {

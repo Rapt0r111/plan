@@ -95,6 +95,7 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
         short: roles.short,
         hex: roles.hex,
         description: roles.description,
+        composition: roles.composition,
         sortOrder: roles.sortOrder,
         createdAt: roles.createdAt,
         updatedAt: roles.updatedAt,

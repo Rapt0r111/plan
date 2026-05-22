@@ -12,6 +12,13 @@
 import { useState, useCallback } from "react";
 import type { UserWithMeta, DbRole } from "@/shared/types";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
+import {
+    PERSONNEL_COMPOSITIONS,
+    filterUsersByComposition,
+    getCompositionLabel,
+    getUserComposition,
+    type PersonnelComposition,
+} from "@/shared/lib/personnel-composition";
 
 interface Props {
     initialUsers: UserWithMeta[];
@@ -68,7 +75,7 @@ function RoleSelect({
             >
                 {roles.map((r) => (
                     <option key={r.id} value={r.id} style={{ background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
-                        {r.label}
+                        {r.label} · {getCompositionLabel(r.composition)}
                     </option>
                 ))}
             </select>
@@ -99,6 +106,7 @@ function UserCard({
 }) {
     const [editField, setEditField] = useState<"name" | "login" | null>(null);
     const [draft, setDraft] = useState("");
+    const composition = getUserComposition(user);
 
     const startEdit = (field: "name" | "login") => {
         setDraft(field === "name" ? user.name : user.login);
@@ -182,6 +190,10 @@ function UserCard({
                 onChange={(roleId) => onUpdate({ roleId })}
             />
 
+            <span className="text-[11px] px-2 py-1 rounded-full border text-(--text-muted) border-(--glass-border) shrink-0">
+                {getCompositionLabel(composition)}
+            </span>
+
             {/* Initials badge */}
             <span
                 className="text-xs font-bold font-mono w-8 text-center shrink-0 rounded-lg py-0.5"
@@ -216,19 +228,40 @@ function CreateUserForm({
     onCreated: (user: UserWithMeta) => void;
     onCancel: () => void;
 }) {
+    const initialComposition =
+        roles.find((role) => role.composition === "permanent")?.composition ??
+        roles[0]?.composition ??
+        "permanent";
+    const initialRoleId =
+        roles.find((role) => role.composition === initialComposition)?.id ??
+        roles[0]?.id ??
+        0;
+    const [composition, setComposition] = useState<PersonnelComposition>(initialComposition);
     const [form, setForm] = useState({
         name: "",
         login: "",
-        roleId: roles[0]?.id ?? 0,
+        roleId: initialRoleId,
         initials: "",
     });
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState<string | null>(null);
+    const rolesForComposition = roles.filter((role) => role.composition === composition);
+
+    function changeComposition(nextComposition: PersonnelComposition) {
+        const nextRoleId = roles.find((role) => role.composition === nextComposition)?.id ?? 0;
+        setComposition(nextComposition);
+        setForm((f) => ({ ...f, roleId: nextRoleId }));
+        if (!nextRoleId) {
+            setErr(`Сначала добавьте роль: ${getCompositionLabel(nextComposition)}.`);
+        } else {
+            setErr(null);
+        }
+    }
 
     async function submit() {
         if (!form.name.trim()) { setErr("Введите имя"); return; }
         if (!form.login.trim()) { setErr("Введите логин"); return; }
-        if (!form.roleId) { setErr("Выберите роль"); return; }
+        if (!form.roleId) { setErr(`Сначала добавьте роль: ${getCompositionLabel(composition)}.`); return; }
 
         setLoading(true);
         setErr(null);
@@ -301,13 +334,26 @@ function CreateUserForm({
                     mono
                 />
                 <div>
+                    <label className="text-xs text-(--text-muted) block mb-1">Состав</label>
+                    <select
+                        value={composition}
+                        onChange={(e) => changeComposition(e.target.value as PersonnelComposition)}
+                        className="w-full bg-[var(--glass-01)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-500)] transition-colors"
+                    >
+                        {PERSONNEL_COMPOSITIONS.map((item) => (
+                            <option key={item.key} value={item.key}>{item.label}</option>
+                        ))}
+                    </select>
+                </div>
+                <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Роль</label>
                     <select
                         value={form.roleId}
                         onChange={(e) => setForm((f) => ({ ...f, roleId: Number(e.target.value) }))}
+                        disabled={rolesForComposition.length === 0}
                         className="w-full bg-[var(--glass-01)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-500)] transition-colors"
                     >
-                        {roles.map((r) => (
+                        {rolesForComposition.map((r) => (
                             <option key={r.id} value={r.id}>{r.label}</option>
                         ))}
                     </select>
@@ -373,6 +419,11 @@ export function UsersTab({ initialUsers, roles }: Props) {
     const [localUsers, setLocalUsers] = useState<UserWithMeta[]>(initialUsers);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [compositionFilter, setCompositionFilter] = useState<PersonnelComposition | "all">("all");
+    const visibleUsers =
+        compositionFilter === "all"
+            ? localUsers
+            : filterUsersByComposition(localUsers, compositionFilter);
 
     const handleUpdate = useCallback(
         async (user: UserWithMeta, patch: { name?: string; login?: string; roleId?: number }) => {
@@ -451,7 +502,7 @@ export function UsersTab({ initialUsers, roles }: Props) {
                 </div>
                 <div className="w-px h-8 bg-[var(--glass-border)]" />
                 {roles.map((role) => {
-                    const count = localUsers.filter((u) => u.roleId === role.id).length;
+                    const count = visibleUsers.filter((u) => u.roleId === role.id).length;
                     if (!count) return null;
                     return (
                         <div key={role.id}>
@@ -460,6 +511,37 @@ export function UsersTab({ initialUsers, roles }: Props) {
                                 {count}
                             </p>
                         </div>
+                    );
+                })}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+                <button
+                    onClick={() => setCompositionFilter("all")}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={
+                        compositionFilter === "all"
+                            ? { background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.3)" }
+                            : { color: "var(--text-secondary)", border: "1px solid var(--glass-border)" }
+                    }
+                >
+                    Все · {localUsers.length}
+                </button>
+                {PERSONNEL_COMPOSITIONS.map((item) => {
+                    const count = filterUsersByComposition(localUsers, item.key).length;
+                    return (
+                        <button
+                            key={item.key}
+                            onClick={() => setCompositionFilter(item.key)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                            style={
+                                compositionFilter === item.key
+                                    ? { background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.3)" }
+                                    : { color: "var(--text-secondary)", border: "1px solid var(--glass-border)" }
+                            }
+                        >
+                            {item.label} · {count}
+                        </button>
                     );
                 })}
             </div>
@@ -483,7 +565,7 @@ export function UsersTab({ initialUsers, roles }: Props) {
 
             {/* User list grouped by role */}
             {roles.map((role) => {
-                const group = localUsers.filter((u) => u.roleId === role.id);
+                const group = visibleUsers.filter((u) => u.roleId === role.id);
                 if (!group.length) return null;
                 return (
                     <div key={role.id}>
@@ -514,7 +596,7 @@ export function UsersTab({ initialUsers, roles }: Props) {
 
             {/* Пользователи с ролями, которых нет в списке ролей */}
             {(() => {
-                const orphans = localUsers.filter((u) => !roles.find((r) => r.id === u.roleId));
+                const orphans = visibleUsers.filter((u) => !roles.find((r) => r.id === u.roleId));
                 if (!orphans.length) return null;
                 return (
                     <div>

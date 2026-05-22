@@ -13,8 +13,49 @@ import { OperativePage } from "./OperativePage";
 import { LogoutButton } from "./LogoutButton";
 import { auth } from "@/shared/lib/auth";
 import { headers } from "next/headers";
+import {
+  getCompositionLabel,
+  getUserComposition,
+  PERSONNEL_COMPOSITIONS,
+  type PersonnelComposition,
+} from "@/shared/lib/personnel-composition";
 
 export const dynamic = "force-dynamic";
+
+type OperativeRouteProps = {
+  searchParams?: Promise<{ composition?: string | string[] }>;
+};
+
+function parseComposition(value: string | string[] | undefined): PersonnelComposition {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return rawValue === "variable" ? "variable" : "permanent";
+}
+
+function OperativeCompositionTabs({ active }: { active: PersonnelComposition }) {
+  return (
+    <div className="px-6 pt-4">
+      <div className="flex items-center gap-1 rounded-2xl p-1 w-fit" style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>
+        {PERSONNEL_COMPOSITIONS.map((composition) => {
+          const selected = active === composition.key;
+          return (
+            <Link
+              key={composition.key}
+              href={`/operative?composition=${composition.key}`}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+              style={{
+                background: selected ? "var(--accent-glow)" : "transparent",
+                color: selected ? "var(--accent-400)" : "var(--text-muted)",
+                border: selected ? "1px solid rgba(139,92,246,0.26)" : "1px solid transparent",
+              }}
+            >
+              {getCompositionLabel(composition.key)}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 async function SessionBadge() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -77,12 +118,15 @@ async function SessionBadge() {
   );
 }
 
-export default async function OperativeRoute() {
+export default async function OperativeRoute({ searchParams }: OperativeRouteProps) {
+  const params = searchParams ? await searchParams : {};
+  const composition = parseComposition(params.composition);
   const session = await auth.api.getSession({ headers: await headers() });
   const isAdmin = session?.user?.role === "admin";
   const data = await getAllUsersWithOperativeTasks();
 
-  const allTasks = data.flatMap((b) => b.tasks);
+  const visibleData = data.filter((block) => getUserComposition(block.user) === composition);
+  const allTasks = visibleData.flatMap((b) => b.tasks);
   const totalTasks = allTasks.length;
   const doneTasks = allTasks.filter((t) => t.status === "done").length;
   const inProgress = allTasks.filter((t) => t.status === "in_progress").length;
@@ -99,7 +143,7 @@ export default async function OperativeRoute() {
     return new Date(t.dueDate).toDateString() === todayStr;
   }).length;
 
-  const subtitleParts: string[] = [`${data.length} бойцов`];
+  const subtitleParts: string[] = [getCompositionLabel(composition), `${visibleData.length} бойцов`];
   if (inProgress > 0) subtitleParts.push(`${inProgress} в работе`);
   if (overdue > 0) subtitleParts.push(`${overdue} просрочено`);
   if (dueToday > 0 && overdue === 0) subtitleParts.push(`${dueToday} сегодня`);
@@ -144,7 +188,8 @@ export default async function OperativeRoute() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        <OperativePage initialData={data} isAdmin={isAdmin} />
+        <OperativeCompositionTabs active={composition} />
+        <OperativePage initialData={data} isAdmin={isAdmin} composition={composition} />
       </div>
     </div>
   );

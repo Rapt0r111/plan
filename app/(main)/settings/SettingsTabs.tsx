@@ -20,14 +20,17 @@ interface Props {
 const TABS_BASE = [
   { key: "appearance" as const, label: "Внешний вид" },
   { key: "security"   as const, label: "Безопасность" },
-  { key: "roles"      as const, label: "Роли"          },
-  { key: "users"      as const, label: "Пользователи"  },
   { key: "epics"      as const, label: "Эпики"          },
   { key: "tasks"      as const, label: "Задачи"         },
 ] as const;
 
 const ADMIN_TABS = [
-  ...TABS_BASE,
+  { key: "appearance" as const, label: "Внешний вид" },
+  { key: "security"   as const, label: "Безопасность" },
+  { key: "roles"      as const, label: "Роли"          },
+  { key: "users"      as const, label: "Пользователи"  },
+  { key: "epics"      as const, label: "Эпики"          },
+  { key: "tasks"      as const, label: "Задачи"         },
   { key: "audit" as const, label: "Аудит" },
 ] as const;
 

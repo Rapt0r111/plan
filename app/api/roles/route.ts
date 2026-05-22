@@ -13,7 +13,9 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getAllRoles, createRole, ROLES_CACHE_TAG } from "@/entities/role/roleRepository";
 import { z } from "zod";
-import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { PERSONNEL_COMPOSITION_KEYS } from "@/shared/db/schema";
+import { writeAuditLog } from "@/shared/lib/audit";
+import { authErrorToResponse, requireAdminSession } from "@/shared/lib/route-auth";
 
 const CreateRoleSchema = z.object({
   key:         z.string().min(1).max(64).regex(/^[a-z0-9_]+$/),
@@ -21,6 +23,7 @@ const CreateRoleSchema = z.object({
   short:       z.string().min(1).max(8),
   hex:         z.string().regex(/^#[0-9a-fA-F]{6}$/),
   description: z.string().max(512).nullish(),
+  composition: z.enum(PERSONNEL_COMPOSITION_KEYS).default("permanent"),
   sortOrder:   z.number().int().default(0),
 });
 
@@ -35,7 +38,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    await requireSession();
+    const session = await requireAdminSession();
     const body = await req.json();
     const parsed = CreateRoleSchema.safeParse(body);
     if (!parsed.success) {
@@ -50,6 +53,14 @@ export async function POST(req: Request) {
     // ✅ ИСПРАВЛЕНО: "max" вместо "default" (несуществующего профиля)
     revalidateTag(ROLES_CACHE_TAG, "max");
     // Users кеш не инвалидируем — новая роль без пользователей
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "create",
+      entityType: "role",
+      entityId: role.id,
+      after: role,
+      metadata: { composition: role.composition },
+    });
 
     return NextResponse.json({ ok: true, data: role }, { status: 201 });
   } catch (e) {

@@ -21,13 +21,16 @@ import {
 } from "@/entities/role/roleRepository";
 import { USERS_CACHE_TAG } from "@/entities/user/userRepository";
 import { z } from "zod";
-import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
+import { PERSONNEL_COMPOSITION_KEYS } from "@/shared/db/schema";
+import { writeAuditLog } from "@/shared/lib/audit";
+import { authErrorToResponse, requireAdminSession } from "@/shared/lib/route-auth";
 
 const PatchRoleSchema = z.object({
   label:       z.string().min(1).max(128).optional(),
   short:       z.string().min(1).max(8).optional(),
   hex:         z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   description: z.string().max(512).nullish(),
+  composition: z.enum(PERSONNEL_COMPOSITION_KEYS).optional(),
   sortOrder:   z.number().int().optional(),
 });
 
@@ -42,19 +45,39 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    await requireSession();
+    const session = await requireAdminSession();
     const { id } = await params;
+    const roleId = Number(id);
+    if (!Number.isInteger(roleId) || roleId <= 0) {
+      return NextResponse.json({ ok: false, error: "Invalid role id" }, { status: 400 });
+    }
+
     const body = await req.json();
     const parsed = PatchRoleSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 422 });
     }
 
-    const role = await updateRole(Number(id), parsed.data);
+    if (Object.keys(parsed.data).length === 0) {
+      return NextResponse.json({ ok: false, error: "Nothing to update" }, { status: 422 });
+    }
+
+    const before = await getRoleById(roleId);
+    if (!before) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+
+    const role = await updateRole(roleId, parsed.data);
 
     // ✅ ИСПРАВЛЕНО: "max" вместо "default" (несуществующего профиля)
     revalidateTag(ROLES_CACHE_TAG, "max");
     revalidateTag(USERS_CACHE_TAG, "max"); // roleMeta в UserWithMeta обновится
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "update",
+      entityType: "role",
+      entityId: roleId,
+      before,
+      after: role,
+    });
 
     return NextResponse.json({ ok: true, data: role });
   } catch (e) {
@@ -69,13 +92,28 @@ export async function PATCH(req: Request, { params }: Params) {
 
 export async function DELETE(_req: Request, { params }: Params) {
   try {
-    await requireAdminSession();
+    const session = await requireAdminSession();
     const { id } = await params;
-    await deleteRole(Number(id));
+    const roleId = Number(id);
+    if (!Number.isInteger(roleId) || roleId <= 0) {
+      return NextResponse.json({ ok: false, error: "Invalid role id" }, { status: 400 });
+    }
+
+    const before = await getRoleById(roleId);
+    if (!before) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+
+    await deleteRole(roleId);
 
     // ✅ ИСПРАВЛЕНО: "max" вместо "default"
     revalidateTag(ROLES_CACHE_TAG, "max");
     revalidateTag(USERS_CACHE_TAG, "max");
+    await writeAuditLog({
+      actor: { userId: session.user.id, role: session.user.role },
+      action: "delete",
+      entityType: "role",
+      entityId: roleId,
+      before,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e) {

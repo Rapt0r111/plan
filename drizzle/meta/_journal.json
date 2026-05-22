@@ -64,6 +64,13 @@
       "when": 1779199271000,
       "tag": "0008_operative_task_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1779428319579,
+      "tag": "0009_role_composition",
+      "breakpoints": true
     }
   ]
 }

@@ -22,6 +22,11 @@
 import { useState, useCallback } from "react";
 import { useRoleStore } from "@/shared/store/useRoleStore";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
+import {
+  PERSONNEL_COMPOSITIONS,
+  getCompositionLabel,
+  type PersonnelComposition,
+} from "@/shared/lib/personnel-composition";
 import type { DbRole } from "@/shared/types";
 import { useShallow } from "zustand/react/shallow";
 
@@ -148,6 +153,32 @@ export function RolesTab({ initialRoles }: Props) {
 
 // ─── RoleCard ──────────────────────────────────────────────────────────────────
 
+function CompositionSelect({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value: PersonnelComposition;
+  onChange: (value: PersonnelComposition) => void;
+  compact?: boolean;
+}) {
+  return (
+    <select
+      value={value}
+      title={getCompositionLabel(value)}
+      onChange={(e) => onChange(e.target.value as PersonnelComposition)}
+      className={`bg-(--glass-01) border border-(--glass-border) rounded-lg text-(--text-primary) outline-none focus:border-(--accent-500) transition-colors ${
+        compact ? "px-2 py-1 text-xs" : "w-full px-3 py-1.5 text-sm"
+      }`}
+    >
+      {PERSONNEL_COMPOSITIONS.map((item) => (
+        <option key={item.key} value={item.key}>
+          {item.label}
+        </option>
+      ))}
+    </select>
+  );
+}
 function RoleCard({
   role,
   onUpdate,
@@ -232,6 +263,15 @@ function RoleCard({
         )}
       </div>
 
+      {/* Composition */}
+      <div className="shrink-0 min-w-40">
+        <CompositionSelect
+          value={role.composition}
+          onChange={(composition) => onUpdate({ composition })}
+          compact
+        />
+      </div>
+
       {/* Sort order */}
       <span className="text-xs font-mono text-(--text-muted) shrink-0">
         #{role.sortOrder}
@@ -262,7 +302,12 @@ function CreateRoleForm({
   onCancel: () => void;
 }) {
   const [form, setForm] = useState({
-    key: "", label: "", short: "", hex: "#8b5cf6", description: "",
+    key: "",
+    label: "",
+    short: "",
+    hex: "#8b5cf6",
+    description: "",
+    composition: "permanent" as PersonnelComposition,
   });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -307,6 +352,13 @@ function CreateRoleForm({
         <Field label="Аббревиатура" value={form.short}
           onChange={(v) => setForm((f) => ({ ...f, short: v }))}
           placeholder="ПС" />
+        <div>
+          <label className="text-xs text-(--text-muted) block mb-1">Состав</label>
+          <CompositionSelect
+            value={form.composition}
+            onChange={(composition) => setForm((f) => ({ ...f, composition }))}
+          />
+        </div>
         <div>
           <label className="text-xs text-(--text-muted) block mb-1">Цвет</label>
           <div className="flex items-center gap-2">
@@ -368,3 +420,4 @@ function Field({
     </div>
   );
 }
+

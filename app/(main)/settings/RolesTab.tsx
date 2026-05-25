@@ -22,6 +22,7 @@
 import { useState, useCallback } from "react";
 import { useRoleStore } from "@/shared/store/useRoleStore";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
+import { SelectField } from "@/shared/ui/SelectField";
 import {
   PERSONNEL_COMPOSITIONS,
   getCompositionLabel,
@@ -162,21 +163,20 @@ function CompositionSelect({
   onChange: (value: PersonnelComposition) => void;
   compact?: boolean;
 }) {
+  const options = PERSONNEL_COMPOSITIONS.map((item) => ({
+    value: item.key,
+    label: item.label,
+    color: item.key === "permanent" ? "#8b5cf6" : "#38bdf8",
+  }));
+
   return (
-    <select
+    <SelectField
       value={value}
       title={getCompositionLabel(value)}
-      onChange={(e) => onChange(e.target.value as PersonnelComposition)}
-      className={`bg-(--glass-01) border border-(--glass-border) rounded-lg text-(--text-primary) outline-none focus:border-(--accent-500) transition-colors ${
-        compact ? "px-2 py-1 text-xs" : "w-full px-3 py-1.5 text-sm"
-      }`}
-    >
-      {PERSONNEL_COMPOSITIONS.map((item) => (
-        <option key={item.key} value={item.key}>
-          {item.label}
-        </option>
-      ))}
-    </select>
+      onValueChange={(nextValue) => onChange(nextValue as PersonnelComposition)}
+      options={options}
+      compact={compact}
+    />
   );
 }
 function RoleCard({

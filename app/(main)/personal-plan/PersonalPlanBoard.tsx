@@ -3,6 +3,7 @@
 import { type CSSProperties, type FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+import { SelectField } from "@/shared/ui/SelectField";
 import type {
   DbPersonalPlanCompletion,
   DbPersonalPlanItem,
@@ -286,14 +287,28 @@ function Metric({ label, value, color, pulse = false }: { label: string; value: 
 }
 
 function PlanItemForm({ users, weekDates, item, onSubmit }: { users: PersonalPlanUserBlock[]; weekDates: PersonalPlanWeekDate[]; item?: DbPersonalPlanItem; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  const userOptions = users.map((block) => ({
+    value: block.user.id,
+    label: block.user.name,
+    description: block.user.roleMeta.label,
+    color: block.user.roleMeta.hex,
+  }));
+  const weekdayOptions = weekDates.map((day) => ({
+    value: day.weekday,
+    label: day.label,
+    description: day.isoDate.slice(5),
+    color: day.isToday ? "#a78bfa" : "#64748b",
+  }));
+  const colorOptions = PLAN_COLORS.map((color) => ({ value: color, label: color.toUpperCase(), color }));
+
   return (
     <form onSubmit={onSubmit} className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_0.7fr_0.6fr_0.6fr_auto]">
-      <label className="grid gap-1"><span className="text-[10px] uppercase tracking-widest text-(--text-muted)">Сотрудник</span><select name="userId" defaultValue={item?.userId ?? users[0]?.user.id} className="form-field">{users.map((block) => <option key={block.user.id} value={block.user.id}>{block.user.name}</option>)}</select></label>
-      <label className="grid gap-1"><span className="text-[10px] uppercase tracking-widest text-(--text-muted)">День</span><select name="weekday" defaultValue={item?.weekday ?? 1} className="form-field">{weekDates.map((day) => <option key={day.weekday} value={day.weekday}>{day.label}</option>)}</select></label>
+      <label className="grid gap-1"><span className="text-[10px] uppercase tracking-widest text-(--text-muted)">Сотрудник</span><SelectField name="userId" defaultValue={item?.userId ?? users[0]?.user.id} options={userOptions} compact /></label>
+      <label className="grid gap-1"><span className="text-[10px] uppercase tracking-widest text-(--text-muted)">День</span><SelectField name="weekday" defaultValue={item?.weekday ?? 1} options={weekdayOptions} compact /></label>
       <label className="grid gap-1"><span className="text-[10px] uppercase tracking-widest text-(--text-muted)">Название</span><input name="title" required maxLength={200} defaultValue={item?.title} className="form-field" placeholder="Планёрка" /></label>
       <label className="grid gap-1"><span className="text-[10px] uppercase tracking-widest text-(--text-muted)">С</span><input name="startTime" type="time" required defaultValue={item?.startTime ?? "09:00"} className="form-field" /></label>
       <label className="grid gap-1"><span className="text-[10px] uppercase tracking-widest text-(--text-muted)">До</span><input name="endTime" type="time" required defaultValue={item?.endTime ?? "10:00"} className="form-field" /></label>
-      <label className="grid gap-1"><span className="text-[10px] uppercase tracking-widest text-(--text-muted)">Цвет</span><select name="color" defaultValue={item?.color ?? PLAN_COLORS[0]} className="form-field">{PLAN_COLORS.map((color) => <option key={color} value={color}>{color}</option>)}</select></label>
+      <label className="grid gap-1"><span className="text-[10px] uppercase tracking-widest text-(--text-muted)">Цвет</span><SelectField name="color" defaultValue={item?.color ?? PLAN_COLORS[0]} options={colorOptions} compact /></label>
       <label className="grid gap-1 md:col-span-2 xl:col-span-5"><span className="text-[10px] uppercase tracking-widest text-(--text-muted)">Описание</span><input name="description" maxLength={2000} defaultValue={item?.description ?? ""} className="form-field" placeholder="Комментарий или критерий выполнения" /></label>
       <button type="submit" className="cursor-pointer self-end px-4 py-2 rounded-xl text-xs font-semibold transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400" style={{ background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.32)" }}>Сохранить</button>
     </form>

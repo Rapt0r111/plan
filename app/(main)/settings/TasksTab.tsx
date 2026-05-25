@@ -31,6 +31,7 @@ import { cn } from "@/shared/lib/utils";
 import { formatDateInput, formatDateDisplay } from "@/shared/lib/utils";
 import { STATUS_META, PRIORITY_META, STATUS_ORDER, PRIORITY_ORDER } from "@/shared/config/task-meta";
 import { AssigneeManager } from "@/shared/ui/AssigneeManager";
+import { SelectField } from "@/shared/ui/SelectField";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { useRouter } from "next/navigation";
 import type { EpicWithTasks, TaskView, TaskStatus, TaskPriority, UserWithMeta } from "@/shared/types";
@@ -319,17 +320,12 @@ function TaskCard({
                                     <p className="text-[10px] uppercase tracking-widest font-semibold mb-1" style={{ color: "var(--text-muted)" }}>
                                         Эпик
                                     </p>
-                                    <select value={task.epicId}
-                                        onChange={(e) => onEpicChange(Number(e.target.value))}
-                                        className="w-full bg-(--glass-01) border border-(--glass-border) rounded-lg px-2 py-1 text-xs outline-none focus:border-(--accent-500) transition-colors"
-                                        style={{ color: "var(--text-primary)" }}>
-                                        {epics.map((ep) => (
-                                            <option key={ep.id} value={ep.id}
-                                                style={{ background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
-                                                {ep.title}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <SelectField
+                                        value={task.epicId}
+                                        onValueChange={(nextValue) => onEpicChange(Number(nextValue))}
+                                        options={epics.map((ep) => ({ value: ep.id, label: ep.title, color: ep.color }))}
+                                        compact
+                                    />
                                 </div>
 
                                 {/* Assignees — store.addAssignee/removeAssignee (offline-safe) */}
@@ -506,29 +502,28 @@ function CreateTaskForm({
 
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Эпик *</label>
-                    <select value={form.epicId} onChange={(e) => setForm((f) => ({ ...f, epicId: Number(e.target.value) }))}
-                        className="w-full bg-(--glass-01) border border-(--glass-border)ded-lg px-3 py-1.5 text-sm text-(--text-primary) outline-none focus:border-(--accent-500) transition-colors">
-                        {epics.map((ep) => (
-                            <option key={ep.id} value={ep.id}
-                                style={{ background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
-                                {ep.title}
-                            </option>
-                        ))}
-                    </select>
+                    <SelectField
+                        value={form.epicId}
+                        onValueChange={(nextValue) => setForm((f) => ({ ...f, epicId: Number(nextValue) }))}
+                        options={epics.map((ep) => ({ value: ep.id, label: ep.title, color: ep.color }))}
+                    />
                 </div>
 
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Исполнитель</label>
-                    <select value={form.assigneeId} onChange={(e) => setForm((f) => ({ ...f, assigneeId: Number(e.target.value) }))}
-                        className="w-full bg-(--glass-01) border border-(--glass-border) rounded-lg px-3 py-1.5 text-sm text-(--text-primary) outline-none focus:border-(--accent-500) transition-colors">
-                        <option value={0} style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>— Не назначен —</option>
-                        {users.map((u) => (
-                            <option key={u.id} value={u.id}
-                                style={{ background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
-                                {u.name} ({u.roleMeta.label})
-                            </option>
-                        ))}
-                    </select>
+                    <SelectField
+                        value={form.assigneeId}
+                        onValueChange={(nextValue) => setForm((f) => ({ ...f, assigneeId: Number(nextValue) }))}
+                        options={[
+                            { value: 0, label: "Не назначен", color: "#64748b" },
+                            ...users.map((user) => ({
+                                value: user.id,
+                                label: user.name,
+                                description: user.roleMeta.label,
+                                color: user.roleMeta.hex,
+                            })),
+                        ]}
+                    />
                 </div>
 
                 <div className="col-span-2">

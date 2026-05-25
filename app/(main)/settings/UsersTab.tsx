@@ -12,6 +12,7 @@
 import { useState, useCallback } from "react";
 import type { UserWithMeta, DbRole } from "@/shared/types";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
+import { SelectField } from "@/shared/ui/SelectField";
 import {
     PERSONNEL_COMPOSITIONS,
     filterUsersByComposition,
@@ -60,38 +61,26 @@ function RoleSelect({
     onChange: (roleId: number) => void;
 }) {
     const current = roles.find((r) => r.id === value);
-    const styles = current ? hexToRoleStyles(current.hex) : {};
+    const options = roles.map((role) => ({
+        value: role.id,
+        label: role.label,
+        description: getCompositionLabel(role.composition),
+        color: role.hex,
+    }));
 
     return (
-        <div className="relative">
-            <select
+        <div className="min-w-48 shrink-0">
+            <SelectField
                 value={value}
-                onChange={(e) => onChange(Number(e.target.value))}
-                className="appearance-none pl-3 pr-7 py-1 rounded-full text-xs font-medium border outline-none cursor-pointer transition-colors"
-                style={{
-                    ...styles,
-                    backgroundImage: "none",
-                }}
-            >
-                {roles.map((r) => (
-                    <option key={r.id} value={r.id} style={{ background: "var(--bg-elevated)", color: "var(--text-primary)" }}>
-                        {r.label} · {getCompositionLabel(r.composition)}
-                    </option>
-                ))}
-            </select>
-            <svg
-                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3"
-                viewBox="0 0 12 12" fill="none" stroke="currentColor"
-                strokeWidth="1.5" strokeLinecap="round"
-                style={{ color: current?.hex ?? "var(--text-muted)" }}
-            >
-                <path d="M2 4l4 4 4-4" />
-            </svg>
+                onValueChange={(nextValue) => onChange(Number(nextValue))}
+                options={options}
+                compact
+                accentColor={current?.hex}
+                title={current ? `${current.label} · ${getCompositionLabel(current.composition)}` : "Роль"}
+            />
         </div>
     );
 }
-
-// ─── UserCard ─────────────────────────────────────────────────────────────────
 
 function UserCard({
     user,
@@ -335,28 +324,29 @@ function CreateUserForm({
                 />
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Состав</label>
-                    <select
+                    <SelectField
                         value={composition}
-                        onChange={(e) => changeComposition(e.target.value as PersonnelComposition)}
-                        className="w-full bg-[var(--glass-01)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-500)] transition-colors"
-                    >
-                        {PERSONNEL_COMPOSITIONS.map((item) => (
-                            <option key={item.key} value={item.key}>{item.label}</option>
-                        ))}
-                    </select>
+                        onValueChange={(nextValue) => changeComposition(nextValue as PersonnelComposition)}
+                        options={PERSONNEL_COMPOSITIONS.map((item) => ({
+                            value: item.key,
+                            label: item.label,
+                            color: item.key === "permanent" ? "#8b5cf6" : "#38bdf8",
+                        }))}
+                    />
                 </div>
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Роль</label>
-                    <select
+                    <SelectField
                         value={form.roleId}
-                        onChange={(e) => setForm((f) => ({ ...f, roleId: Number(e.target.value) }))}
+                        onValueChange={(nextValue) => setForm((f) => ({ ...f, roleId: Number(nextValue) }))}
                         disabled={rolesForComposition.length === 0}
-                        className="w-full bg-[var(--glass-01)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-500)] transition-colors"
-                    >
-                        {rolesForComposition.map((r) => (
-                            <option key={r.id} value={r.id}>{r.label}</option>
-                        ))}
-                    </select>
+                        options={rolesForComposition.map((role) => ({
+                            value: role.id,
+                            label: role.label,
+                            description: role.short,
+                            color: role.hex,
+                        }))}
+                    />
                 </div>
                 <Field
                     label="Аббревиатура (авто)"

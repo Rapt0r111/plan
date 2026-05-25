@@ -65,6 +65,7 @@ export function useServerEvents(): void {
       case "task:assignee:added":
       case "task:assignee:removed":
       case "task:subtask:toggled":
+      case "personal_plan:updated":
       case "epic:created":
       case "epic:updated":
       case "epic:deleted": {

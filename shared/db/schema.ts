@@ -238,6 +238,46 @@ export const operativeTaskComments = sqliteTable(
   })
 );
 
+// ─── TABLE: personal_plan_items ──────────────────────────────────────────────
+export const personalPlanItems = sqliteTable(
+  "personal_plan_items",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    weekday: integer("weekday").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    startTime: text("start_time").notNull(),
+    endTime: text("end_time").notNull(),
+    color: text("color").notNull().default("#8b5cf6"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    userIdIdx: index("personal_plan_items_user_id_idx").on(t.userId),
+    weekdayIdx: index("personal_plan_items_weekday_idx").on(t.weekday),
+    userWeekdayIdx: index("personal_plan_items_user_weekday_idx").on(t.userId, t.weekday),
+  })
+);
+
+// ─── TABLE: personal_plan_completions ────────────────────────────────────────
+export const personalPlanCompletions = sqliteTable(
+  "personal_plan_completions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id").notNull().references(() => personalPlanItems.id, { onDelete: "cascade" }),
+    date: text("date").notNull(),
+    completedByUserId: text("completed_by_user_id").references(() => authUsers.id, { onDelete: "set null" }),
+    completedAt: text("completed_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    uniqItemDate: uniqueIndex("uq_personal_plan_item_date").on(t.itemId, t.date),
+    itemIdIdx: index("personal_plan_completions_item_id_idx").on(t.itemId),
+    dateIdx: index("personal_plan_completions_date_idx").on(t.date),
+  })
+);
+
 export const auditLogs = sqliteTable(
   "audit_logs",
   {

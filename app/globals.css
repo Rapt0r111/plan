@@ -621,6 +621,29 @@ html.light ::-webkit-scrollbar-thumb:hover {
     border: 1px solid rgba(139, 92, 246, 0.3);
   }
 
+  .form-field {
+    width: 100%;
+    min-height: 38px;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-01);
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  }
+
+  .form-field:focus {
+    border-color: rgba(139, 92, 246, 0.45);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+    background: var(--glass-02);
+  }
+
+  .form-field::placeholder {
+    color: var(--text-muted);
+  }
+
   html.light .nav-item:hover {
     background: rgba(109, 40, 217, 0.06);
     color: var(--text-primary);

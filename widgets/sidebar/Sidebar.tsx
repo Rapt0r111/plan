@@ -102,6 +102,7 @@ export function Sidebar({ epics, users, session }: Props) {
             { href: "/dashboard",  label: "Обзор",             icon: DashboardIcon  },
             { href: "/board",      label: "Доска",              icon: BoardIcon      },
             { href: "/operative",  label: "Оперативные задачи", icon: OperativeIcon  },
+            { href: "/personal-plan", label: "Личный план", icon: PersonalPlanIcon },
             { href: "/settings",   label: "Настройки",          icon: SettingsIcon   },
           ] as const).map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(href + "/");
@@ -213,6 +214,17 @@ function OperativeIcon({ active }: { active: boolean }) {
       <path d="M3 14c0-2.76 2.24-5 5-5s5 2.24 5 5" />
       <circle cx="12.5" cy="11.5" r="2.8" fill={active ? "var(--accent-400)" : "transparent"} stroke="currentColor" strokeWidth="1.2" />
       <path d="M11.2 11.5l1 1 2-2" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function PersonalPlanIcon({ active }: { active: boolean }) {
+  return (
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2.5" width="12" height="11" rx="2" />
+      <path d="M5 1.5v2M11 1.5v2M2.5 6h11" />
+      <path d="M5 9h2.2M5 11.5h4.5" />
+      <circle cx="11.5" cy="9.5" r="1.4" fill={active ? "var(--accent-400)" : "transparent"} stroke="currentColor" strokeWidth="1.1" />
     </svg>
   );
 }

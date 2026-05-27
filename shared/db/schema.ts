@@ -30,6 +30,7 @@ export const roles = sqliteTable(
     hex: text("hex").notNull(),
     description: text("description"),
     composition: text("composition").$type<PersonnelComposition>().notNull().default("permanent"),
+    permissionsJson: text("permissions_json").notNull().default("[]"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
@@ -75,6 +76,18 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 export const TASK_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
+export const TASK_RISK_STATUSES = [
+  "on_track",
+  "at_risk",
+  "due_today",
+  "overdue",
+  "blocked",
+  "stale",
+  "unassigned",
+  "completed",
+] as const;
+export type TaskRiskStatus = (typeof TASK_RISK_STATUSES)[number];
+
 export const tasks = sqliteTable(
   "tasks",
   {
@@ -84,7 +97,13 @@ export const tasks = sqliteTable(
     description: text("description"),
     status: text("status").$type<TaskStatus>().notNull().default("todo"),
     priority: text("priority").$type<TaskPriority>().notNull().default("medium"),
+    riskStatus: text("risk_status").$type<TaskRiskStatus>().notNull().default("on_track"),
+    blockedReason: text("blocked_reason"),
     dueDate: text("due_date"),
+    completedAt: text("completed_at"),
+    lastActivityAt: text("last_activity_at").notNull().default(""),
+    estimatedHours: integer("estimated_hours"),
+    actualHours: integer("actual_hours"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
@@ -93,6 +112,8 @@ export const tasks = sqliteTable(
     epicIdIdx: index("tasks_epic_id_idx").on(t.epicId),
     statusIdx: index("tasks_status_idx").on(t.status),
     priorityIdx: index("tasks_priority_idx").on(t.priority),
+    riskStatusIdx: index("tasks_risk_status_idx").on(t.riskStatus),
+    dueDateIdx: index("tasks_due_date_idx").on(t.dueDate),
     epicStatusIdx: index("tasks_epic_status_idx").on(t.epicId, t.status),
   })
 );
@@ -235,6 +256,104 @@ export const operativeTaskComments = sqliteTable(
   (t) => ({
     taskIdIdx: index("op_task_comments_task_id_idx").on(t.taskId),
     taskCreatedAtIdx: index("op_task_comments_task_created_idx").on(t.taskId, t.createdAt),
+  })
+);
+
+export const taskComments = sqliteTable(
+  "task_comments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+    authorUserId: text("author_user_id"),
+    authorName: text("author_name").notNull().default("Гость"),
+    body: text("body").notNull(),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    taskIdIdx: index("task_comments_task_id_idx").on(t.taskId),
+    taskCreatedAtIdx: index("task_comments_task_created_idx").on(t.taskId, t.createdAt),
+  })
+);
+
+export const taskActivity = sqliteTable(
+  "task_activity",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+    actorUserId: text("actor_user_id"),
+    actorName: text("actor_name").notNull().default("Система"),
+    action: text("action").notNull(),
+    summary: text("summary").notNull(),
+    metadataJson: text("metadata_json"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    taskIdIdx: index("task_activity_task_id_idx").on(t.taskId),
+    actionIdx: index("task_activity_action_idx").on(t.action),
+    createdAtIdx: index("task_activity_created_at_idx").on(t.createdAt),
+  })
+);
+
+export const notifications = sqliteTable(
+  "notifications",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    recipientUserId: text("recipient_user_id"),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    kind: text("kind").notNull().default("info"),
+    entityType: text("entity_type"),
+    entityId: text("entity_id"),
+    readAt: text("read_at"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    recipientIdx: index("notifications_recipient_idx").on(t.recipientUserId),
+    readAtIdx: index("notifications_read_at_idx").on(t.readAt),
+    createdAtIdx: index("notifications_created_at_idx").on(t.createdAt),
+  })
+);
+
+export const slaRules = sqliteTable(
+  "sla_rules",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    priority: text("priority").$type<TaskPriority>(),
+    dueSoonHours: integer("due_soon_hours").notNull().default(24),
+    staleHours: integer("stale_hours").notNull().default(72),
+    isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    priorityIdx: index("sla_rules_priority_idx").on(t.priority),
+    defaultIdx: index("sla_rules_default_idx").on(t.isDefault),
+  })
+);
+
+export const appSettings = sqliteTable(
+  "app_settings",
+  {
+    key: text("key").primaryKey(),
+    valueJson: text("value_json").notNull(),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  }
+);
+
+export const reportExports = sqliteTable(
+  "report_exports",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    type: text("type").notNull(),
+    format: text("format").notNull().default("csv"),
+    filtersJson: text("filters_json"),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    typeIdx: index("report_exports_type_idx").on(t.type),
+    createdAtIdx: index("report_exports_created_at_idx").on(t.createdAt),
   })
 );
 

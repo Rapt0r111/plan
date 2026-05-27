@@ -64,6 +64,7 @@ async function fetchAssignees(taskIds: number[]): Promise<AssigneeRow[]> {
         hex: roles.hex,
         description: roles.description,
         composition: roles.composition,
+        permissionsJson: roles.permissionsJson,
         sortOrder: roles.sortOrder,
         createdAt: roles.createdAt,
         updatedAt: roles.updatedAt,

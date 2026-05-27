@@ -24,6 +24,7 @@ function user(id: number, roleKey: string, composition?: PersonnelComposition): 
       hex: "#8b5cf6",
       description: null,
       composition: (composition ?? null) as PersonnelComposition,
+      permissionsJson: "[]",
       sortOrder: id,
       createdAt: "2026-05-22T00:00:00.000Z",
       updatedAt: "2026-05-22T00:00:00.000Z",

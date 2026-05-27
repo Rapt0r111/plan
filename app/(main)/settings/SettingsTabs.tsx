@@ -7,6 +7,7 @@ import { TasksTab } from "./TasksTab";
 import { AppearanceTab } from "./AppearanceTab";
 import { AuditTab } from "./AuditTab";
 import { SecurityTab } from "./SecurityTab";
+import { AppSettingsTab } from "./AppSettingsTab";
 import type { DbRole, UserWithMeta, EpicWithTasks } from "@/shared/types";
 import { StoreHydrator } from "@/shared/store/StoreHydrator";
 
@@ -20,20 +21,20 @@ interface Props {
 const TABS_BASE = [
   { key: "appearance" as const, label: "Внешний вид" },
   { key: "security"   as const, label: "Безопасность" },
-  { key: "epics"      as const, label: "Эпики"          },
-  { key: "tasks"      as const, label: "Задачи"         },
+  { key: "epics"      as const, label: "Эпики" },
+  { key: "tasks"      as const, label: "Задачи" },
 ] as const;
 
 const ADMIN_TABS = [
   { key: "appearance" as const, label: "Внешний вид" },
   { key: "security"   as const, label: "Безопасность" },
-  { key: "roles"      as const, label: "Роли"          },
-  { key: "users"      as const, label: "Пользователи"  },
-  { key: "epics"      as const, label: "Эпики"          },
-  { key: "tasks"      as const, label: "Задачи"         },
-  { key: "audit" as const, label: "Аудит" },
+  { key: "roles"      as const, label: "Роли" },
+  { key: "users"      as const, label: "Пользователи" },
+  { key: "app"        as const, label: "SaaS" },
+  { key: "epics"      as const, label: "Эпики" },
+  { key: "tasks"      as const, label: "Задачи" },
+  { key: "audit"      as const, label: "Аудит" },
 ] as const;
-
 type TabKey = (typeof ADMIN_TABS)[number]["key"];
 
 export function SettingsTabs({ initialRoles, initialUsers, initialEpics, isAdmin }: Props) {
@@ -72,6 +73,7 @@ export function SettingsTabs({ initialRoles, initialUsers, initialEpics, isAdmin
         {tab === "security"   && <SecurityTab />}
         {tab === "roles"      && <RolesTab initialRoles={initialRoles} />}
         {tab === "users"      && <UsersTab initialUsers={initialUsers} roles={initialRoles} />}
+        {tab === "app"        && isAdmin && <AppSettingsTab />}
         {tab === "epics"      && <EpicsTab initialEpics={initialEpics} />}
         {tab === "tasks"      && <TasksTab initialEpics={initialEpics} users={initialUsers} />}
         {tab === "audit"      && isAdmin && <AuditTab />}

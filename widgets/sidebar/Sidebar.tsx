@@ -9,6 +9,7 @@ import { cn } from "@/shared/lib/utils";
 import { TeamAvatars } from "@/features/team/TeamAvatars";
 import { useSyncStatus } from "@/shared/store/useTaskStore";
 import { UserMenu } from "@/shared/ui/UserMenu";
+import { NotificationCenter } from "@/features/notifications/NotificationCenter";
 import type { DbEpic } from "@/shared/types";
 import type { UserWithMeta } from "@/shared/types";
 import type { Session } from "@/shared/lib/auth";
@@ -100,6 +101,7 @@ export function Sidebar({ epics, users, session }: Props) {
         <nav className="px-3 pt-4 space-y-0.5">
           {([
             { href: "/dashboard",  label: "Обзор",             icon: DashboardIcon  },
+            { href: "/management", label: "Контроль",          icon: ManagementIcon },
             { href: "/board",      label: "Доска",              icon: BoardIcon      },
             { href: "/operative",  label: "Оперативные задачи", icon: OperativeIcon  },
             { href: "/personal-plan", label: "Личный план", icon: PersonalPlanIcon },
@@ -166,6 +168,9 @@ export function Sidebar({ epics, users, session }: Props) {
         {/* ── User menu ── */}
         {session?.user && (
           <div className="px-3 pb-2">
+            <div className="mb-2">
+              <NotificationCenter />
+            </div>
             <UserMenu
               userId={session.user.id}
               name={session.user.name}
@@ -203,6 +208,18 @@ function BoardIcon({ active }: { active: boolean }) {
       <rect x="1" y="1" width="4" height="14" rx="1.5" fillOpacity={active ? 1 : 0.6} />
       <rect x="6" y="1" width="4" height="9"  rx="1.5" fillOpacity={active ? 0.8 : 0.4} />
       <rect x="11" y="1" width="4" height="11" rx="1.5" fillOpacity={active ? 0.6 : 0.3} />
+    </svg>
+  );
+}
+
+function ManagementIcon({ active }: { active: boolean }) {
+  return (
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 13.5h12" />
+      <path d="M3.5 11V7.5" />
+      <path d="M8 11V3" />
+      <path d="M12.5 11V5.5" />
+      <path d="M3 5.5l3 1.5 3-3 4 1.5" />
     </svg>
   );
 }

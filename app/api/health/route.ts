@@ -16,6 +16,11 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const db       = await checkDbHealth();
   const realtime = { clients: eventBus.clientCount };
+  const readiness = {
+    mode: process.env.NODE_ENV ?? "development",
+    databaseClient: process.env.DATABASE_CLIENT ?? "bun-sqlite",
+    appUrlConfigured: Boolean(process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL),
+  };
 
   const ok = db.ok;
 
@@ -24,6 +29,7 @@ export async function GET() {
       ok,
       db,
       realtime,
+      readiness,
       timestamp: new Date().toISOString(),
       version:   process.env.npm_package_version ?? "0.1.0",
     },

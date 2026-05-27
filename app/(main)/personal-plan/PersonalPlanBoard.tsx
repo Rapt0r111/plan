@@ -180,7 +180,11 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
   const toggleUserPlan = useCallback((userId: number) => {
     setCollapsedUserIds((cur) => {
       const next = new Set(cur);
-      next.has(userId) ? next.delete(userId) : next.add(userId);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
       return next;
     });
   }, []);

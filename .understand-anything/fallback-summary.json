@@ -1,0 +1,31 @@
+{
+  "commit": "8da16925b14b0bb3170cc3ea4f5afe9bd1df4d14",
+  "stats": {
+    "totalNodes": 238,
+    "totalEdges": 452,
+    "totalLayers": 30,
+    "tourSteps": 9,
+    "filesScanned": 238,
+    "byCategory": {
+      "code": 198,
+      "config": 20,
+      "infra": 2,
+      "docs": 2,
+      "markup": 1,
+      "script": 4,
+      "data": 11
+    },
+    "nodeTypes": {
+      "file": 203,
+      "config": 20,
+      "service": 2,
+      "document": 2,
+      "schema": 11
+    },
+    "edgeTypes": {
+      "imports": 432,
+      "documents": 20
+    }
+  },
+  "graphPath": "C:\\Users\\Aquarius\\Documents\\plan\\.understand-anything\\knowledge-graph.json"
+}

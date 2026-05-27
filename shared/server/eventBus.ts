@@ -42,6 +42,8 @@ export type RealtimeEventType =
   | "task:assignee:added"
   | "task:assignee:removed"
   | "task:subtask:toggled"
+  | "task:commented"
+  | "notification:created"
   | "personal_plan:updated"
   | "epic:created"
   | "epic:updated"

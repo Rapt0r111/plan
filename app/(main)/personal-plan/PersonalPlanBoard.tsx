@@ -45,7 +45,8 @@ const DENSE_DAY_MAX_HEIGHT = getPersonalPlanDenseDayMaxHeight();
 
 // Static style constants — defined once, never recreated
 const SURFACE_BORDER = "1px solid var(--glass-border)";
-const PANEL_SHADOW = "0 18px 52px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.035)";
+const PANEL_SHADOW = "0 18px 48px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.04)";
+const BLUE_ACCENT = "#2563eb";
 
 const CHIP_BASE: CSSProperties = { background: "var(--glass-01)", color: "var(--text-muted)", border: "1px solid var(--glass-border)" };
 
@@ -76,6 +77,17 @@ const ANIMATION_STYLES = `
   @keyframes ppCardAppear {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pp-pulse,
+    .pp-overdue-overlay,
+    .pp-progress-fill,
+    .pp-card-appear {
+      animation: none !important;
+    }
+    .pp-motion-safe {
+      transition: none !important;
+    }
   }
 `;
 
@@ -123,6 +135,12 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
       progress: allItems.length ? Math.round((completed / allItems.length) * 100) : 0,
     };
   }, [data]);
+
+  const weekRange = useMemo(() => {
+    const first = data.weekDates[0]?.isoDate.slice(5);
+    const last = data.weekDates.at(-1)?.isoDate.slice(5);
+    return first && last ? `${first}–${last}` : "текущая неделя";
+  }, [data.weekDates]);
 
   const mutate = useCallback(async (url: string, init: RequestInit, busy?: number) => {
     setBusyId(busy ?? null);
@@ -214,38 +232,45 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
       <main className="p-3 lg:p-4 space-y-3" aria-label="Личный план недели">
         {/* Header card */}
         <section
-          className="relative overflow-hidden rounded-[22px] px-3.5 py-3 lg:px-4"
+          className="relative overflow-hidden rounded-[26px] px-3.5 py-3.5 lg:px-4"
           style={{
             background:
-              "radial-gradient(circle at 18% 10%, rgba(139,92,246,0.22), transparent 32%), radial-gradient(circle at 86% 18%, rgba(56,189,248,0.14), transparent 28%), linear-gradient(135deg, rgba(15,23,42,0.82), rgba(2,6,23,0.22))",
+              "radial-gradient(circle at 12% 8%, rgba(37,99,235,0.20), transparent 30%), radial-gradient(circle at 88% 12%, rgba(56,189,248,0.16), transparent 28%), linear-gradient(135deg, rgba(15,23,42,0.88), rgba(2,6,23,0.18))",
             border: SURFACE_BORDER,
             boxShadow: PANEL_SHADOW,
           }}
         >
-          <div className="absolute -right-16 -top-28 h-56 w-56 rounded-full bg-[rgba(139,92,246,0.13)] blur-3xl pointer-events-none" />
+          <div className="absolute -right-16 -top-28 h-56 w-56 rounded-full bg-[rgba(37,99,235,0.13)] blur-3xl pointer-events-none" />
+          <div className="absolute -left-24 bottom-0 h-44 w-44 rounded-full bg-[rgba(52,211,153,0.06)] blur-3xl pointer-events-none" />
           <div className="absolute bottom-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent pointer-events-none" />
-          <div className="relative flex flex-wrap items-center gap-3">
-            <div className="min-w-64 flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: "var(--accent-400)" }}>
-                Оперативная неделя
-              </p>
-              <h2 className="mt-0.5 text-lg font-semibold tracking-tight text-(--text-primary)">
-                Личный план без лишнего шума
+          <div className="relative grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <p className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ background: "rgba(37,99,235,0.14)", color: "#93c5fd", border: "1px solid rgba(147,197,253,0.18)" }}>
+                  Оперативная неделя
+                </p>
+                <span className="rounded-full px-2.5 py-1 text-[10px] font-mono text-(--text-muted)" style={{ border: SURFACE_BORDER }}>
+                  {weekRange}
+                </span>
+              </div>
+              <h2 className="text-xl font-semibold tracking-tight text-(--text-primary) lg:text-2xl">
+                Личный план: плотный недельный пульт
               </h2>
-              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-(--text-secondary)">
-                Компактная 7-дневная сетка: быстрый фокус на сотруднике, статусе выполнения и просроченных задачах.
+              <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--text-secondary)">
+                Фокус на том, что нужно выполнить сегодня: сотрудники, статусы, просрочки и быстрые отметки в одной компактной сетке.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:justify-end">
               <Metric label="Всего" value={summary.total} color="#a78bfa" />
               <Metric label="Готово" value={summary.completed} color="#34d399" />
               <Metric label="Сейчас" value={summary.current} color="#38bdf8" />
               <Metric label="Проср." value={summary.overdue} color="#f87171" pulse={summary.overdue > 0} />
             </div>
 
-            <div className="w-full">
+            <div className="xl:col-span-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
               <ProgressRail value={summary.progress} />
+              <StatusLegend />
             </div>
           </div>
         </section>
@@ -261,21 +286,28 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
         {isAdmin && data.users.length > 0 && (
           <section
             className="rounded-2xl overflow-hidden"
-            style={{ background: "var(--bg-elevated)", border: SURFACE_BORDER, boxShadow: "var(--shadow-card)" }}
+            style={{
+              background: "linear-gradient(135deg, rgba(37,99,235,0.08), transparent 36%), var(--bg-elevated)",
+              border: SURFACE_BORDER,
+              boxShadow: "var(--shadow-card)",
+            }}
           >
             <button
               type="button"
               onClick={() => setAdding((v) => !v)}
-              className="cursor-pointer w-full px-3 py-2.5 flex items-center justify-between text-left transition-colors hover:bg-white/[0.035] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
+              className="cursor-pointer w-full px-3 py-2.5 flex items-center justify-between gap-3 text-left transition-colors hover:bg-white/[0.035] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
             >
-              <span className="flex items-center gap-2 text-xs font-semibold text-(--text-primary)">
+              <span className="flex min-w-0 items-center gap-2">
                 <span
-                  className="flex h-7 w-7 items-center justify-center rounded-xl text-(--accent-400)"
-                  style={{ background: "var(--accent-glow)", border: "1px solid rgba(139,92,246,0.26)" }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-white"
+                  style={{ background: `linear-gradient(135deg, ${BLUE_ACCENT}, #38bdf8)`, boxShadow: "0 12px 28px rgba(37,99,235,0.22)" }}
                 >
                   <PlusIcon />
                 </span>
-                Новая повторяющаяся задача
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-(--text-primary)">Новая повторяющаяся задача</span>
+                  <span className="block truncate text-[11px] text-(--text-muted)">Добавление сразу попадает в недельную сетку сотрудника</span>
+                </span>
               </span>
               <span className="rounded-lg px-2 py-1 text-[11px] font-mono text-(--text-muted)" style={{ border: SURFACE_BORDER }}>
                 {adding ? "закрыть" : "admin"}
@@ -365,30 +397,32 @@ const FocusBar = memo(function FocusBar({
 }) {
   const timeLabel = useTimeLabel();
   return (
-    <section className="rounded-2xl px-2.5 py-2" style={{ background: "var(--glass-01)", border: SURFACE_BORDER }}>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-(--text-muted)">Фокус</span>
-        <button
-          type="button"
-          onClick={() => onSelect("all")}
-          className="cursor-pointer px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors hover:-translate-y-px focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
-          style={selectedUserId === "all" ? chipStyle(true) : CHIP_BASE}
-        >
-          Все планы
-        </button>
-        {users.map((block) => (
+    <section className="rounded-2xl px-2.5 py-2" style={{ background: "linear-gradient(90deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))", border: SURFACE_BORDER }}>
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.2em] text-(--text-muted)">Фокус</span>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pb-0.5">
           <button
             type="button"
-            key={block.user.id}
-            onClick={() => onSelect(block.user.id)}
-            className="cursor-pointer flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors hover:-translate-y-px focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
-            style={selectedUserId === block.user.id ? chipStyle(true, block.user.roleMeta.hex) : CHIP_BASE}
+            onClick={() => onSelect("all")}
+            className="cursor-pointer shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors hover:bg-white/[0.055] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
+            style={selectedUserId === "all" ? chipStyle(true) : CHIP_BASE}
           >
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: block.user.roleMeta.hex }} />
-            {block.user.name}
+            Все планы · {users.length}
           </button>
-        ))}
-        <span className="ml-auto rounded-lg px-2 py-1 text-[11px] font-mono text-(--text-muted)" style={{ border: SURFACE_BORDER }}>
+          {users.map((block) => (
+            <button
+              type="button"
+              key={block.user.id}
+              onClick={() => onSelect(block.user.id)}
+              className="cursor-pointer shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors hover:bg-white/[0.055] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
+              style={selectedUserId === block.user.id ? chipStyle(true, block.user.roleMeta.hex) : CHIP_BASE}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: block.user.roleMeta.hex }} />
+              {block.user.name}
+            </button>
+          ))}
+        </div>
+        <span className="ml-auto hidden shrink-0 rounded-lg px-2 py-1 text-[11px] font-mono text-(--text-muted) sm:inline" style={{ border: SURFACE_BORDER }}>
           сейчас {timeLabel}
         </span>
       </div>
@@ -428,9 +462,9 @@ const UserPlanSection = memo(function UserPlanSection({
   return (
     <section
       data-testid="personal-plan-user-week"
-      className="rounded-[22px] overflow-hidden pp-card-appear"
+      className="rounded-[24px] overflow-hidden pp-card-appear"
       style={{
-        background: `linear-gradient(135deg, ${block.user.roleMeta.hex}0d, transparent 34%), var(--bg-elevated)`,
+        background: `linear-gradient(135deg, ${block.user.roleMeta.hex}12, transparent 32%), linear-gradient(180deg, rgba(255,255,255,0.028), transparent 22%), var(--bg-elevated)`,
         border: SURFACE_BORDER,
         boxShadow: PANEL_SHADOW,
         animationDelay: `${idx * 25}ms`,
@@ -566,12 +600,12 @@ const Metric = memo(function Metric({
 }) {
   const animated = useAnimatedNumber(value);
   return (
-    <div className="rounded-xl px-2.5 py-1.5 min-w-16" style={metricBase}>
-      <p className="text-[9px] uppercase tracking-wider text-(--text-muted)">{label}</p>
-      <p
-        className={`text-sm font-semibold font-mono leading-tight${pulse ? " pp-pulse" : ""}`}
-        style={{ color }}
-      >
+    <div className="min-w-20 rounded-2xl px-2.5 py-2" style={metricBase}>
+      <div className="mb-1 flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} aria-hidden="true" />
+        <p className="text-[9px] uppercase tracking-wider text-(--text-muted)">{label}</p>
+      </div>
+      <p className={`text-base font-semibold font-mono leading-tight${pulse ? " pp-pulse" : ""}`} style={{ color }}>
         {animated}
       </p>
     </div>
@@ -583,9 +617,15 @@ const Metric = memo(function Metric({
 function ProgressRail({ value }: { value: number }) {
   const animated = useAnimatedNumber(value, 480);
   return (
-    <div className="flex items-center gap-2">
+    <div className="rounded-2xl px-3 py-2" style={{ background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.08)" }}>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-(--text-muted)">Прогресс недели</span>
+        <span className="text-[10px] font-mono tabular-nums text-(--text-secondary)" aria-label={`Выполнено ${value}%`}>
+          {animated}%
+        </span>
+      </div>
       <div
-        className="h-1.5 flex-1 overflow-hidden rounded-full"
+        className="h-2 overflow-hidden rounded-full"
         style={{ background: "rgba(255,255,255,0.07)" }}
         aria-hidden="true"
       >
@@ -598,12 +638,19 @@ function ProgressRail({ value }: { value: number }) {
           }}
         />
       </div>
-      <span
-        className="w-10 text-right text-[10px] font-mono tabular-nums text-(--text-muted)"
-        aria-label={`Выполнено ${value}%`}
-      >
-        {animated}%
-      </span>
+    </div>
+  );
+}
+
+function StatusLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-2xl px-2.5 py-2" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
+      {Object.values(statusMeta).map((meta) => (
+        <span key={meta.label} className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold text-(--text-secondary)" style={{ border: `1px solid ${meta.border}`, background: meta.bg }}>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.color }} aria-hidden="true" />
+          {meta.label}
+        </span>
+      ))}
     </div>
   );
 }
@@ -620,10 +667,16 @@ const pillDanger: CSSProperties = {
   border: "1px solid rgba(239,68,68,0.26)",
   color: "#fca5a5",
 };
+const pillInfo: CSSProperties = {
+  background: "rgba(56,189,248,0.10)",
+  border: "1px solid rgba(56,189,248,0.24)",
+  color: "#7dd3fc",
+};
 
-function StatusPill({ label, tone = "neutral" }: { label: string; tone?: "neutral" | "danger" }) {
+function StatusPill({ label, tone = "neutral" }: { label: string; tone?: "neutral" | "danger" | "info" }) {
+  const style = tone === "danger" ? pillDanger : tone === "info" ? pillInfo : pillNeutral;
   return (
-    <span className="rounded-lg px-2 py-1 text-[11px] font-mono" style={tone === "danger" ? pillDanger : pillNeutral}>
+    <span className="rounded-lg px-2 py-1 text-[11px] font-mono" style={style}>
       {label}
     </span>
   );
@@ -694,7 +747,7 @@ function PlanItemForm({
       </label>
       <button
         type="submit"
-        className="cursor-pointer self-end px-4 py-2 rounded-xl text-xs font-semibold transition-colors hover:-translate-y-px focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
+        className="cursor-pointer self-end px-4 py-2 rounded-xl text-xs font-semibold transition-colors hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
         style={submitBtnStyle}
       >
         Сохранить
@@ -724,6 +777,7 @@ const UserPlanHeader = memo(function UserPlanHeader({
   );
   const done = states.filter((s) => s.isCompleted).length;
   const overdue = states.filter((s) => s.isOverdue).length;
+  const current = states.filter((s) => s.isCurrent).length;
   const pct = block.items.length ? Math.round((done / block.items.length) * 100) : 0;
   const animatedPct = useAnimatedNumber(pct, 480);
   const animatedDone = useAnimatedNumber(done, 480);
@@ -755,12 +809,15 @@ const UserPlanHeader = memo(function UserPlanHeader({
 
   return (
     <div className="px-3 py-2.5 flex items-center gap-2.5" style={headerStyle}>
-      <div className="h-9 w-9 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0" style={avatarStyle}>
+      <div className="h-10 w-10 rounded-2xl flex items-center justify-center text-xs font-bold text-white shrink-0" style={avatarStyle}>
         {block.user.initials}
       </div>
       <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-semibold leading-tight truncate text-(--text-primary)">{block.user.name}</h3>
-        <p className="text-[11px] truncate text-(--text-muted)">{block.user.roleMeta.short} · {block.user.roleMeta.label}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <h3 className="text-sm font-semibold leading-tight truncate text-(--text-primary)">{block.user.name}</h3>
+          {current > 0 && <StatusPill label={`${current} сейчас`} tone="info" />}
+        </div>
+        <p className="mt-0.5 text-[11px] truncate text-(--text-muted)">{block.user.roleMeta.short} · {block.user.roleMeta.label}</p>
       </div>
       <div className="hidden items-center gap-1.5 sm:flex">
         <StatusPill label={`${block.items.length} задач`} />
@@ -784,11 +841,8 @@ const UserPlanHeader = memo(function UserPlanHeader({
         style={{ border: SURFACE_BORDER }}
         title={isCollapsed ? "Развернуть план" : "Свернуть план"}
       >
-        <span
-          className="inline-block transition-transform duration-150"
-          style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
-        >
-          ⌄
+        <span className="inline-block transition-transform duration-150 pp-motion-safe" style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>
+          <ChevronDownIcon />
         </span>
       </button>
     </div>
@@ -830,9 +884,11 @@ const DayColumn = memo(function DayColumn({
 
   const colStyle: CSSProperties = useMemo(
     () => ({
-      background: day.isToday ? "rgba(139,92,246,0.085)" : "rgba(255,255,255,0.018)",
-      border: day.isToday ? "1px solid rgba(139,92,246,0.34)" : SURFACE_BORDER,
-      boxShadow: day.isToday ? "0 0 0 1px rgba(139,92,246,0.08), 0 12px 28px rgba(139,92,246,0.08)" : "none",
+      background: day.isToday
+        ? "linear-gradient(180deg, rgba(37,99,235,0.13), rgba(37,99,235,0.035))"
+        : "rgba(255,255,255,0.018)",
+      border: day.isToday ? "1px solid rgba(96,165,250,0.38)" : SURFACE_BORDER,
+      boxShadow: day.isToday ? "0 0 0 1px rgba(96,165,250,0.08), 0 12px 28px rgba(37,99,235,0.10)" : "none",
     }),
     [day.isToday],
   );
@@ -845,11 +901,11 @@ const DayColumn = memo(function DayColumn({
           <p className="text-[9px] font-mono leading-tight text-(--text-muted)">{day.isoDate.slice(5)}</p>
         </div>
         <div className="flex items-center gap-1 text-[10px] font-mono">
-          <span className="rounded-md px-1.5 py-0.5 text-(--text-muted)" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          <span className="rounded-md px-1.5 py-0.5 text-(--text-muted)" style={{ border: "1px solid var(--glass-border)", background: "var(--glass-01)" }} title="Задач в день">
             {items.length}
           </span>
           {day.isToday && (
-            <span className="rounded-md px-1.5 py-0.5 font-semibold text-violet-300" style={{ background: "rgba(139,92,246,0.16)" }}>
+            <span className="rounded-md px-1.5 py-0.5 font-semibold text-sky-300" style={{ background: "rgba(37,99,235,0.18)" }}>
               сегодня
             </span>
           )}
@@ -932,7 +988,7 @@ const PersonalPlanItemRow = memo(function PersonalPlanItemRow({
 
   const articleStyle: CSSProperties = useMemo(
     () => ({
-      background: state.isCompleted ? "rgba(255,255,255,0.024)" : meta.bg,
+      background: state.isCompleted ? "rgba(52,211,153,0.055)" : meta.bg,
       border: `1px solid ${state.isOverdue ? meta.border : "var(--glass-border)"}`,
       boxShadow: state.isOverdue
         ? "0 0 14px rgba(239,68,68,0.12)"
@@ -954,7 +1010,7 @@ const PersonalPlanItemRow = memo(function PersonalPlanItemRow({
 
   return (
     <article
-      className="group relative min-h-[50px] rounded-xl overflow-hidden transition-colors"
+      className="group relative min-h-[50px] rounded-xl overflow-hidden transition-colors hover:bg-white/[0.04]"
       style={articleStyle}
     >
       <div className="absolute left-0 top-0 bottom-0 w-0.5" style={{ background: item.color }} />
@@ -970,8 +1026,9 @@ const PersonalPlanItemRow = memo(function PersonalPlanItemRow({
           type="button"
           disabled={busyId === item.id}
           onClick={handleToggle}
+          aria-pressed={state.isCompleted}
           aria-label={state.isCompleted ? "Снять отметку выполнения" : "Отметить задачу выполненной"}
-          className="cursor-pointer mt-0.5 h-5 w-5 rounded-lg shrink-0 flex items-center justify-center text-[10px] leading-none transition-colors hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
+          className="cursor-pointer mt-0.5 h-5 w-5 rounded-lg shrink-0 flex items-center justify-center text-[10px] leading-none transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
           style={checkBtnStyle}
           title="Отметить выполнение"
         >
@@ -991,8 +1048,8 @@ const PersonalPlanItemRow = memo(function PersonalPlanItemRow({
               <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: meta.color }} aria-hidden="true" />
               <span className="truncate text-[9px] font-medium text-(--text-muted)">{meta.label}</span>
               {item.description && (
-                <span className="ml-auto shrink-0 rounded-md px-1 text-[8px] font-semibold text-(--text-muted)" style={{ border: "1px solid var(--glass-border)" }}>
-                  i
+                <span className="ml-auto inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-md text-(--text-muted)" style={{ border: "1px solid var(--glass-border)" }} title="Есть описание">
+                  <InfoIcon />
                 </span>
               )}
             </span>
@@ -1134,7 +1191,7 @@ function TaskDetailsDialog({
                 className="cursor-pointer flex h-8 w-8 items-center justify-center rounded-xl text-sm text-(--text-muted) transition-colors hover:bg-white/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
                 style={{ border: SURFACE_BORDER }}
               >
-                ✕
+                <XIcon />
               </button>
             </form>
           </div>
@@ -1278,6 +1335,18 @@ function EditIcon() {
 
 function TrashIcon() {
   return <svg className="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3.2 4.5h9.6M6.3 4.5V3.2h3.4v1.3M5 6.4l.4 5.2c.1.8.5 1.2 1.3 1.2h2.6c.8 0 1.2-.4 1.3-1.2l.4-5.2" /></svg>;
+}
+
+function InfoIcon() {
+  return <svg className="h-2.5 w-2.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M8 7v4.2" /><path d="M8 4.8h.01" /></svg>;
+}
+
+function XIcon() {
+  return <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7" /></svg>;
+}
+
+function ChevronDownIcon() {
+  return <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m4 6 4 4 4-4" /></svg>;
 }
 
 // ─── Style helpers ────────────────────────────────────────────────────────────

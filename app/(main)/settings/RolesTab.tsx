@@ -23,19 +23,16 @@ import { useState, useCallback } from "react";
 import { useRoleStore } from "@/shared/store/useRoleStore";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
 import { SelectField } from "@/shared/ui/SelectField";
-import {
-  PERSONNEL_COMPOSITIONS,
-  getCompositionLabel,
-  type PersonnelComposition,
-} from "@/shared/lib/personnel-composition";
-import type { DbRole } from "@/shared/types";
+import { isPersonnelComposition, type PersonnelComposition } from "@/shared/lib/personnel-composition";
+import type { DbPersonnelGroup, DbRole } from "@/shared/types";
 import { useShallow } from "zustand/react/shallow";
 
 interface Props {
   initialRoles: DbRole[];
+  personnelGroups: DbPersonnelGroup[];
 }
 
-export function RolesTab({ initialRoles }: Props) {
+export function RolesTab({ initialRoles, personnelGroups }: Props) {
   // ИСПРАВЛЕНО: один вызов useRoleStore с деструктурирующим селектором.
   // roles читается через условие — fallback на initialRoles до первой гидрации.
   // Действия (optimistic*) — стабильные ссылки, не вызывают лишних ререндеров.
@@ -123,6 +120,7 @@ export function RolesTab({ initialRoles }: Props) {
           <RoleCard
             key={role.id}
             role={role}
+            personnelGroups={personnelGroups}
             onUpdate={(patch) => handleUpdate(role.id, patch)}
             onDelete={() => handleDelete(role)}
           />
@@ -141,6 +139,7 @@ export function RolesTab({ initialRoles }: Props) {
         </button>
       ) : (
         <CreateRoleForm
+          personnelGroups={personnelGroups}
           onCreated={(role) => {
             optimisticCreate(role);
             setCreating(false);
@@ -154,37 +153,51 @@ export function RolesTab({ initialRoles }: Props) {
 
 // ─── RoleCard ──────────────────────────────────────────────────────────────────
 
-function CompositionSelect({
+function groupToLegacyComposition(group: DbPersonnelGroup | undefined): PersonnelComposition {
+  return isPersonnelComposition(group?.key) ? group.key : "permanent";
+}
+
+function PersonnelGroupSelect({
   value,
+  groups,
   onChange,
   compact = false,
 }: {
-  value: PersonnelComposition;
-  onChange: (value: PersonnelComposition) => void;
+  value: number | null;
+  groups: DbPersonnelGroup[];
+  onChange: (value: DbPersonnelGroup) => void;
   compact?: boolean;
 }) {
-  const options = PERSONNEL_COMPOSITIONS.map((item) => ({
-    value: item.key,
-    label: item.label,
-    color: item.key === "permanent" ? "#8b5cf6" : "#38bdf8",
+  const selected = groups.find((group) => group.id === value) ?? groups[0];
+  const options = groups.map((group) => ({
+    value: group.id,
+    label: group.label,
+    description: group.key,
+    color: group.color,
   }));
 
   return (
     <SelectField
-      value={value}
-      title={getCompositionLabel(value)}
-      onValueChange={(nextValue) => onChange(nextValue as PersonnelComposition)}
+      value={selected?.id}
+      title={selected?.label ?? "Состав"}
+      onValueChange={(nextValue) => {
+        const group = groups.find((item) => item.id === Number(nextValue));
+        if (group) onChange(group);
+      }}
       options={options}
+      disabled={groups.length === 0}
       compact={compact}
     />
   );
 }
 function RoleCard({
   role,
+  personnelGroups,
   onUpdate,
   onDelete,
 }: {
   role: DbRole;
+  personnelGroups: DbPersonnelGroup[];
   onUpdate: (patch: Partial<DbRole>) => void;
   onDelete: () => void;
 }) {
@@ -265,9 +278,16 @@ function RoleCard({
 
       {/* Composition */}
       <div className="shrink-0 min-w-40">
-        <CompositionSelect
-          value={role.composition}
-          onChange={(composition) => onUpdate({ composition })}
+        <PersonnelGroupSelect
+          value={role.personnelGroupId ?? personnelGroups.find((group) => group.key === role.composition)?.id ?? null}
+          groups={personnelGroups}
+          onChange={(group) => {
+            onUpdate({
+              composition: groupToLegacyComposition(group),
+              personnelGroupId: group.id,
+              personnelGroup: group,
+            });
+          }}
           compact
         />
       </div>
@@ -295,19 +315,23 @@ function RoleCard({
 // ─── CreateRoleForm ──────────────────────────────────────────────────────────
 
 function CreateRoleForm({
+  personnelGroups,
   onCreated,
   onCancel,
 }: {
+  personnelGroups: DbPersonnelGroup[];
   onCreated: (role: DbRole) => void;
   onCancel: () => void;
 }) {
+  const permanentGroup = personnelGroups.find((group) => group.key === "permanent") ?? personnelGroups[0];
   const [form, setForm] = useState({
     key: "",
     label: "",
     short: "",
     hex: "#8b5cf6",
     description: "",
-    composition: "permanent" as PersonnelComposition,
+    composition: groupToLegacyComposition(permanentGroup),
+    personnelGroupId: permanentGroup?.id ?? null,
   });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -354,9 +378,16 @@ function CreateRoleForm({
           placeholder="ПС" />
         <div>
           <label className="text-xs text-(--text-muted) block mb-1">Состав</label>
-          <CompositionSelect
-            value={form.composition}
-            onChange={(composition) => setForm((f) => ({ ...f, composition }))}
+          <PersonnelGroupSelect
+            value={form.personnelGroupId}
+            groups={personnelGroups}
+            onChange={(group) => {
+              setForm((f) => ({
+                ...f,
+                composition: groupToLegacyComposition(group),
+                personnelGroupId: group.id,
+              }));
+            }}
           />
         </div>
         <div>

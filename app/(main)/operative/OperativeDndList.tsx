@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useTransition, useCallback } from "react";
+import { useOptimistic, useTransition, useCallback, memo } from "react";
 import {
   DndContext,
   closestCenter,
@@ -27,17 +27,18 @@ import {
 } from "@/entities/operative/operativeActions";
 import type { OperativeTaskView } from "@/entities/operative/operativeRepository";
 
-// ── Типы ─────────────────────────────────────────────────────────────────────
-
 interface Props {
   tasks:   OperativeTaskView[];
   isAdmin: boolean;
   userId:  number;
 }
 
-// ── Отдельная карточка с DnD-хуком ───────────────────────────────────────────
+// ── ИСПРАВЛЕНИЕ 1: memo + убираем layout prop ─────────────────────────────────
+// layout={true} вызывает getBoundingClientRect + FLIP-анимацию на каждый рендер.
+// При скролле с множеством карточек это блокирует главный поток.
+// Вместо этого используем только opacity/y — они идут через compositor thread.
 
-function SortableTaskCard({
+const SortableTaskCard = memo(function SortableTaskCard({
   task,
   isAdmin,
   onDelete,
@@ -48,7 +49,6 @@ function SortableTaskCard({
   onDelete:       (id: number) => void;
   onStatusChange: (id: number, status: OperativeTaskView["status"]) => void;
 }) {
-  // useSortable даёт нам ref, transform и listeners для конкретного элемента
   const {
     attributes,
     listeners,
@@ -58,7 +58,7 @@ function SortableTaskCard({
     isDragging,
   } = useSortable({
     id:       task.id,
-    disabled: !isAdmin, // DnD доступен только админу
+    disabled: !isAdmin,
   });
 
   const style = {
@@ -66,22 +66,30 @@ function SortableTaskCard({
     transition,
     opacity:    isDragging ? 0.4 : 1,
     zIndex:     isDragging ? 50 : undefined,
+    // ИСПРАВЛЕНИЕ 2: will-change только во время drag — не ставить постоянно,
+    // иначе создаётся compositor layer на каждую карточку → перегрузка GPU.
+    willChange: isDragging ? "transform" : undefined,
   } as React.CSSProperties;
 
   return (
     <div ref={setNodeRef} style={style}>
+      {/*
+        ИСПРАВЛЕНИЕ 3: убираем layout prop.
+        Было: <motion.div layout initial animate exit>
+        Стало: только initial/animate/exit для fade.
+        layout={true} делает синхронный DOM reflow на каждый рендер карточки.
+      */}
       <motion.div
-        layout
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97 }}
+        transition={{ duration: 0.15 }}
         className="flex items-center gap-3 px-3.5 py-3 rounded-xl group"
         style={{
           background: "var(--bg-overlay)",
           border:     "1px solid var(--glass-border)",
         }}
       >
-        {/* Drag handle — только для администратора */}
         {isAdmin && (
           <button
             {...attributes}
@@ -96,7 +104,6 @@ function SortableTaskCard({
           </button>
         )}
 
-        {/* Контент задачи */}
         <div className="flex-1 min-w-0">
           <p
             className="text-sm font-medium"
@@ -114,9 +121,8 @@ function SortableTaskCard({
           )}
         </div>
 
-        {/* Статус (кликабелен только для админа) */}
         <button
-          onClick={() => onStatusChange(task.id, task.status === "done" ? "todo" : "done")}
+          onClick={() => onStatusChange(task.id, task.status)}
           className="text-xs px-2 py-0.5 rounded-full font-medium"
           style={{
             background: task.status === "done"
@@ -129,7 +135,6 @@ function SortableTaskCard({
           {task.status === "done" ? "Готово" : "К работе"}
         </button>
 
-        {/* Кнопка удаления — ТОЛЬКО для администратора */}
         {isAdmin && (
           <button
             onClick={() => onDelete(task.id)}
@@ -153,20 +158,13 @@ function SortableTaskCard({
       </motion.div>
     </div>
   );
-}
+});
 
-// ── Основной компонент со списком ─────────────────────────────────────────────
+// ── Основной компонент ────────────────────────────────────────────────────────
 
 export function OperativeDndList({ tasks: initialTasks, isAdmin }: Props) {
   const [isPending, startTransition] = useTransition();
 
-  /*
-    useOptimistic:
-      - первый аргумент: реальное состояние (приходит с сервера)
-      - второй аргумент: функция применения оптимистичного обновления
-    React 19: при завершении перехода оптимистичное состояние
-    заменяется реальным — автоматически.
-  */
   const [optimisticTasks, setOptimisticTasks] = useOptimistic(
     initialTasks,
     (
@@ -187,20 +185,15 @@ export function OperativeDndList({ tasks: initialTasks, isAdmin }: Props) {
     }
   );
 
-  // Подключаем server actions через хук next-safe-action
   const { executeAsync: executeUpdateOrder } = useAction(updateOrderAction);
   const { executeAsync: executeDelete }      = useAction(deleteOperativeTaskAction);
   const { executeAsync: executeStatus }      = useAction(updateOperativeTaskAction);
 
-  // DnD sensors — поддержка мыши и клавиатуры
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // ── DnD Handler ─────────────────────────────────────────────────────────────
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
@@ -213,19 +206,17 @@ export function OperativeDndList({ tasks: initialTasks, isAdmin }: Props) {
       const reordered = arrayMove(optimisticTasks, oldIndex, newIndex);
 
       startTransition(async () => {
-        // 1. Мгновенно обновляем UI оптимистично
         setOptimisticTasks({ type: "reorder", newOrder: reordered });
-
-        // 2. В фоне обновляем порядок на сервере
         await executeUpdateOrder({
           items: reordered.map((t, i) => ({ id: t.id, order: i })),
         });
       });
     },
-    [optimisticTasks, executeUpdateOrder, setOptimisticTasks, startTransition]
+    [optimisticTasks, executeUpdateOrder, setOptimisticTasks]
   );
 
-  // ── Delete Handler ──────────────────────────────────────────────────────────
+  // ИСПРАВЛЕНИЕ 4: передаём стабильные callback'и в memo-компонент.
+  // Без useCallback — новая функция на каждый рендер → memo бесполезен.
   const handleDelete = useCallback(
     (id: number) => {
       startTransition(async () => {
@@ -233,10 +224,9 @@ export function OperativeDndList({ tasks: initialTasks, isAdmin }: Props) {
         await executeDelete({ id });
       });
     },
-    [executeDelete, setOptimisticTasks, startTransition]
+    [executeDelete, setOptimisticTasks]
   );
 
-  // ── Status Handler ──────────────────────────────────────────────────────────
   const handleStatusChange = useCallback(
     (id: number, currentStatus: OperativeTaskView["status"]) => {
       const newStatus = currentStatus === "done" ? "todo" : ("done" as const);
@@ -245,7 +235,7 @@ export function OperativeDndList({ tasks: initialTasks, isAdmin }: Props) {
         await executeStatus({ id, status: newStatus });
       });
     },
-    [executeStatus, setOptimisticTasks, startTransition]
+    [executeStatus, setOptimisticTasks]
   );
 
   return (
@@ -262,7 +252,12 @@ export function OperativeDndList({ tasks: initialTasks, isAdmin }: Props) {
           className="space-y-2"
           style={{ opacity: isPending ? 0.85 : 1, transition: "opacity 0.15s" }}
         >
-          <AnimatePresence mode="popLayout">
+          {/*
+            ИСПРАВЛЕНИЕ 5: AnimatePresence mode="sync" вместо "popLayout".
+            "popLayout" принудительно включает layout-анимацию для исходящих
+            элементов, что снова вызывает reflow. "sync" — только opacity/scale.
+          */}
+          <AnimatePresence mode="sync">
             {optimisticTasks.map(task => (
               <SortableTaskCard
                 key={task.id}

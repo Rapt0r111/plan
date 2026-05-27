@@ -19,6 +19,28 @@ import {
 export const PERSONNEL_COMPOSITION_KEYS = ["permanent", "variable"] as const;
 export type PersonnelComposition = (typeof PERSONNEL_COMPOSITION_KEYS)[number];
 
+export const USER_ACCOUNT_STATUSES = ["active", "invited", "disabled"] as const;
+export type UserAccountStatus = (typeof USER_ACCOUNT_STATUSES)[number];
+
+export const personnelGroups = sqliteTable(
+  "personnel_groups",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    key: text("key").notNull().unique(),
+    label: text("label").notNull(),
+    description: text("description"),
+    color: text("color").notNull().default("#8b5cf6"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    keyIdx: uniqueIndex("personnel_groups_key_idx").on(t.key),
+    activeIdx: index("personnel_groups_active_idx").on(t.isActive),
+  })
+);
+
 // ─── TABLE: roles ─────────────────────────────────────────────────────────────
 export const roles = sqliteTable(
   "roles",
@@ -30,6 +52,7 @@ export const roles = sqliteTable(
     hex: text("hex").notNull(),
     description: text("description"),
     composition: text("composition").$type<PersonnelComposition>().notNull().default("permanent"),
+    personnelGroupId: integer("personnel_group_id").references(() => personnelGroups.id, { onDelete: "set null" }),
     permissionsJson: text("permissions_json").notNull().default("[]"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
@@ -47,6 +70,9 @@ export const users = sqliteTable("users", {
   login: text("login").notNull().unique(),
   roleId: integer("role_id").notNull().references(() => roles.id),
   initials: text("initials").notNull(),
+  authUserId: text("auth_user_id"),
+  accountStatus: text("account_status").$type<UserAccountStatus>().notNull().default("invited"),
+  legacyLoginAlias: text("legacy_login_alias"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   /**
    * blockOrder — порядок блока пользователя на странице оперативных задач.
@@ -154,6 +180,7 @@ export const authUsers = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   login: text("login").unique(),
+  profileId: integer("profile_id").references(() => users.id, { onDelete: "set null" }),
   email: text("email").notNull().unique(),
   emailVerified: integer("emailVerified", { mode: "boolean" }).notNull().default(false),
   image: text("image"),

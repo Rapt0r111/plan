@@ -4,6 +4,7 @@
  */
 import { getAllRoles } from "@/entities/role/roleRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
+import { getAllPersonnelGroups } from "@/entities/personnelGroup/personnelGroupRepository";
 import { getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { Header } from "@/widgets/header/Header";
 import { SettingsTabs } from "./SettingsTabs";
@@ -13,9 +14,10 @@ import { headers } from "next/headers";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [roles, users, epics, session] = await Promise.all([
+  const [roles, users, personnelGroups, epics, session] = await Promise.all([
     getAllRoles(),
     getAllUsers(),
+    getAllPersonnelGroups({ includeInactive: true }),
     getAllEpicsWithTasks(),
     auth.api.getSession({ headers: await headers() }),
   ]);
@@ -48,6 +50,7 @@ export default async function SettingsPage() {
       <SettingsTabs
         initialRoles={roles}
         initialUsers={users}
+        initialPersonnelGroups={personnelGroups}
         initialEpics={epics}
         isAdmin={isAdmin}
       />

@@ -26,7 +26,7 @@
  */
 
 import { db } from "@/shared/db/client";
-import { operativeTaskComments, operativeTasks, operativeSubtasks, users, roles } from "@/shared/db/schema";
+import { operativeTaskComments, operativeTasks, operativeSubtasks, users, roles, personnelGroups } from "@/shared/db/schema";
 import { desc, eq, inArray, sql } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import type { UserWithMeta } from "@/shared/types";
@@ -88,6 +88,9 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
       initials: users.initials,
       createdAt: users.createdAt,
       blockOrder: users.blockOrder,
+      authUserId: users.authUserId,
+      accountStatus: users.accountStatus,
+      legacyLoginAlias: users.legacyLoginAlias,
       role: {
         id: roles.id,
         key: roles.key,
@@ -96,14 +99,17 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
         hex: roles.hex,
         description: roles.description,
         composition: roles.composition,
+        personnelGroupId: roles.personnelGroupId,
         permissionsJson: roles.permissionsJson,
         sortOrder: roles.sortOrder,
         createdAt: roles.createdAt,
         updatedAt: roles.updatedAt,
       },
+      personnelGroup: personnelGroups,
     })
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
+    .leftJoin(personnelGroups, eq(roles.personnelGroupId, personnelGroups.id))
     // ИСПРАВЛЕНО: сначала по blockOrder (DnD), затем fallback
     .orderBy(users.blockOrder, roles.sortOrder, users.name);
 
@@ -168,9 +174,12 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
       login: row.login,
       roleId: row.roleId,
       initials: row.initials,
+      authUserId: row.authUserId,
+      accountStatus: row.accountStatus,
+      legacyLoginAlias: row.legacyLoginAlias,
       createdAt: row.createdAt,
       blockOrder: row.blockOrder, // <--- ДОБАВЛЕНО ЭТО ПОЛЕ
-      roleMeta: row.role,
+      roleMeta: { ...row.role, personnelGroup: row.personnelGroup },
     };
 
     const userTasks: OperativeTaskView[] = (tasksByUser.get(row.id) ?? []).map(t => {

@@ -31,6 +31,7 @@ const PatchRoleSchema = z.object({
   hex:         z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   description: z.string().max(512).nullish(),
   composition: z.enum(PERSONNEL_COMPOSITION_KEYS).optional(),
+  personnelGroupId: z.number().int().positive().nullable().optional(),
   sortOrder:   z.number().int().optional(),
 });
 

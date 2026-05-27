@@ -24,6 +24,7 @@ const CreateRoleSchema = z.object({
   hex:         z.string().regex(/^#[0-9a-fA-F]{6}$/),
   description: z.string().max(512).nullish(),
   composition: z.enum(PERSONNEL_COMPOSITION_KEYS).default("permanent"),
+  personnelGroupId: z.number().int().positive().nullable().optional(),
   sortOrder:   z.number().int().default(0),
 });
 

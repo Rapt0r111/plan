@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { RolesTab } from "./RolesTab";
+import { PersonnelGroupsTab } from "./PersonnelGroupsTab";
 import { UsersTab } from "./UsersTab";
 import { EpicsTab } from "./EpicsTab";
 import { TasksTab } from "./TasksTab";
@@ -8,12 +9,13 @@ import { AppearanceTab } from "./AppearanceTab";
 import { AuditTab } from "./AuditTab";
 import { SecurityTab } from "./SecurityTab";
 import { AppSettingsTab } from "./AppSettingsTab";
-import type { DbRole, UserWithMeta, EpicWithTasks } from "@/shared/types";
+import type { DbPersonnelGroup, DbRole, UserWithMeta, EpicWithTasks } from "@/shared/types";
 import { StoreHydrator } from "@/shared/store/StoreHydrator";
 
 interface Props {
   initialRoles: DbRole[];
   initialUsers: UserWithMeta[];
+  initialPersonnelGroups: DbPersonnelGroup[];
   initialEpics: EpicWithTasks[];
   isAdmin: boolean;
 }
@@ -29,6 +31,7 @@ const ADMIN_TABS = [
   { key: "appearance" as const, label: "Внешний вид" },
   { key: "security"   as const, label: "Безопасность" },
   { key: "roles"      as const, label: "Роли" },
+  { key: "groups"     as const, label: "Составы" },
   { key: "users"      as const, label: "Пользователи" },
   { key: "app"        as const, label: "SaaS" },
   { key: "epics"      as const, label: "Эпики" },
@@ -37,7 +40,7 @@ const ADMIN_TABS = [
 ] as const;
 type TabKey = (typeof ADMIN_TABS)[number]["key"];
 
-export function SettingsTabs({ initialRoles, initialUsers, initialEpics, isAdmin }: Props) {
+export function SettingsTabs({ initialRoles, initialUsers, initialPersonnelGroups, initialEpics, isAdmin }: Props) {
   const TABS = isAdmin ? ADMIN_TABS : TABS_BASE;
   const [tab, setTab] = useState<TabKey>("appearance");
 
@@ -71,8 +74,9 @@ export function SettingsTabs({ initialRoles, initialUsers, initialEpics, isAdmin
       <div className="flex-1 overflow-y-auto p-6">
         {tab === "appearance" && <AppearanceTab />}
         {tab === "security"   && <SecurityTab />}
-        {tab === "roles"      && <RolesTab initialRoles={initialRoles} />}
-        {tab === "users"      && <UsersTab initialUsers={initialUsers} roles={initialRoles} />}
+        {tab === "roles"      && <RolesTab initialRoles={initialRoles} personnelGroups={initialPersonnelGroups} />}
+        {tab === "groups"     && <PersonnelGroupsTab initialGroups={initialPersonnelGroups} />}
+        {tab === "users"      && <UsersTab initialUsers={initialUsers} roles={initialRoles} personnelGroups={initialPersonnelGroups} />}
         {tab === "app"        && isAdmin && <AppSettingsTab />}
         {tab === "epics"      && <EpicsTab initialEpics={initialEpics} />}
         {tab === "tasks"      && <TasksTab initialEpics={initialEpics} users={initialUsers} />}

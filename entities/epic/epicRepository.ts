@@ -17,7 +17,7 @@
  */
 
 import { db } from "@/shared/db/client";
-import { epics, tasks, taskAssignees, users, subtasks, roles } from "@/shared/db/schema";
+import { epics, tasks, taskAssignees, users, subtasks, roles, personnelGroups } from "@/shared/db/schema";
 import { eq, inArray, sql, count } from "drizzle-orm";
 import type { DbEpic, EpicWithTasks, TaskView, UserWithMeta, SubtaskView } from "@/shared/types";
 
@@ -31,13 +31,14 @@ type AssigneeRow = {
   taskId: number;
   user: typeof users.$inferSelect;
   role: typeof roles.$inferSelect;
+  personnelGroup: typeof personnelGroups.$inferSelect | null;
 };
 
 function buildAssigneesByTask(rows: AssigneeRow[]): Map<number, UserWithMeta[]> {
   const map = new Map<number, UserWithMeta[]>();
   for (const row of rows) {
     const arr = map.get(row.taskId) ?? [];
-    arr.push({ ...row.user, roleMeta: row.role });
+    arr.push({ ...row.user, roleMeta: { ...row.role, personnelGroup: row.personnelGroup } });
     map.set(row.taskId, arr);
   }
   return map;
@@ -53,6 +54,9 @@ async function fetchAssignees(taskIds: number[]): Promise<AssigneeRow[]> {
         login: users.login,
         roleId: users.roleId,
         initials: users.initials,
+        authUserId: users.authUserId,
+        accountStatus: users.accountStatus,
+        legacyLoginAlias: users.legacyLoginAlias,
         createdAt: users.createdAt,
         blockOrder: users.blockOrder,
       },
@@ -64,15 +68,18 @@ async function fetchAssignees(taskIds: number[]): Promise<AssigneeRow[]> {
         hex: roles.hex,
         description: roles.description,
         composition: roles.composition,
+        personnelGroupId: roles.personnelGroupId,
         permissionsJson: roles.permissionsJson,
         sortOrder: roles.sortOrder,
         createdAt: roles.createdAt,
         updatedAt: roles.updatedAt,
       },
+      personnelGroup: personnelGroups,
     })
     .from(taskAssignees)
     .innerJoin(users, eq(taskAssignees.userId, users.id))
     .innerJoin(roles, eq(users.roleId, roles.id))
+    .leftJoin(personnelGroups, eq(roles.personnelGroupId, personnelGroups.id))
     .where(inArray(taskAssignees.taskId, taskIds));
 }
 

@@ -10,20 +10,18 @@
  * - Оптимистичные обновления через локальный стейт + rollback
  */
 import { useState, useCallback } from "react";
-import type { UserWithMeta, DbRole } from "@/shared/types";
+import type { UserWithMeta, DbRole, DbPersonnelGroup } from "@/shared/types";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
 import { SelectField } from "@/shared/ui/SelectField";
 import {
-    PERSONNEL_COMPOSITIONS,
-    filterUsersByComposition,
-    getCompositionLabel,
-    getUserComposition,
-    type PersonnelComposition,
+    filterUsersByPersonnelGroup,
+    getUserPersonnelGroupKey,
 } from "@/shared/lib/personnel-composition";
 
 interface Props {
     initialUsers: UserWithMeta[];
     roles: DbRole[];
+    personnelGroups: DbPersonnelGroup[];
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -49,22 +47,34 @@ function AvatarCircle({ initials, hex, size = 32 }: { initials: string; hex: str
     );
 }
 
+function getRoleGroupKey(role: DbRole): string {
+    return role.personnelGroup?.key ?? role.composition;
+}
+
+function getRoleGroupLabel(role: DbRole, groups: DbPersonnelGroup[]): string {
+    return role.personnelGroup?.label
+        ?? groups.find((group) => group.key === role.composition)?.label
+        ?? role.composition;
+}
+
 // ─── RoleSelect ───────────────────────────────────────────────────────────────
 
 function RoleSelect({
     value,
     roles,
+    personnelGroups,
     onChange,
 }: {
     value: number;
     roles: DbRole[];
+    personnelGroups: DbPersonnelGroup[];
     onChange: (roleId: number) => void;
 }) {
     const current = roles.find((r) => r.id === value);
     const options = roles.map((role) => ({
         value: role.id,
         label: role.label,
-        description: getCompositionLabel(role.composition),
+        description: getRoleGroupLabel(role, personnelGroups),
         color: role.hex,
     }));
 
@@ -76,7 +86,7 @@ function RoleSelect({
                 options={options}
                 compact
                 accentColor={current?.hex}
-                title={current ? `${current.label} · ${getCompositionLabel(current.composition)}` : "Роль"}
+                title={current ? `${current.label} - ${getRoleGroupLabel(current, personnelGroups)}` : "Роль"}
             />
         </div>
     );
@@ -85,17 +95,21 @@ function RoleSelect({
 function UserCard({
     user,
     roles,
+    personnelGroups,
     onUpdate,
     onDelete,
 }: {
     user: UserWithMeta;
     roles: DbRole[];
+    personnelGroups: DbPersonnelGroup[];
     onUpdate: (patch: { name?: string; login?: string; roleId?: number }) => void;
     onDelete: () => void;
 }) {
     const [editField, setEditField] = useState<"name" | "login" | null>(null);
     const [draft, setDraft] = useState("");
-    const composition = getUserComposition(user);
+    const groupLabel = user.roleMeta.personnelGroup?.label
+        ?? personnelGroups.find((group) => group.key === getUserPersonnelGroupKey(user))?.label
+        ?? getUserPersonnelGroupKey(user);
 
     const startEdit = (field: "name" | "login") => {
         setDraft(field === "name" ? user.name : user.login);
@@ -176,11 +190,12 @@ function UserCard({
             <RoleSelect
                 value={user.roleId}
                 roles={roles}
+                personnelGroups={personnelGroups}
                 onChange={(roleId) => onUpdate({ roleId })}
             />
 
             <span className="text-[11px] px-2 py-1 rounded-full border text-(--text-muted) border-(--glass-border) shrink-0">
-                {getCompositionLabel(composition)}
+                {groupLabel}
             </span>
 
             {/* Initials badge */}
@@ -210,38 +225,41 @@ function UserCard({
 
 function CreateUserForm({
     roles,
+    personnelGroups,
     onCreated,
     onCancel,
 }: {
     roles: DbRole[];
+    personnelGroups: DbPersonnelGroup[];
     onCreated: (user: UserWithMeta) => void;
     onCancel: () => void;
 }) {
-    const initialComposition =
-        roles.find((role) => role.composition === "permanent")?.composition ??
-        roles[0]?.composition ??
-        "permanent";
+    const initialGroup =
+        personnelGroups.find((group) => group.key === "permanent") ??
+        personnelGroups[0];
     const initialRoleId =
-        roles.find((role) => role.composition === initialComposition)?.id ??
+        roles.find((role) => getRoleGroupKey(role) === initialGroup?.key)?.id ??
         roles[0]?.id ??
         0;
-    const [composition, setComposition] = useState<PersonnelComposition>(initialComposition);
+    const [selectedGroupKey, setSelectedGroupKey] = useState(initialGroup?.key ?? (roles[0] ? getRoleGroupKey(roles[0]) : "permanent"));
     const [form, setForm] = useState({
         name: "",
         login: "",
         roleId: initialRoleId,
         initials: "",
+        password: "",
     });
     const [loading, setLoading] = useState(false);
     const [err, setErr] = useState<string | null>(null);
-    const rolesForComposition = roles.filter((role) => role.composition === composition);
+    const rolesForGroup = roles.filter((role) => getRoleGroupKey(role) === selectedGroupKey);
 
-    function changeComposition(nextComposition: PersonnelComposition) {
-        const nextRoleId = roles.find((role) => role.composition === nextComposition)?.id ?? 0;
-        setComposition(nextComposition);
+    function changeGroup(nextGroupKey: string) {
+        const nextRoleId = roles.find((role) => getRoleGroupKey(role) === nextGroupKey)?.id ?? 0;
+        const groupLabel = personnelGroups.find((group) => group.key === nextGroupKey)?.label ?? nextGroupKey;
+        setSelectedGroupKey(nextGroupKey);
         setForm((f) => ({ ...f, roleId: nextRoleId }));
         if (!nextRoleId) {
-            setErr(`Сначала добавьте роль: ${getCompositionLabel(nextComposition)}.`);
+            setErr(`Сначала добавьте роль: ${groupLabel}.`);
         } else {
             setErr(null);
         }
@@ -250,7 +268,11 @@ function CreateUserForm({
     async function submit() {
         if (!form.name.trim()) { setErr("Введите имя"); return; }
         if (!form.login.trim()) { setErr("Введите логин"); return; }
-        if (!form.roleId) { setErr(`Сначала добавьте роль: ${getCompositionLabel(composition)}.`); return; }
+        if (!form.roleId) {
+            const groupLabel = personnelGroups.find((group) => group.key === selectedGroupKey)?.label ?? selectedGroupKey;
+            setErr(`Сначала добавьте роль: ${groupLabel}.`);
+            return;
+        }
 
         setLoading(true);
         setErr(null);
@@ -263,6 +285,7 @@ function CreateUserForm({
                     login: form.login.trim(),
                     roleId: form.roleId,
                     initials: form.initials.trim().toUpperCase().slice(0, 2) || undefined,
+                    password: form.password || undefined,
                 }),
             });
             const json = await res.json();
@@ -325,12 +348,12 @@ function CreateUserForm({
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Состав</label>
                     <SelectField
-                        value={composition}
-                        onValueChange={(nextValue) => changeComposition(nextValue as PersonnelComposition)}
-                        options={PERSONNEL_COMPOSITIONS.map((item) => ({
-                            value: item.key,
-                            label: item.label,
-                            color: item.key === "permanent" ? "#8b5cf6" : "#38bdf8",
+                        value={selectedGroupKey}
+                        onValueChange={(nextValue) => changeGroup(nextValue)}
+                        options={personnelGroups.map((group) => ({
+                            value: group.key,
+                            label: group.label,
+                            color: group.color,
                         }))}
                     />
                 </div>
@@ -339,15 +362,21 @@ function CreateUserForm({
                     <SelectField
                         value={form.roleId}
                         onValueChange={(nextValue) => setForm((f) => ({ ...f, roleId: Number(nextValue) }))}
-                        disabled={rolesForComposition.length === 0}
-                        options={rolesForComposition.map((role) => ({
+                        disabled={rolesForGroup.length === 0}
+                        options={rolesForGroup.map((role) => ({
                             value: role.id,
                             label: role.label,
                             description: role.short,
                             color: role.hex,
                         }))}
                     />
-                </div>
+                </div>                <Field
+                    label="Временный пароль"
+                    value={form.password}
+                    onChange={(v) => setForm((f) => ({ ...f, password: v }))}
+                    placeholder="минимум 8 символов"
+                />
+
                 <Field
                     label="Аббревиатура (авто)"
                     value={form.initials}
@@ -405,15 +434,15 @@ function Field({
 
 // ─── UsersTab ─────────────────────────────────────────────────────────────────
 
-export function UsersTab({ initialUsers, roles }: Props) {
+export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
     const [localUsers, setLocalUsers] = useState<UserWithMeta[]>(initialUsers);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [compositionFilter, setCompositionFilter] = useState<PersonnelComposition | "all">("all");
+    const [groupFilter, setGroupFilter] = useState<string | "all">("all");
     const visibleUsers =
-        compositionFilter === "all"
+        groupFilter === "all"
             ? localUsers
-            : filterUsersByComposition(localUsers, compositionFilter);
+            : filterUsersByPersonnelGroup(localUsers, groupFilter);
 
     const handleUpdate = useCallback(
         async (user: UserWithMeta, patch: { name?: string; login?: string; roleId?: number }) => {
@@ -507,25 +536,25 @@ export function UsersTab({ initialUsers, roles }: Props) {
 
             <div className="flex flex-wrap gap-2">
                 <button
-                    onClick={() => setCompositionFilter("all")}
+                    onClick={() => setGroupFilter("all")}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                     style={
-                        compositionFilter === "all"
+                        groupFilter === "all"
                             ? { background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.3)" }
                             : { color: "var(--text-secondary)", border: "1px solid var(--glass-border)" }
                     }
                 >
                     Все · {localUsers.length}
                 </button>
-                {PERSONNEL_COMPOSITIONS.map((item) => {
-                    const count = filterUsersByComposition(localUsers, item.key).length;
+                {personnelGroups.map((item) => {
+                    const count = filterUsersByPersonnelGroup(localUsers, item.key).length;
                     return (
                         <button
                             key={item.key}
-                            onClick={() => setCompositionFilter(item.key)}
+                            onClick={() => setGroupFilter(item.key)}
                             className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                             style={
-                                compositionFilter === item.key
+                                groupFilter === item.key
                                     ? { background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.3)" }
                                     : { color: "var(--text-secondary)", border: "1px solid var(--glass-border)" }
                             }
@@ -575,6 +604,7 @@ export function UsersTab({ initialUsers, roles }: Props) {
                                     key={user.id}
                                     user={user}
                                     roles={roles}
+                                    personnelGroups={personnelGroups}
                                     onUpdate={(patch) => handleUpdate(user, patch)}
                                     onDelete={() => handleDelete(user)}
                                 />
@@ -600,6 +630,7 @@ export function UsersTab({ initialUsers, roles }: Props) {
                                     key={user.id}
                                     user={user}
                                     roles={roles}
+                                    personnelGroups={personnelGroups}
                                     onUpdate={(patch) => handleUpdate(user, patch)}
                                     onDelete={() => handleDelete(user)}
                                 />
@@ -622,6 +653,7 @@ export function UsersTab({ initialUsers, roles }: Props) {
             ) : (
                 <CreateUserForm
                     roles={roles}
+                    personnelGroups={personnelGroups}
                     onCreated={(user) => {
                         setLocalUsers((prev) => [...prev, user]);
                         setCreating(false);

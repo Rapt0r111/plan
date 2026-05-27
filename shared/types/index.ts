@@ -3,6 +3,7 @@
 import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
 import type {
   users,
+  personnelGroups,
   roles,
   epics,
   tasks,
@@ -17,13 +18,18 @@ import type {
   TaskStatus,
   TaskPriority,
   TaskRiskStatus,
+  UserAccountStatus,
 } from "@/shared/db/schema";
 
-export type { TaskStatus, TaskPriority, TaskRiskStatus };
+export type { TaskStatus, TaskPriority, TaskRiskStatus, UserAccountStatus };
 
 // ─── BASE INFERRED TYPES ──────────────────────────────────────────────────────
 export type DbUser = InferSelectModel<typeof users>;
-export type DbRole = InferSelectModel<typeof roles>;
+export type DbPersonnelGroup = InferSelectModel<typeof personnelGroups>;
+export type DbRoleBase = InferSelectModel<typeof roles>;
+export type DbRole = DbRoleBase & {
+  personnelGroup?: DbPersonnelGroup | null;
+};
 export type DbEpic = InferSelectModel<typeof epics>;
 export type DbTask = InferSelectModel<typeof tasks>;
 export type DbSubtask = InferSelectModel<typeof subtasks>;

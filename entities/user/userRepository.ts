@@ -7,7 +7,7 @@
  */
 
 import { db } from "@/shared/db/client";
-import { users, roles } from "@/shared/db/schema";
+import { authUsers, personnelGroups, users, roles } from "@/shared/db/schema";
 import { eq, max } from "drizzle-orm"; // Добавлен импорт max
 import type { UserWithMeta, DbUser, DbRole } from "@/shared/types";
 
@@ -22,14 +22,16 @@ export async function getAllUsers(): Promise<UserWithMeta[]> {
     .select({
       user: users,
       role: roles,
+      personnelGroup: personnelGroups,
     })
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
+    .leftJoin(personnelGroups, eq(roles.personnelGroupId, personnelGroups.id))
     .orderBy(users.name);
 
   return rows.map((r) => ({
     ...r.user,
-    roleMeta: r.role,
+    roleMeta: { ...r.role, personnelGroup: r.personnelGroup },
   }));
 }
 
@@ -58,6 +60,7 @@ export async function createUser(data: {
   login: string;
   roleId: number;
   initials?: string;
+  accountStatus?: DbUser["accountStatus"];
 }): Promise<DbUser> {
   const initials = data.initials?.trim() || generateInitials(data.name);
 
@@ -76,6 +79,7 @@ export async function createUser(data: {
       login: data.login.trim(), 
       roleId: data.roleId, 
       initials,
+      accountStatus: data.accountStatus ?? "invited",
       blockOrder: nextOrder // Явно задаем порядок
     })
     .returning();
@@ -85,7 +89,7 @@ export async function createUser(data: {
 
 export async function updateUser(
   id: number,
-  data: Partial<{ name: string; login: string; roleId: number; initials: string }>
+  data: Partial<{ name: string; login: string; roleId: number; initials: string; authUserId: string | null; accountStatus: DbUser["accountStatus"]; legacyLoginAlias: string | null }>
 ): Promise<DbUser> {
   const patch: typeof data = { ...data };
   if (data.name && !data.initials) {
@@ -102,5 +106,15 @@ export async function deleteUser(id: number): Promise<void> {
 
 export async function getUserById(id: number): Promise<DbUser | null> {
   const [row] = await db.select().from(users).where(eq(users.id, id));
+  return row ?? null;
+}
+
+export async function linkAuthUserToProfile(profileId: number, authUserId: string): Promise<void> {
+  await db.update(users).set({ authUserId, accountStatus: "active" }).where(eq(users.id, profileId));
+  await db.update(authUsers).set({ profileId }).where(eq(authUsers.id, authUserId));
+}
+
+export async function getAuthUserByLogin(login: string) {
+  const [row] = await db.select().from(authUsers).where(eq(authUsers.login, login));
   return row ?? null;
 }

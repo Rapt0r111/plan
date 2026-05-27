@@ -4,6 +4,7 @@ import { db } from "@/shared/db/client";
 import {
   personalPlanCompletions,
   personalPlanItems,
+  personnelGroups,
   roles,
   users,
 } from "@/shared/db/schema";
@@ -56,12 +57,14 @@ async function getAllUsersWithRoles(): Promise<UserWithMeta[]> {
     .select({
       user: users,
       role: roles,
+      personnelGroup: personnelGroups,
     })
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
+    .leftJoin(personnelGroups, eq(roles.personnelGroupId, personnelGroups.id))
     .orderBy(users.blockOrder, roles.sortOrder, users.name);
 
-  return rows.map((row) => ({ ...row.user, roleMeta: row.role }));
+  return rows.map((row) => ({ ...row.user, roleMeta: { ...row.role, personnelGroup: row.personnelGroup } }));
 }
 
 export async function getPermanentUsers(): Promise<UserWithMeta[]> {

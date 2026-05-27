@@ -24,29 +24,6 @@ export const PERSONNEL_COMPOSITIONS: readonly CompositionMeta[] = [
   },
 ] as const;
 
-const PERMANENT_ROLE_KEYS = new Set([
-  "company_commander",
-  "platoon_1_commander",
-  "platoon_2_commander",
-  "deputy_platoon_1",
-  "deputy_platoon_2",
-  "sergeant_major",
-  "squad_commander_2",
-]);
-
-const VARIABLE_ROLE_KEY_HINTS = [
-  "variable",
-  "trainee",
-  "cadet",
-  "student",
-  "listener",
-  "rotation",
-  "pool",
-  "перем",
-  "курсант",
-  "слушател",
-];
-
 export function isPersonnelComposition(value: unknown): value is PersonnelComposition {
   return value === "permanent" || value === "variable";
 }
@@ -56,27 +33,28 @@ export function getCompositionLabel(composition: PersonnelComposition): string {
 }
 
 export function getUserComposition(user: CompositionScopedUser): PersonnelComposition {
+  const groupKey = user.roleMeta.personnelGroup?.key;
+  if (isPersonnelComposition(groupKey)) {
+    return groupKey;
+  }
+
+  // Legacy fallback for rows created before personnel_groups existed.
   if (isPersonnelComposition(user.roleMeta.composition)) {
     return user.roleMeta.composition;
   }
 
-  const roleKey = user.roleMeta.key.toLowerCase();
-  const roleText = [
-    user.roleMeta.key,
-    user.roleMeta.label,
-    user.roleMeta.short,
-    user.roleMeta.description ?? "",
-  ].join(" ").toLowerCase();
-
-  if (PERMANENT_ROLE_KEYS.has(roleKey)) {
-    return "permanent";
-  }
-
-  if (VARIABLE_ROLE_KEY_HINTS.some((hint) => roleText.includes(hint))) {
-    return "variable";
-  }
-
   return "permanent";
+}
+
+export function getUserPersonnelGroupKey(user: CompositionScopedUser): string {
+  return user.roleMeta.personnelGroup?.key ?? getUserComposition(user);
+}
+
+export function filterUsersByPersonnelGroup<T extends CompositionScopedUser>(
+  users: readonly T[],
+  groupKey: string,
+): T[] {
+  return users.filter((user) => getUserPersonnelGroupKey(user) === groupKey);
 }
 
 export function filterUsersByComposition<T extends CompositionScopedUser>(

@@ -7,7 +7,7 @@
  *   NOT NULL constraint соблюдён.
  */
 import { db } from "@/shared/db/client";
-import { tasks, subtasks, taskAssignees, users, roles, taskComments, taskActivity } from "@/shared/db/schema";
+import { tasks, subtasks, taskAssignees, users, roles, personnelGroups, taskComments, taskActivity } from "@/shared/db/schema";
 import { desc, eq, and } from "drizzle-orm";
 import type { TaskStatus, NewTask, TaskView } from "@/shared/types";
 
@@ -42,15 +42,17 @@ export async function getTaskById(id: number): Promise<TaskView | null> {
     .select({
       user: users, // Выбирает все поля таблицы users, включая blockOrder
       role: roles, // Выбирает все поля таблицы roles
+      personnelGroup: personnelGroups,
     })
     .from(taskAssignees)
     .innerJoin(users, eq(taskAssignees.userId, users.id))
     .innerJoin(roles, eq(users.roleId, roles.id))
+    .leftJoin(personnelGroups, eq(roles.personnelGroupId, personnelGroups.id))
     .where(eq(taskAssignees.taskId, id));
 
   return {
     ...task,
-    assignees: assigneeRows.map((r) => ({ ...r.user, roleMeta: r.role })),
+    assignees: assigneeRows.map((r) => ({ ...r.user, roleMeta: { ...r.role, personnelGroup: r.personnelGroup } })),
     subtasks: taskSubtasks,
     comments,
     activity,

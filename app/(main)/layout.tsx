@@ -1,9 +1,9 @@
 /**
  * @file layout.tsx — app/(main)
- * Updated v3: passes session to SidebarLoader for user menu + logout.
+ * Updated v4: Integrates SidebarProvider and collapsible MainContent.
  */
 import { Suspense } from "react";
-import { Sidebar } from "@/widgets/sidebar/Sidebar";
+import { Sidebar, SidebarProvider, MainContent } from "@/widgets/sidebar/Sidebar";
 import { getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
 import { OfflineHydrator } from "@/shared/store/StoreHydrator";
@@ -60,24 +60,21 @@ function SidebarSkeleton() {
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen overflow-hidden">
-      <PrefsApplicator />
-      <OfflineHydrator />
-      <SyncOrchestrator />
-      <RealtimeProvider />
-      <Suspense fallback={<SidebarSkeleton />}>
-        <SidebarLoader />
-      </Suspense>
+    <SidebarProvider>
+      <div className="flex h-screen overflow-hidden">
+        <PrefsApplicator />
+        <OfflineHydrator />
+        <SyncOrchestrator />
+        <RealtimeProvider />
 
-      <main
-        className="flex-1 flex flex-col overflow-hidden"
-        style={{ marginLeft: "var(--sidebar-w)" }}
-      >
-        <div className="pointer-events-none fixed top-0 left-(--sidebar-w) right-0 h-64 bg-linear-to-b from-[rgba(139,92,246,0.04)] to-transparent z-0" />
-        <div className="flex-1 overflow-y-auto relative z-10">
+        <Suspense fallback={<SidebarSkeleton />}>
+          <SidebarLoader />
+        </Suspense>
+
+        <MainContent>
           {children}
-        </div>
-      </main>
-    </div>
+        </MainContent>
+      </div>
+    </SidebarProvider>
   );
 }

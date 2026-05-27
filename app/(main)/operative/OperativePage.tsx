@@ -1,29 +1,5 @@
 "use client";
-/**
- * @file OperativePage.tsx — app/(main)/operative
- *
- * ИСПРАВЛЕНИЯ v5 — персистентный DnD порядок блоков:
- *
- * ПРОБЛЕМА:
- *   Порядок блоков хранился в локальном useState → после обновления страницы
- *   или у других участников порядок сбрасывался в исходный.
- *
- * РЕШЕНИЕ:
- *   1. `initialData` приходит с сервера уже отсортированным по `users.block_order`
- *      (исправлено в operativeRepository.ts).
- *   2. После DnD вызываем PATCH /api/operative-blocks — сохраняем порядок в БД.
- *   3. Через SSE broadcast другие участники получают событие → router.refresh()
- *      → видят новый порядок без ручного перезагрузки страницы.
- *   4. orderedIds всё ещё используется для оптимистичного UI (мгновенный отклик),
- *      но инициализируется из серверного порядка (block_order из БД).
- *
- * Ключевой инвариант:
- *   - При первой загрузке: порядок = block_order из БД (персистентный)
- *   - При DnD: мгновенный оптимистичный сдвиг + сохранение в БД
- *   - При обновлении страницы: порядок читается из БД → совпадает с тем, что видели
- *   - Другие участники: SSE → refresh → тот же порядок из БД
- */
-import { useEffect, useCallback, useMemo } from "react";
+import { useEffect, useCallback, useMemo, memo } from "react";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -46,20 +22,16 @@ import { CSS } from "@dnd-kit/utilities";
 import { useOperativeStore } from "@/shared/store/useOperativeStore";
 import { UserTaskBlock } from "@/widgets/operative/UserTaskBlock";
 import type { UserWithOperativeTasks } from "@/entities/operative/operativeRepository";
-import {
-  getUserComposition,
-  type PersonnelComposition,
-} from "@/shared/lib/personnel-composition";
+import { getUserPersonnelGroupKey } from "@/shared/lib/personnel-composition";
 
 interface Props {
   initialData: UserWithOperativeTasks[];
   isAdmin: boolean;
-  composition: PersonnelComposition;
+  groupKey: string;
 }
 
-// ── Sortable wrapper for one user block ───────────────────────────────────────
-
-function SortableUserBlock({
+// ── ИСПРАВЛЕНИЕ 1: memo — блок не ре-рендерится при DnD других блоков ─────────
+const SortableUserBlock = memo(function SortableUserBlock({
   block, isAdmin, isDragEnabled,
 }: {
   block: UserWithOperativeTasks;
@@ -74,6 +46,8 @@ function SortableUserBlock({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    // ИСПРАВЛЕНИЕ 2: will-change только во время перетаскивания
+    willChange: isDragging ? "transform" : undefined,
   } as React.CSSProperties;
 
   return (
@@ -86,11 +60,11 @@ function SortableUserBlock({
       />
     </div>
   );
-}
+});
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export function OperativePage({ initialData, isAdmin, composition }: Props) {
+export function OperativePage({ initialData, isAdmin, groupKey }: Props) {
   const hydrate = useOperativeStore((s) => s.hydrate);
   const isHydrated = useOperativeStore((s) => s.isHydrated);
   const userBlocks = useOperativeStore((s) => s.userBlocks);
@@ -101,15 +75,6 @@ export function OperativePage({ initialData, isAdmin, composition }: Props) {
 
   const sourceBlocks: UserWithOperativeTasks[] = isHydrated ? userBlocks : initialData;
 
-  /**
-   * orderedIds — оптимистичный список ID пользователей в нужном порядке.
-   *
-   * Инициализируется из `sourceBlocks`, который приходит с сервера
-   * уже отсортированным по `block_order` (исправлено в operativeRepository).
-   * После DnD обновляется локально (мгновенный отклик) + сохраняется в БД.
-   * При следующем рендере (refresh/SSE) `initialData` снова приходит
-   * в правильном порядке из БД → orderedIds переинициализируется корректно.
-   */
   const serverIds = useMemo(() => sourceBlocks.map((b) => b.user.id), [sourceBlocks]);
   const [localOrderedIds, setLocalOrderedIds] = useState<number[] | null>(null);
 
@@ -122,7 +87,6 @@ export function OperativePage({ initialData, isAdmin, composition }: Props) {
     ];
   }, [localOrderedIds, serverIds]);
 
-  // Собираем блоки в правильном порядке, затем показываем выбранный подраздел состава.
   const allBlocks = useMemo(
     () => orderedIds
       .map((id) => sourceBlocks.find((b) => b.user.id === id))
@@ -131,11 +95,10 @@ export function OperativePage({ initialData, isAdmin, composition }: Props) {
   );
 
   const blocks = useMemo(
-    () => allBlocks.filter((block) => getUserComposition(block.user) === composition),
-    [allBlocks, composition],
+    () => allBlocks.filter((block) => getUserPersonnelGroupKey(block.user) === groupKey),
+    [allBlocks, groupKey],
   );
 
-  // ── DnD sensors ───────────────────────────────────────────────────────────
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -153,17 +116,12 @@ export function OperativePage({ initialData, isAdmin, composition }: Props) {
     const reorderedVisibleIds = arrayMove(visibleIds, oldIdx, newIdx);
     let visibleCursor = 0;
     const newOrderedIds = allBlocks.map((block) => {
-      if (getUserComposition(block.user) !== composition) {
-        return block.user.id;
-      }
+      if (getUserPersonnelGroupKey(block.user) !== groupKey) return block.user.id;
       return reorderedVisibleIds[visibleCursor++] ?? block.user.id;
     });
 
-    // 1. Оптимистично обновляем UI (мгновенно)
     setLocalOrderedIds(newOrderedIds);
 
-    // 2. Сохраняем в БД — только администратор может менять порядок
-    //    (API также проверяет сессию через requireAdminSession)
     if (!isAdmin) return;
 
     try {
@@ -174,19 +132,12 @@ export function OperativePage({ initialData, isAdmin, composition }: Props) {
           items: newOrderedIds.map((id, i) => ({ id, blockOrder: i })),
         }),
       });
-
-      if (!res.ok) {
-        // При ошибке возвращаем прежний порядок
-        setLocalOrderedIds(orderedIds);
-      }
-      // Успех → broadcast через SSE → другие участники увидят новый порядок
+      if (!res.ok) setLocalOrderedIds(orderedIds);
     } catch {
-      // Сетевая ошибка — откатываем оптимистичный сдвиг
       setLocalOrderedIds(orderedIds);
     }
-  }, [allBlocks, blocks, composition, orderedIds, isAdmin]);
+  }, [allBlocks, blocks, groupKey, orderedIds, isAdmin]);
 
-  // ── Empty state ───────────────────────────────────────────────────────────
   if (blocks.length === 0) {
     return (
       <motion.div
@@ -233,12 +184,21 @@ export function OperativePage({ initialData, isAdmin, composition }: Props) {
             alignItems: "start",
           }}
         >
-          {blocks.map((block, idx) => (
+          {blocks.map((block) => (
+            /*
+              ИСПРАВЛЕНИЕ 3: убираем motion.div-обёртку со stagger-задержкой.
+              delay: idx * 0.05 на 20+ блоках = блок анимации ~1с,
+              которая конкурирует с обработчиком скролла.
+
+              Вместо этого: whileInView анимирует только при появлении
+              в viewport — не трогает уже отрендеренные блоки при скролле.
+            */
             <motion.div
               key={block.user.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "0px 0px -40px 0px" }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             >
               <SortableUserBlock
                 block={block}

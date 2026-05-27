@@ -19,6 +19,9 @@ import {
   deleteUser,
   USERS_CACHE_TAG,
 } from "@/entities/user/userRepository";
+import { db } from "@/shared/db/client";
+import { authUsers } from "@/shared/db/schema";
+import { eq } from "drizzle-orm";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
@@ -27,6 +30,7 @@ const PatchUserSchema = z.object({
   name:     z.string().min(1).max(200).optional(),
   login:    z.string().min(1).max(64).optional(),
   roleId:   z.number().int().positive().optional(),
+  accountStatus: z.enum(["active", "invited", "disabled"]).optional(),
   initials: z.string().min(1).max(2).transform((v) => v.toUpperCase()).optional(),
 });
 
@@ -79,6 +83,22 @@ export async function PATCH(req: Request, { params }: Params) {
 
     const before = await getUserById(userId);
     const user = await updateUser(userId, parsed.data);
+    if (before?.authUserId && parsed.data.login) {
+      await db
+        .update(authUsers)
+        .set({
+          login: parsed.data.login.trim(),
+          email: `${parsed.data.login.trim().toLowerCase()}@local.plan`,
+          name: parsed.data.name?.trim() ?? before.name,
+          updatedAt: new Date(),
+        })
+        .where(eq(authUsers.id, before.authUserId));
+    } else if (before?.authUserId && parsed.data.name) {
+      await db
+        .update(authUsers)
+        .set({ name: parsed.data.name.trim(), updatedAt: new Date() })
+        .where(eq(authUsers.id, before.authUserId));
+    }
     revalidateTag(USERS_CACHE_TAG, "max");
     revalidateTag(EPICS_CACHE_TAG, "max"); // assignees в задачах обновятся
     await writeAuditLog({
@@ -117,6 +137,9 @@ export async function DELETE(_req: Request, { params }: Params) {
     const before = await getUserById(userId);
     if (!before) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
+    if (before.authUserId) {
+      await db.delete(authUsers).where(eq(authUsers.id, before.authUserId));
+    }
     await deleteUser(userId);
     revalidateTag(USERS_CACHE_TAG, "max");
     revalidateTag(EPICS_CACHE_TAG, "max");

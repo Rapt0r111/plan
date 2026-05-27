@@ -8,47 +8,55 @@
  */
 import Link from "next/link";
 import { getAllUsersWithOperativeTasks } from "@/entities/operative/operativeRepository";
+import { getAllPersonnelGroups } from "@/entities/personnelGroup/personnelGroupRepository";
 import { Header } from "@/widgets/header/Header";
 import { OperativePage } from "./OperativePage";
 import { LogoutButton } from "./LogoutButton";
 import { auth } from "@/shared/lib/auth";
 import { headers } from "next/headers";
-import {
-  getCompositionLabel,
-  getUserComposition,
-  PERSONNEL_COMPOSITIONS,
-  type PersonnelComposition,
-} from "@/shared/lib/personnel-composition";
+import { getUserPersonnelGroupKey } from "@/shared/lib/personnel-composition";
+import type { DbPersonnelGroup } from "@/shared/types";
 
 export const dynamic = "force-dynamic";
 
 type OperativeRouteProps = {
-  searchParams?: Promise<{ composition?: string | string[] }>;
+  searchParams?: Promise<{ group?: string | string[]; composition?: string | string[] }>;
 };
 
-function parseComposition(value: string | string[] | undefined): PersonnelComposition {
-  const rawValue = Array.isArray(value) ? value[0] : value;
-  return rawValue === "variable" ? "variable" : "permanent";
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
-function OperativeCompositionTabs({ active }: { active: PersonnelComposition }) {
+function resolveActiveGroup(
+  groups: DbPersonnelGroup[],
+  groupParam: string | string[] | undefined,
+  legacyCompositionParam: string | string[] | undefined,
+) {
+  const requested = firstParam(groupParam) ?? firstParam(legacyCompositionParam) ?? "permanent";
+  return groups.find((group) => group.key === requested)
+    ?? groups.find((group) => group.key === "permanent")
+    ?? groups[0]
+    ?? null;
+}
+
+function OperativeCompositionTabs({ groups, activeKey }: { groups: DbPersonnelGroup[]; activeKey: string }) {
   return (
     <div className="px-6 pt-4">
       <div className="flex items-center gap-1 rounded-2xl p-1 w-fit" style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>
-        {PERSONNEL_COMPOSITIONS.map((composition) => {
-          const selected = active === composition.key;
+        {groups.map((group) => {
+          const selected = activeKey === group.key;
           return (
             <Link
-              key={composition.key}
-              href={`/operative?composition=${composition.key}`}
+              key={group.id}
+              href={`/operative?group=${group.key}`}
               className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
               style={{
                 background: selected ? "var(--accent-glow)" : "transparent",
-                color: selected ? "var(--accent-400)" : "var(--text-muted)",
-                border: selected ? "1px solid rgba(139,92,246,0.26)" : "1px solid transparent",
+                color: selected ? group.color : "var(--text-muted)",
+                border: selected ? `1px solid ${group.color}42` : "1px solid transparent",
               }}
             >
-              {getCompositionLabel(composition.key)}
+              {group.label}
             </Link>
           );
         })}
@@ -120,12 +128,14 @@ async function SessionBadge() {
 
 export default async function OperativeRoute({ searchParams }: OperativeRouteProps) {
   const params = searchParams ? await searchParams : {};
-  const composition = parseComposition(params.composition);
+  const personnelGroups = await getAllPersonnelGroups();
+  const activeGroup = resolveActiveGroup(personnelGroups, params.group, params.composition);
+  const activeGroupKey = activeGroup?.key ?? "permanent";
   const session = await auth.api.getSession({ headers: await headers() });
   const isAdmin = session?.user?.role === "admin";
   const data = await getAllUsersWithOperativeTasks();
 
-  const visibleData = data.filter((block) => getUserComposition(block.user) === composition);
+  const visibleData = data.filter((block) => getUserPersonnelGroupKey(block.user) === activeGroupKey);
   const allTasks = visibleData.flatMap((b) => b.tasks);
   const totalTasks = allTasks.length;
   const doneTasks = allTasks.filter((t) => t.status === "done").length;
@@ -143,7 +153,7 @@ export default async function OperativeRoute({ searchParams }: OperativeRoutePro
     return new Date(t.dueDate).toDateString() === todayStr;
   }).length;
 
-  const subtitleParts: string[] = [getCompositionLabel(composition), `${visibleData.length} бойцов`];
+  const subtitleParts: string[] = [activeGroup?.label ?? activeGroupKey, `${visibleData.length} бойцов`];
   if (inProgress > 0) subtitleParts.push(`${inProgress} в работе`);
   if (overdue > 0) subtitleParts.push(`${overdue} просрочено`);
   if (dueToday > 0 && overdue === 0) subtitleParts.push(`${dueToday} сегодня`);
@@ -188,8 +198,8 @@ export default async function OperativeRoute({ searchParams }: OperativeRoutePro
       />
 
       <div className="flex-1 overflow-y-auto">
-        <OperativeCompositionTabs active={composition} />
-        <OperativePage initialData={data} isAdmin={isAdmin} composition={composition} />
+        <OperativeCompositionTabs groups={personnelGroups} activeKey={activeGroupKey} />
+        <OperativePage initialData={data} isAdmin={isAdmin} groupKey={activeGroupKey} />
       </div>
     </div>
   );

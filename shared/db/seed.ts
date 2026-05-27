@@ -29,7 +29,7 @@
 import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { sql } from "drizzle-orm";
-import { roles, users, epics, tasks, subtasks, taskAssignees } from "./schema";
+import { personnelGroups, roles, users, epics, tasks, subtasks, taskAssignees } from "./schema";
 import path from "path";
 
 const DB_PATH = path.resolve(process.cwd(), "local.db");
@@ -37,9 +37,26 @@ const sqlite = new Database(DB_PATH, { create: true });
 sqlite.exec("PRAGMA journal_mode = WAL;");
 sqlite.exec("PRAGMA foreign_keys = ON;");
 
-const db = drizzle(sqlite, { schema: { roles, users, epics, tasks, subtasks, taskAssignees } });
+const db = drizzle(sqlite, { schema: { personnelGroups, roles, users, epics, tasks, subtasks, taskAssignees } });
 
 // ─── ROLES ────────────────────────────────────────────────────────────────────
+
+const SEED_PERSONNEL_GROUPS = [
+  {
+    key: "permanent",
+    label: "Постоянный состав",
+    description: "Пользователи постоянного состава.",
+    color: "#8b5cf6",
+    sortOrder: 0,
+  },
+  {
+    key: "variable",
+    label: "Переменный состав",
+    description: "Пользователи переменного состава.",
+    color: "#38bdf8",
+    sortOrder: 1,
+  },
+] as const;
 
 const SEED_ROLES = [
   {
@@ -109,9 +126,26 @@ const SEED_ROLES = [
   },
 ] as const;
 
+console.log("Seeding personnel groups...");
+for (const group of SEED_PERSONNEL_GROUPS) {
+  await db.insert(personnelGroups).values(group).onConflictDoNothing({ target: personnelGroups.key });
+}
+
+const allGroups = await db.select({ id: personnelGroups.id, key: personnelGroups.key }).from(personnelGroups);
+const groupMap = new Map(allGroups.map((g) => [g.key, g.id]));
+console.log(`Personnel groups ready: ${allGroups.length}`);
+
 console.log("Seeding roles...");
 for (const role of SEED_ROLES) {
-  await db.insert(roles).values(role).onConflictDoNothing({ target: roles.key });
+  const composition = "composition" in role ? role.composition : "permanent";
+  await db
+    .insert(roles)
+    .values({
+      ...role,
+      composition,
+      personnelGroupId: groupMap.get(composition) ?? null,
+    })
+    .onConflictDoNothing({ target: roles.key });
 }
 
 const allRoles = await db.select({ id: roles.id, key: roles.key }).from(roles);

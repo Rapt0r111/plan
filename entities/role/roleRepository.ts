@@ -7,11 +7,12 @@
  */
 
 import { db } from "@/shared/db/client";
-import { roles, users } from "@/shared/db/schema";
+import { personnelGroups, roles, users } from "@/shared/db/schema";
 import { eq, count } from "drizzle-orm";
-import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
+import type { InferInsertModel } from "drizzle-orm";
+import type { DbRole as RoleWithGroup } from "@/shared/types";
 
-export type DbRole = InferSelectModel<typeof roles>;
+export type DbRole = RoleWithGroup;
 export type NewRole = InferInsertModel<typeof roles>;
 
 export const ROLES_CACHE_TAG = "roles";
@@ -21,20 +22,31 @@ export const ROLES_CACHE_TAG = "roles";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getAllRoles(): Promise<DbRole[]> {
-  return db
-    .select()
+  const rows = await db
+    .select({ role: roles, personnelGroup: personnelGroups })
     .from(roles)
-    .orderBy(roles.sortOrder, roles.id);
+    .leftJoin(personnelGroups, eq(roles.personnelGroupId, personnelGroups.id))
+    .orderBy(personnelGroups.sortOrder, roles.sortOrder, roles.id);
+
+  return rows.map((row) => ({ ...row.role, personnelGroup: row.personnelGroup }));
 }
 
 export async function getRoleById(id: number): Promise<DbRole | null> {
-  const [role] = await db.select().from(roles).where(eq(roles.id, id));
-  return role ?? null;
+  const [row] = await db
+    .select({ role: roles, personnelGroup: personnelGroups })
+    .from(roles)
+    .leftJoin(personnelGroups, eq(roles.personnelGroupId, personnelGroups.id))
+    .where(eq(roles.id, id));
+  return row ? { ...row.role, personnelGroup: row.personnelGroup } : null;
 }
 
 export async function getRoleByKey(key: string): Promise<DbRole | null> {
-  const [role] = await db.select().from(roles).where(eq(roles.key, key));
-  return role ?? null;
+  const [row] = await db
+    .select({ role: roles, personnelGroup: personnelGroups })
+    .from(roles)
+    .leftJoin(personnelGroups, eq(roles.personnelGroupId, personnelGroups.id))
+    .where(eq(roles.key, key));
+  return row ? { ...row.role, personnelGroup: row.personnelGroup } : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,8 +59,10 @@ export async function createRole(
   const [created] = await db
     .insert(roles)
     .values(data)
-    .returning();
-  return created;
+    .returning({ id: roles.id });
+  const role = await getRoleById(created.id);
+  if (!role) throw new Error("Created role not found");
+  return role;
 }
 
 export async function updateRole(
@@ -59,9 +73,11 @@ export async function updateRole(
     .update(roles)
     .set({ ...data, updatedAt: new Date().toISOString() })
     .where(eq(roles.id, id))
-    .returning();
+    .returning({ id: roles.id });
   if (!updated) throw new Error(`Role ${id} not found`);
-  return updated;
+  const role = await getRoleById(updated.id);
+  if (!role) throw new Error(`Role ${id} not found`);
+  return role;
 }
 
 /**

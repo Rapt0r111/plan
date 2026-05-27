@@ -53,16 +53,16 @@ function isCurrentlyOffline(): boolean {
 }
 
 /**
- * notifyOfflineBlocked вЂ” shows a toast and blocks the mutation.
+ * notifyOfflineBlocked — shows a toast and blocks the mutation.
  * Called at the very start of every write operation when offline.
- * Never queues вЂ” offline mode is strictly read-only.
+ * Never queues — offline mode is strictly read-only.
  */
 function notifyOfflineBlocked(): void {
   useNotificationStore.getState().push({
     kind: "error",
-    title: "РўРѕР»СЊРєРѕ РїСЂРѕСЃРјРѕС‚СЂ",
-    body: "РР·РјРµРЅРµРЅРёСЏ РЅРµРґРѕСЃС‚СѓРїРЅС‹ РІ РѕС„Р»Р°Р№РЅ-СЂРµР¶РёРјРµ",
-    icon: "рџ”’",
+    title: "Только просмотр",
+    body: "Изменения недоступны в офлайн-режиме",
+    icon: "🔒",
   });
 }
 
@@ -116,7 +116,7 @@ function buildTempSubtasks(drafts: SubtaskDraft[]): SubtaskView[] {
   return drafts.map((d, i) => ({
     id: nextTempId(),
     taskId: 0,
-    title: `РџРѕРґР·Р°РґР°С‡Р° ${i + 1}`,
+    title: `Подзадача ${i + 1}`,
     isCompleted: d.isCompleted,
     sortOrder: d.sortOrder ?? i,
     createdAt: new Date().toISOString(),
@@ -147,7 +147,7 @@ function replaceTempTask(
   });
 }
 
-// в”Ђв”Ђ Helper: add/remove from a Set in store state в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ── Helper: add/remove from a Set in store state ──────────────────────────────
 
 function addToSet(set: Set<number>, id: number): Set<number> {
   const next = new Set(set);
@@ -337,9 +337,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ createEpic в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── createEpic ────────────────────────────────────────────────────────────
     createEpic: async (params) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return null; }
 
       const {
@@ -407,7 +407,7 @@ export const useTaskStore = create<TaskStore>()(
         return { ...tempEpic, id: realId };
       } catch (err) {
         if (isNetworkError(err)) {
-          // Brief connectivity loss after being online вЂ” queue for later
+          // Brief connectivity loss after being online — queue for later
           await enqueuePendingOp({
             kind: "create_epic",
             tempEpicId: tempId,
@@ -431,7 +431,7 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ replayOfflineQueue в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── replayOfflineQueue ────────────────────────────────────────────────────
     replayOfflineQueue: async () => {
       const ops = await getPendingOps();
       if (ops.length === 0) return { successCount: 0, droppedCount: 0 };
@@ -442,7 +442,7 @@ export const useTaskStore = create<TaskStore>()(
       const tempEpicToReal = new Map<number, number>();
       const tempToReal = new Map<number, number>();
 
-      // в”Ђв”Ђ Pass 1: create_epic в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+      // ── Pass 1: create_epic ───────────────────────────────────────────────
       const epicOps = ops.filter(
         (op): op is Extract<PendingOp, { kind: "create_epic" }> => op.kind === "create_epic"
       );
@@ -544,7 +544,7 @@ export const useTaskStore = create<TaskStore>()(
         }
       }
 
-      // в”Ђв”Ђ Pass 2: РѕСЃС‚Р°Р»СЊРЅС‹Рµ РѕРїРµСЂР°С†РёРё в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+      // ── Pass 2: остальные операции ────────────────────────────────────────
       const otherOps = ops.filter((op) => op.kind !== "create_epic");
 
       for (const op of otherOps) {
@@ -831,9 +831,9 @@ export const useTaskStore = create<TaskStore>()(
       return { successCount, droppedCount };
     },
 
-    // в”Ђв”Ђ createTaskWithSubtasks в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── createTaskWithSubtasks ────────────────────────────────────────────────
     createTaskWithSubtasks: async (params) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return null; }
 
       const {
@@ -953,9 +953,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ addTask в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── addTask ───────────────────────────────────────────────────────────────
     addTask: async (epicId, title, status = "todo") => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const tempId = nextTempId();
@@ -1043,9 +1043,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ createTask в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── createTask ────────────────────────────────────────────────────────────
     createTask: async ({ epicId, title, status = "todo", priority = "medium" }) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return null; }
 
       const tempId = nextTempId();
@@ -1133,9 +1133,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ updateTaskStatus в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── updateTaskStatus ──────────────────────────────────────────────────────
     updateTaskStatus: async (taskId, status) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const task = get().tasks[taskId];
@@ -1231,9 +1231,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ toggleSubtask в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── toggleSubtask ─────────────────────────────────────────────────────────
     toggleSubtask: async (taskId, subtaskId, current) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const newVal = !current;
@@ -1302,9 +1302,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ updateTaskPriority в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── updateTaskPriority ────────────────────────────────────────────────────
     updateTaskPriority: async (taskId, priority) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const prev = get().tasks[taskId]?.priority;
@@ -1354,9 +1354,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ updateTaskTitle в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── updateTaskTitle ───────────────────────────────────────────────────────
     updateTaskTitle: async (taskId, title) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const prev = get().tasks[taskId]?.title;
@@ -1407,9 +1407,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ updateTaskDescription в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── updateTaskDescription ─────────────────────────────────────────────────
     updateTaskDescription: async (taskId, description) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const prev = get().tasks[taskId]?.description ?? null;
@@ -1454,9 +1454,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ updateTaskDueDate в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── updateTaskDueDate ─────────────────────────────────────────────────────
     updateTaskDueDate: async (taskId, dueDate) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const prev = get().tasks[taskId]?.dueDate ?? null;
@@ -1500,9 +1500,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ addAssignee в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── addAssignee ───────────────────────────────────────────────────────────
     addAssignee: async (taskId, user) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const task = get().tasks[taskId];
@@ -1556,9 +1556,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ removeAssignee в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── removeAssignee ────────────────────────────────────────────────────────
     removeAssignee: async (taskId, userId) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const task = get().tasks[taskId];
@@ -1598,9 +1598,9 @@ export const useTaskStore = create<TaskStore>()(
       }
     },
 
-    // в”Ђв”Ђ deleteTask в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── deleteTask ────────────────────────────────────────────────────────────
     deleteTask: async (taskId) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const task = get().tasks[taskId];
@@ -1656,7 +1656,7 @@ export const useTaskStore = create<TaskStore>()(
         createdAt: now,
       };
 
-      // в”Ђв”Ђ Optimistic add в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+      // ── Optimistic add ──────────────────────────────────────────────────────
       set((s) => {
         const task = s.tasks[taskId];
         if (!task) return s;
@@ -1677,7 +1677,7 @@ export const useTaskStore = create<TaskStore>()(
         };
       });
 
-      // в”Ђв”Ђ Offline path в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+      // ── Offline path ────────────────────────────────────────────────────────
       if (isCurrentlyOffline()) {
         await enqueuePendingOp({
           kind: undefined,
@@ -1689,7 +1689,7 @@ export const useTaskStore = create<TaskStore>()(
         return;
       }
 
-      // в”Ђв”Ђ Online path в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+      // ── Online path ─────────────────────────────────────────────────────────
       const done = get()._beginOp();
       try {
         const res = await fetch(`/api/tasks/${taskId}/subtasks`, {
@@ -1767,7 +1767,7 @@ export const useTaskStore = create<TaskStore>()(
       const subtask = task.subtasks.find((s) => s.id === subtaskId);
       if (!subtask) return;
 
-      // в”Ђв”Ђ Optimistic remove в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+      // ── Optimistic remove ───────────────────────────────────────────────────
       set((s) => {
         const t = s.tasks[taskId];
         if (!t) return s;
@@ -1829,9 +1829,9 @@ export const useTaskStore = create<TaskStore>()(
         done();
       }
     },
-    // в”Ђв”Ђ reorderTasks в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+    // ── reorderTasks ──────────────────────────────────────────────────────────
     reorderTasks: async (epicId, orderedIds) => {
-      // вњ… OFFLINE GUARD: block all writes when offline
+      // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const prevOrder = get().epics.find((e) => e.id === epicId)?.tasks.map((t) => t.id);

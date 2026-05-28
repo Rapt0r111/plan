@@ -14,10 +14,10 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # ── Config ────────────────────────────────────────────────────
-APP_NAME="taskflow"
-CONTAINER_NAME="taskflow_app"
-IMAGE_NAME="taskflow:latest"
-HOST_PORT="38601"
+APP_NAME="taskflow-test"
+CONTAINER_NAME="taskflow_app_test"      # Должно совпадать с container_name из docker-compose
+IMAGE_NAME="taskflow:test"              # Должно совпадать с image из docker-compose
+HOST_PORT="38601"                       # Тестовый порт
 HOST_IP="192.168.99.101"
 APP_URL="http://${HOST_IP}:${HOST_PORT}"
 COMPOSE_FILE="docker-compose.yml"

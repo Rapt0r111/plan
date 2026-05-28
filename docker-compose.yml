@@ -1,7 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# docker-compose.yml — TaskFlow
-# Modern Docker Compose (no version field — obsolete since v2.27)
-# Port: 38601 (safe range 38700–38799)
+# docker-compose.yml — TaskFlow (ТЕСТОВАЯ ВЕРСИЯ)
 # ═══════════════════════════════════════════════════════════════
 
 services:
@@ -11,35 +9,30 @@ services:
       context: .
       dockerfile: Dockerfile
       target: runner
-    image: taskflow:latest
-    container_name: taskflow_app
+    image: taskflow:test                  # Изменено: taskflow:latest -> taskflow:test
+    container_name: taskflow_app_test     # Изменено: уникальное имя контейнера
     restart: unless-stopped
 
     ports:
-      # Host port 38601 → container port 3000
-      - "38601:3000"
+      # Внешний порт 38701 (из безопасного диапазона) → контейнерный порт 3000
+      - "38601:3000"                      # Изменено: 38601 -> 38701
 
     environment:
       NODE_ENV: production
       PORT: 3000
-      # DB lives in the volume — entrypoint creates symlink to ./local.db
       DATABASE_URL: /app/data/taskflow.db
-      # Set to "false" to skip seeding after first run
       SEED_ON_FIRST_RUN: "true"
-      # REQUIRED by Better Auth for session cookies and redirect URLs.
-      # Use the URL clients actually use to reach this service.
-      # With Caddy HTTPS proxy use: https://taskflow.local
-      # Without Caddy (direct port):
-      BETTER_AUTH_URL: "http://192.168.99.101:38601"
-      NEXT_PUBLIC_APP_URL: "http://192.168.99.101:38601"
+      # Ссылки на тестовый порт
+      BETTER_AUTH_URL: "http://192.168.99.101:38601"      # Изменено
+      NEXT_PUBLIC_APP_URL: "http://192.168.99.101:38601"  # Изменено
       BETTER_AUTH_SECRET: "c3HobtgU/L0pl46ukoEyGyfFkuvXPg6+uDIGkTXLnF8="
 
     volumes:
-      # Named volume — SQLite database persists across container restarts/upgrades
-      - taskflow_data:/app/data
+      # Новый изолированный том для тестовой базы данных
+      - taskflow_data_test:/app/data     # Изменено
 
     networks:
-      - taskflow_net
+      - taskflow_net_test                # Изменено
 
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
@@ -48,7 +41,6 @@ services:
       start_period: 90s
       retries: 3
 
-    # Resource limits — sensible defaults for a local server
     deploy:
       resources:
         limits:
@@ -66,34 +58,34 @@ services:
 
   caddy:
     image: caddy:2
-    container_name: taskflow_caddy
+    container_name: taskflow_caddy_test  # Изменено: уникальное имя контейнера
     restart: unless-stopped
     depends_on:
       - taskflow
     ports:
-      # HTTPS будет по: https://taskflow.local:8443
-      - "8443:443"
+      # Тестовый HTTPS будет доступен по: https://taskflow.local:8444
+      - "8444:443"                       # Изменено: 8443 -> 8444
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - caddy_data_test:/data            # Изменено
+      - caddy_config_test:/config        # Изменено
     networks:
-      - taskflow_net
+      - taskflow_net_test                # Изменено
 
 volumes:
-  taskflow_data:
-    name: taskflow_data
+  taskflow_data_test:
+    name: taskflow_data_test             # Изменено
     driver: local
 
-  caddy_data:
-    name: caddy_data
+  caddy_data_test:
+    name: caddy_data_test               # Изменено
     driver: local
 
-  caddy_config:
-    name: caddy_config
+  caddy_config_test:
+    name: caddy_config_test             # Изменено
     driver: local
 
 networks:
-  taskflow_net:
-    name: taskflow_net
+  taskflow_net_test:
+    name: taskflow_net_test              # Изменено
     driver: bridge

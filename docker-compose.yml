@@ -1,7 +1,7 @@
 # ═══════════════════════════════════════════════════════════════
 # docker-compose.yml — TaskFlow
 # Modern Docker Compose (no version field — obsolete since v2.27)
-# Port: 38701 (safe range 38700–38799)
+# Port: 38601 (safe range 38700–38799)
 # ═══════════════════════════════════════════════════════════════
 
 services:
@@ -16,8 +16,8 @@ services:
     restart: unless-stopped
 
     ports:
-      # Host port 38701 → container port 3000
-      - "38701:3000"
+      # Host port 38601 → container port 3000
+      - "38601:3000"
 
     environment:
       NODE_ENV: production
@@ -30,8 +30,8 @@ services:
       # Use the URL clients actually use to reach this service.
       # With Caddy HTTPS proxy use: https://taskflow.local
       # Without Caddy (direct port):
-      BETTER_AUTH_URL: "http://192.168.99.101:38701"
-      NEXT_PUBLIC_APP_URL: "http://192.168.99.101:38701"
+      BETTER_AUTH_URL: "http://192.168.99.101:38601"
+      NEXT_PUBLIC_APP_URL: "http://192.168.99.101:38601"
       BETTER_AUTH_SECRET: "c3HobtgU/L0pl46ukoEyGyfFkuvXPg6+uDIGkTXLnF8="
 
     volumes:

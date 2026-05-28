@@ -62,7 +62,7 @@ export function NotificationCenter() {
 
       {open && (
         <div
-          className="absolute left-0 right-0 bottom-full mb-2 rounded-2xl overflow-hidden shadow-2xl z-30"
+          className="fixed left-3 bottom-28 w-[calc(var(--sidebar-w)-24px)] max-h-[min(72dvh,420px)] overflow-hidden rounded-2xl shadow-2xl z-50"
           style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}
         >
           <div className="px-3 py-2 flex items-center gap-2 border-b" style={{ borderColor: "var(--glass-border)" }}>

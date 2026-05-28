@@ -8,8 +8,9 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
-import { getAllEpics, createEpic, EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
-import { optionalSession } from "@/shared/lib/route-auth";
+import { getAllEpics, getAllEpicsWithTasks, createEpic, EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
+import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { filterEpicsByAccess, summarizeEpics } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const CreateEpicSchema = z.object({
@@ -22,16 +23,22 @@ const CreateEpicSchema = z.object({
 
 export async function GET() {
   try {
-    const data = await getAllEpics();
+    const scope = await requireWorkspaceAccess();
+    const data = scope.isVariableRestricted
+      ? summarizeEpics(filterEpicsByAccess(await getAllEpicsWithTasks(), scope))
+      : await getAllEpics();
     return NextResponse.json({ ok: true, data });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const session = await optionalSession();
+    const scope = await requireWorkspaceAccess();
+    const session = scope.session;
     const body = await req.json();
     const parsed = CreateEpicSchema.safeParse(body);
 
@@ -56,6 +63,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, data: epic }, { status: 201 });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

@@ -8,9 +8,11 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { createTaskWithRelations } from "@/entities/task/taskRepository";
+import { getUserWithMetaById } from "@/entities/user/userRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, optionalSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { canAccessUser } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const SubtaskInputSchema = z.object({
@@ -36,7 +38,7 @@ const CreateTaskSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const session = await optionalSession();
+    const scope = await requireWorkspaceAccess();
     const body   = await req.json();
     const parsed = CreateTaskSchema.safeParse(body);
 
@@ -48,6 +50,12 @@ export async function POST(req: Request) {
     }
 
     const { assigneeIds, subtasks, ...taskData } = parsed.data;
+    if (scope.isVariableRestricted) {
+      const assignees = await Promise.all((assigneeIds ?? []).map((id) => getUserWithMetaById(id)));
+      if (assignees.length === 0 || assignees.some((user) => !user || !canAccessUser(scope, user))) {
+        throw new Error("ACCESS_DENIED");
+      }
+    }
 
     const result = await createTaskWithRelations({
       task:        taskData,
@@ -67,9 +75,7 @@ export async function POST(req: Request) {
       title:  parsed.data.title,
     });
     await writeAuditLog({
-      actor: session
-        ? { userId: session.user.id, role: session.user.role }
-        : { userId: null, role: null },
+      actor: { userId: scope.session.user.id, role: scope.session.user.role },
       action: "create",
       entityType: "task",
       entityId: result.taskId,

@@ -5,10 +5,12 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
-import { addTaskAssignee } from "@/entities/task/taskRepository";
+import { addTaskAssignee, getTaskById } from "@/entities/task/taskRepository";
+import { getUserWithMetaById } from "@/entities/user/userRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, optionalSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { canAccessTask, canAccessUser } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const AddAssigneeSchema = z.object({
@@ -19,7 +21,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    const session = await optionalSession();
+    const scope = await requireWorkspaceAccess();
     const { id } = await params;
     const taskId = Number(id);
 
@@ -37,14 +39,19 @@ export async function POST(req: Request, { params }: Params) {
       );
     }
 
+    const [task, assignee] = await Promise.all([
+      getTaskById(taskId),
+      getUserWithMetaById(parsed.data.userId),
+    ]);
+    if (!task || !canAccessTask(scope, task) || !assignee || !canAccessUser(scope, assignee)) {
+      return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    }
     await addTaskAssignee(taskId, parsed.data.userId);
     revalidateTag(EPICS_CACHE_TAG, "max");
 
     broadcast("task:assignee:added", { taskId, userId: parsed.data.userId });
     await writeAuditLog({
-      actor: session
-        ? { userId: session.user.id, role: session.user.role }
-        : { userId: null, role: null },
+      actor: { userId: scope.session.user.id, role: scope.session.user.role },
       action: "add_assignee",
       entityType: "task",
       entityId: taskId,

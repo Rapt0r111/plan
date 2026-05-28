@@ -7,7 +7,7 @@ import { eq, sql } from "drizzle-orm";
 
 const RegisterSchema = z.object({
   login: z.string().min(3).max(64).regex(/^[a-zA-Z0-9_.-]+$/),
-  password: z.string().min(6).max(128),
+  password: z.string().min(8).max(128),
   name: z.string().min(1).max(120).optional(),
 });
 

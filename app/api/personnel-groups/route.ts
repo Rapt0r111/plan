@@ -8,7 +8,8 @@ import {
 } from "@/entities/personnelGroup/personnelGroupRepository";
 import { ROLES_CACHE_TAG } from "@/entities/role/roleRepository";
 import { USERS_CACHE_TAG } from "@/entities/user/userRepository";
-import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { filterPersonnelGroupsByAccess } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const CreatePersonnelGroupSchema = z.object({
@@ -22,8 +23,8 @@ const CreatePersonnelGroupSchema = z.object({
 
 export async function GET() {
   try {
-    await requireSession();
-    const data = await getAllPersonnelGroups({ includeInactive: true });
+    const scope = await requireWorkspaceAccess();
+    const data = filterPersonnelGroupsByAccess(await getAllPersonnelGroups({ includeInactive: true }), scope);
     return NextResponse.json({ ok: true, data });
   } catch (e) {
     const authErr = authErrorToResponse(e);

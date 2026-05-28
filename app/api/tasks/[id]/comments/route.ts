@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createTaskComment, getTaskById } from "@/entities/task/taskRepository";
 import { createNotification } from "@/entities/management/managementRepository";
-import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { canAccessTask } from "@/shared/lib/access-scope";
 import { broadcast } from "@/shared/server/eventBus";
 import { writeAuditLog } from "@/shared/lib/audit";
 
@@ -14,10 +15,10 @@ const CommentSchema = z.object({
 
 export async function GET(_req: Request, { params }: Params) {
   try {
-    await requireSession();
+    const scope = await requireWorkspaceAccess();
     const taskId = Number((await params).id);
     const task = await getTaskById(taskId);
-    if (!task) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    if (!task || !canAccessTask(scope, task)) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     return NextResponse.json({ ok: true, data: task.comments ?? [] });
   } catch (e) {
     const authErr = authErrorToResponse(e);
@@ -28,7 +29,8 @@ export async function GET(_req: Request, { params }: Params) {
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    const session = await requireSession();
+    const scope = await requireWorkspaceAccess();
+    const session = scope.session;
     const taskId = Number((await params).id);
     const parsed = CommentSchema.safeParse(await req.json());
     if (!Number.isInteger(taskId) || taskId <= 0) {
@@ -39,7 +41,7 @@ export async function POST(req: Request, { params }: Params) {
     }
 
     const task = await getTaskById(taskId);
-    if (!task) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    if (!task || !canAccessTask(scope, task)) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
     const comment = await createTaskComment({
       taskId,

@@ -12,9 +12,11 @@ import { z } from "zod";
 import { db } from "@/shared/db/client";
 import { subtasks, tasks } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
+import { getTaskById } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { canAccessTask } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const CreateSubtaskSchema = z.object({
@@ -26,7 +28,8 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function POST(req: Request, { params }: Params) {
   try {
-    const session = await requireSession();
+    const scope = await requireWorkspaceAccess();
+    const session = scope.session;
     const { id } = await params;
     const taskId = Number(id);
 
@@ -35,8 +38,8 @@ export async function POST(req: Request, { params }: Params) {
     }
 
     // Verify task exists
-    const [task] = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId));
-    if (!task) {
+    const task = await getTaskById(taskId);
+    if (!task || !canAccessTask(scope, task)) {
       return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
     }
 

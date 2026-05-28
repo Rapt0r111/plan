@@ -4,7 +4,7 @@
  */
 import { Suspense } from "react";
 import { Sidebar, SidebarProvider, MainContent } from "@/widgets/sidebar/Sidebar";
-import { getAllEpics } from "@/entities/epic/epicRepository";
+import { getAllEpics, getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
 import { OfflineHydrator } from "@/shared/store/StoreHydrator";
 import { RoleHydrator } from "@/shared/store/RoleHydrator";
@@ -13,19 +13,41 @@ import { PrefsApplicator } from "@/shared/ui/PrefsApplicator";
 import { SyncOrchestrator } from "@/shared/store/SyncOrchestrator";
 import { RealtimeProvider } from "@/shared/store/RealtimeProvider";
 import { auth } from "@/shared/lib/auth";
+import { hasLinkedProfile } from "@/shared/lib/auth-access";
+import { filterEpicsByAccess, filterRolesByAccess, filterUsersByAccess, resolveAccessScope, summarizeEpics } from "@/shared/lib/access-scope";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 async function SidebarLoader() {
-  const [epics, users, roles, session] = await Promise.all([
-    getAllEpics(),
+  const session = await auth.api.getSession({ headers: await headers() });
+
+  if (!session?.user) {
+    redirect("/login");
+  }
+
+  if (session?.user && !hasLinkedProfile(session.user)) {
+    return (
+      <>
+        <RoleHydrator roles={[]} />
+        <Sidebar epics={[]} users={[]} session={session} />
+      </>
+    );
+  }
+
+  const scope = await resolveAccessScope(session);
+  const [epics, epicsWithTasks, users, roles] = await Promise.all([
+    scope.isVariableRestricted ? Promise.resolve([]) : getAllEpics(),
+    scope.isVariableRestricted ? getAllEpicsWithTasks() : Promise.resolve([]),
     getAllUsers(),
     getAllRoles(),
-    auth.api.getSession({ headers: await headers() }),
   ]);
+  const visibleEpics = scope.isVariableRestricted ? summarizeEpics(filterEpicsByAccess(epicsWithTasks, scope)) : epics;
+  const visibleUsers = filterUsersByAccess(users, scope);
+  const visibleRoles = filterRolesByAccess(roles, scope);
   return (
     <>
-      <RoleHydrator roles={roles} />
-      <Sidebar epics={epics} users={users} session={session} />
+      <RoleHydrator roles={visibleRoles} />
+      <Sidebar epics={visibleEpics} users={visibleUsers} session={session} isVariableRestricted={scope.isVariableRestricted} />
     </>
   );
 }

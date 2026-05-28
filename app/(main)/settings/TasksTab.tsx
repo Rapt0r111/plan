@@ -117,7 +117,7 @@ function TaskCard({
 
     return (
         <motion.div layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-            className="rounded-xl overflow-hidden group"
+            className="rounded-xl overflow-visible group"
             style={{
                 background: "var(--bg-elevated)",
                 border: "1px solid var(--glass-border)",
@@ -137,7 +137,7 @@ function TaskCard({
                                 <motion.div initial={{ opacity: 0, y: 4, scale: 0.97 }}
                                     animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 4 }}
                                     transition={{ duration: 0.12 }}
-                                    className="absolute top-full left-0 mt-1 z-20 rounded-xl overflow-hidden shadow-2xl"
+                                    className="absolute top-full left-0 mt-1 z-50 max-h-[min(60dvh,280px)] rounded-xl overflow-y-auto shadow-2xl"
                                     style={{ background: "var(--bg-surface)", border: "1px solid var(--glass-border)", minWidth: 140 }}>
                                     {STATUS_ORDER.map((s) => {
                                         const meta = STATUS_META[s as TaskStatus];
@@ -168,7 +168,7 @@ function TaskCard({
                                 <motion.div initial={{ opacity: 0, y: 4, scale: 0.97 }}
                                     animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 4 }}
                                     transition={{ duration: 0.12 }}
-                                    className="absolute top-full left-0 mt-1 z-20 rounded-xl overflow-hidden shadow-2xl"
+                                    className="absolute top-full left-0 mt-1 z-50 max-h-[min(60dvh,280px)] rounded-xl overflow-y-auto shadow-2xl"
                                     style={{ background: "var(--bg-surface)", border: "1px solid var(--glass-border)", minWidth: 130 }}>
                                     {PRIORITY_ORDER.map((p) => {
                                         const meta = PRIORITY_META[p as TaskPriority];

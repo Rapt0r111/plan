@@ -9,7 +9,7 @@
  * - Создание нового пользователя
  * - Оптимистичные обновления через локальный стейт + rollback
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { UserWithMeta, DbRole, DbPersonnelGroup } from "@/shared/types";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
 import { SelectField } from "@/shared/ui/SelectField";
@@ -222,6 +222,192 @@ function UserCard({
 }
 
 // ─── CreateUserForm ────────────────────────────────────────────────────────────
+
+type UnlinkedAccount = {
+    id: string;
+    name: string;
+    login: string | null;
+    email: string;
+    role: "admin" | "member";
+    createdAt: string;
+};
+
+function UnlinkedAccountCard({
+    account,
+    users,
+    roles,
+    personnelGroups,
+    onLinked,
+    onCreated,
+    onError,
+}: {
+    account: UnlinkedAccount;
+    users: UserWithMeta[];
+    roles: DbRole[];
+    personnelGroups: DbPersonnelGroup[];
+    onLinked: (user: UserWithMeta) => void;
+    onCreated: (user: UserWithMeta) => void;
+    onError: (message: string) => void;
+}) {
+    const availableProfiles = users.filter((user) => !user.authUserId);
+    const firstProfileId = availableProfiles[0]?.id ?? 0;
+    const initialGroup = personnelGroups.find((group) => group.key === "permanent") ?? personnelGroups[0];
+    const initialRoleId = roles.find((role) => getRoleGroupKey(role) === initialGroup?.key)?.id ?? roles[0]?.id ?? 0;
+    const [profileId, setProfileId] = useState(firstProfileId);
+    const [selectedGroupKey, setSelectedGroupKey] = useState(initialGroup?.key ?? (roles[0] ? getRoleGroupKey(roles[0]) : "permanent"));
+    const [roleId, setRoleId] = useState(initialRoleId);
+    const [loading, setLoading] = useState<"link" | "create" | null>(null);
+    const rolesForGroup = roles.filter((role) => getRoleGroupKey(role) === selectedGroupKey);
+    const login = account.login ?? account.email.split("@")[0];
+
+    function changeGroup(nextGroupKey: string) {
+        setSelectedGroupKey(nextGroupKey);
+        setRoleId(roles.find((role) => getRoleGroupKey(role) === nextGroupKey)?.id ?? 0);
+    }
+
+    async function linkExisting() {
+        if (!profileId) { onError("Выберите профиль для привязки"); return; }
+        setLoading("link");
+        try {
+            const res = await fetch(`/api/auth/unlinked-users/${account.id}/link`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ profileId }),
+            });
+            const json = await res.json();
+            if (!res.ok || !json.data) { onError(json.error ?? "Не удалось привязать аккаунт"); return; }
+            onLinked(json.data);
+        } catch {
+            onError("Сетевая ошибка при привязке аккаунта");
+        } finally {
+            setLoading(null);
+        }
+    }
+
+    async function createProfile() {
+        if (!roleId) { onError("Выберите роль для нового профиля"); return; }
+        setLoading("create");
+        try {
+            const res = await fetch(`/api/auth/unlinked-users/${account.id}/create-profile`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ roleId, name: account.name, login }),
+            });
+            const json = await res.json();
+            if (!res.ok || !json.data) { onError(json.error ?? "Не удалось создать профиль"); return; }
+            onCreated(json.data);
+        } catch {
+            onError("Сетевая ошибка при создании профиля");
+        } finally {
+            setLoading(null);
+        }
+    }
+
+    return (
+        <div className="rounded-xl p-4 space-y-3" style={{ background: "var(--bg-elevated)", border: "1px solid rgba(251,191,36,0.25)" }}>
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>{account.name}</p>
+                    <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>@{login}</p>
+                </div>
+                <span className="px-2 py-1 rounded-full text-[10px] font-semibold border" style={{ color: account.role === "admin" ? "#a78bfa" : "#fbbf24", borderColor: "var(--glass-border)" }}>
+                    {account.role === "admin" ? "admin" : "ожидает"}
+                </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-end">
+                <SelectField
+                    value={profileId || undefined}
+                    onValueChange={(nextValue) => setProfileId(Number(nextValue))}
+                    disabled={availableProfiles.length === 0}
+                    placeholder="Выбрать существующий профиль"
+                    options={availableProfiles.map((user) => ({
+                        value: user.id,
+                        label: user.name,
+                        description: `${user.login} · ${user.roleMeta.label}`,
+                        color: user.roleMeta.hex,
+                    }))}
+                />
+                <button
+                    onClick={linkExisting}
+                    disabled={loading !== null || !profileId}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                    style={{ background: "var(--glass-02)", color: "var(--text-secondary)", border: "1px solid var(--glass-border)" }}
+                >
+                    {loading === "link" ? "Привязка..." : "Привязать"}
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 items-end pt-2 border-t border-[var(--glass-border)]">
+                <SelectField
+                    value={selectedGroupKey}
+                    onValueChange={changeGroup}
+                    options={personnelGroups.map((group) => ({ value: group.key, label: group.label, color: group.color }))}
+                />
+                <SelectField
+                    value={roleId || undefined}
+                    onValueChange={(nextValue) => setRoleId(Number(nextValue))}
+                    disabled={rolesForGroup.length === 0}
+                    placeholder="Роль"
+                    options={rolesForGroup.map((role) => ({ value: role.id, label: role.label, description: role.short, color: role.hex }))}
+                />
+                <button
+                    onClick={createProfile}
+                    disabled={loading !== null || !roleId}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                    style={{ background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.3)" }}
+                >
+                    {loading === "create" ? "Создание..." : "Создать профиль"}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function UnlinkedAccountsPanel({
+    accounts,
+    users,
+    roles,
+    personnelGroups,
+    onLinked,
+    onCreated,
+    onError,
+}: {
+    accounts: UnlinkedAccount[];
+    users: UserWithMeta[];
+    roles: DbRole[];
+    personnelGroups: DbPersonnelGroup[];
+    onLinked: (user: UserWithMeta) => void;
+    onCreated: (user: UserWithMeta) => void;
+    onError: (message: string) => void;
+}) {
+    if (accounts.length === 0) return null;
+    return (
+        <section className="space-y-3">
+            <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full border" style={{ color: "#fbbf24", borderColor: "rgba(251,191,36,0.35)", background: "rgba(251,191,36,0.08)" }}>
+                    Заявки на назначение
+                </span>
+                <span className="text-xs font-mono text-(--text-muted)">{accounts.length}</span>
+                <div className="flex-1 h-px bg-[var(--glass-border)]" />
+            </div>
+            <div className="space-y-2">
+                {accounts.map((account) => (
+                    <UnlinkedAccountCard
+                        key={account.id}
+                        account={account}
+                        users={users}
+                        roles={roles}
+                        personnelGroups={personnelGroups}
+                        onLinked={onLinked}
+                        onCreated={onCreated}
+                        onError={onError}
+                    />
+                ))}
+            </div>
+        </section>
+    );
+}
 
 function CreateUserForm({
     roles,
@@ -436,6 +622,7 @@ function Field({
 
 export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
     const [localUsers, setLocalUsers] = useState<UserWithMeta[]>(initialUsers);
+    const [unlinkedAccounts, setUnlinkedAccounts] = useState<UnlinkedAccount[]>([]);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [groupFilter, setGroupFilter] = useState<string | "all">("all");
@@ -443,6 +630,17 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
         groupFilter === "all"
             ? localUsers
             : filterUsersByPersonnelGroup(localUsers, groupFilter);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetch("/api/auth/unlinked-users")
+            .then((res) => res.ok ? res.json() : null)
+            .then((json) => {
+                if (!cancelled && json?.ok) setUnlinkedAccounts(json.data ?? []);
+            })
+            .catch(() => undefined);
+        return () => { cancelled = true; };
+    }, []);
 
     const handleUpdate = useCallback(
         async (user: UserWithMeta, patch: { name?: string; login?: string; roleId?: number }) => {
@@ -508,6 +706,22 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
 
     return (
         <div className="max-w-3xl space-y-4">
+            <UnlinkedAccountsPanel
+                accounts={unlinkedAccounts}
+                users={localUsers}
+                roles={roles}
+                personnelGroups={personnelGroups}
+                onLinked={(user) => {
+                    setLocalUsers((prev) => prev.map((item) => item.id === user.id ? user : item));
+                    setUnlinkedAccounts((prev) => prev.filter((item) => item.id !== user.authUserId));
+                }}
+                onCreated={(user) => {
+                    setLocalUsers((prev) => [...prev, user]);
+                    setUnlinkedAccounts((prev) => prev.filter((item) => item.id !== user.authUserId));
+                }}
+                onError={setError}
+            />
+
             {/* Stats */}
             <div
                 className="flex items-center gap-6 px-4 py-3 rounded-xl"

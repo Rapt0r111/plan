@@ -4,6 +4,8 @@ import { appSettings, notifications, reportExports, slaRules, tasks } from "@/sh
 import { getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { getAllUsersWithOperativeTasks } from "@/entities/operative/operativeRepository";
 import { getPersonalPlanData } from "@/entities/personal-plan/personalPlanRepository";
+import { filterEpicsByAccess, type WorkspaceAccessScope } from "@/shared/lib/access-scope";
+import { getUserPersonnelGroupKey } from "@/shared/lib/personnel-composition";
 import {
   classifyTaskRisk,
   DEFAULT_SLA_POLICY,
@@ -23,13 +25,20 @@ export async function getEffectiveSlaPolicy(): Promise<SlaPolicy> {
     : DEFAULT_SLA_POLICY;
 }
 
-export async function getManagementOverview(referenceDate = new Date()) {
-  const [epics, operativeBlocks, personalPlan, policy] = await Promise.all([
+export async function getManagementOverview(referenceDate = new Date(), scope?: WorkspaceAccessScope) {
+  const [rawEpics, rawOperativeBlocks, rawPersonalPlan, policy] = await Promise.all([
     getAllEpicsWithTasks(),
     getAllUsersWithOperativeTasks(),
     getPersonalPlanData(referenceDate),
     getEffectiveSlaPolicy(),
   ]);
+  const epics = scope ? filterEpicsByAccess(rawEpics, scope) : rawEpics;
+  const operativeBlocks = scope?.isVariableRestricted
+    ? rawOperativeBlocks.filter((block) => getUserPersonnelGroupKey(block.user) === "variable")
+    : rawOperativeBlocks;
+  const personalPlan = scope?.isVariableRestricted
+    ? { ...rawPersonalPlan, users: [], completions: [] }
+    : rawPersonalPlan;
 
   const allTasks = epics.flatMap((epic) =>
     epic.tasks.map((task) => ({

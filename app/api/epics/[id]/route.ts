@@ -15,7 +15,8 @@ import {
   deleteEpic,
   EPICS_CACHE_TAG,
 } from "@/entities/epic/epicRepository";
-import { authErrorToResponse, requireAdminSession, optionalSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { filterEpicsByAccess } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchEpicSchema = z.object({
@@ -30,6 +31,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   try {
+    const scope = await requireWorkspaceAccess();
     const { id } = await params;
     const epicId = Number(id);
 
@@ -37,18 +39,22 @@ export async function GET(_req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Invalid epic id" }, { status: 400 });
     }
 
-    const epic = await getEpicById(epicId);
+    const rawEpic = await getEpicById(epicId);
+    const epic = rawEpic ? filterEpicsByAccess([rawEpic], scope)[0] : null;
     if (!epic) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
     return NextResponse.json({ ok: true, data: epic });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const session = await optionalSession();
+    const scope = await requireWorkspaceAccess();
+    const session = scope.session;
     const { id } = await params;
     const epicId = Number(id);
 
@@ -70,7 +76,9 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: "Nothing to update" }, { status: 422 });
     }
 
-    const before = await getEpicById(epicId);
+    const beforeRaw = await getEpicById(epicId);
+    const before = beforeRaw ? filterEpicsByAccess([beforeRaw], scope)[0] : null;
+    if (!before) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     const epic = await updateEpic(epicId, parsed.data);
     revalidateTag(EPICS_CACHE_TAG, "max");
     await writeAuditLog({
@@ -86,6 +94,8 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: epic });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     if (String(e).includes("not found")) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }

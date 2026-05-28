@@ -7,7 +7,6 @@ import { EpicsTab } from "./EpicsTab";
 import { TasksTab } from "./TasksTab";
 import { AppearanceTab } from "./AppearanceTab";
 import { AuditTab } from "./AuditTab";
-import { SecurityTab } from "./SecurityTab";
 import { AppSettingsTab } from "./AppSettingsTab";
 import type { DbPersonnelGroup, DbRole, UserWithMeta, EpicWithTasks } from "@/shared/types";
 import { StoreHydrator } from "@/shared/store/StoreHydrator";
@@ -73,7 +72,6 @@ export function SettingsTabs({ initialRoles, initialUsers, initialPersonnelGroup
 
       <div className="flex-1 overflow-y-auto p-6">
         {tab === "appearance" && <AppearanceTab />}
-        {tab === "security"   && <SecurityTab />}
         {tab === "roles"      && <RolesTab initialRoles={initialRoles} personnelGroups={initialPersonnelGroups} />}
         {tab === "groups"     && <PersonnelGroupsTab initialGroups={initialPersonnelGroups} />}
         {tab === "users"      && <UsersTab initialUsers={initialUsers} roles={initialRoles} personnelGroups={initialPersonnelGroups} />}

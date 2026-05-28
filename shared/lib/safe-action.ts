@@ -1,6 +1,7 @@
 import { createSafeActionClient } from "next-safe-action";
 import { headers } from "next/headers";
 import { auth } from "./auth";
+import { hasLinkedProfile } from "./auth-access";
 
 // ── Базовый клиент — только проверка аутентификации ──────────────────────────
 export const authActionClient = createSafeActionClient().use(async ({ next }) => {

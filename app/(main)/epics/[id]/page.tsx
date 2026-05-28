@@ -3,14 +3,18 @@ import { getEpicById } from "@/entities/epic/epicRepository";
 import { Header } from "@/widgets/header/Header";
 import { EpicDetailClient } from "./EpicDetailClient";
 import { Suspense } from "react";
+import { requireWorkspacePage } from "@/shared/lib/page-auth";
+import { filterEpicsByAccess } from "@/shared/lib/access-scope";
 
 export default async function EpicDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const scope = await requireWorkspacePage();
   const { id } = await params;
-  const epic = await getEpicById(Number(id));
+  const rawEpic = await getEpicById(Number(id));
+  const epic = rawEpic ? filterEpicsByAccess([rawEpic], scope)[0] : null;
   if (!epic) notFound();
 
   const pct =

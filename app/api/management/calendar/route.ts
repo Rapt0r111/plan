@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getManagementOverview } from "@/entities/management/managementRepository";
-import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    await requireSession();
-    const overview = await getManagementOverview();
+    const scope = await requireWorkspaceAccess();
+    const overview = await getManagementOverview(new Date(), scope);
     return NextResponse.json({ ok: true, data: overview.calendar });
   } catch (e) {
     const authErr = authErrorToResponse(e);

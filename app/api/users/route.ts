@@ -13,7 +13,8 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { getAllUsers, createUser, linkAuthUserToProfile, deleteUser, USERS_CACHE_TAG } from "@/entities/user/userRepository";
-import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { filterUsersByAccess } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 import { auth } from "@/shared/lib/auth";
 
@@ -33,8 +34,8 @@ function makeSyntheticEmail(login: string) {
 
 export async function GET() {
   try {
-    await requireSession();
-    const data = await getAllUsers();
+    const scope = await requireWorkspaceAccess();
+    const data = filterUsersByAccess(await getAllUsers(), scope);
     return NextResponse.json({ ok: true, data });
   } catch (e) {
     const authErr = authErrorToResponse(e);

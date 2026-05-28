@@ -15,6 +15,7 @@ import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import {
   getUserById,
+  getUserWithMetaById,
   updateUser,
   deleteUser,
   USERS_CACHE_TAG,
@@ -23,7 +24,8 @@ import { db } from "@/shared/db/client";
 import { authUsers } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
-import { authErrorToResponse, requireAdminSession, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { canAccessUser } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchUserSchema = z.object({
@@ -38,7 +40,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   try {
-    await requireSession();
+    const scope = await requireWorkspaceAccess();
     const { id } = await params;
     const userId = Number(id);
 
@@ -47,7 +49,8 @@ export async function GET(_req: Request, { params }: Params) {
     }
 
     const user = await getUserById(userId);
-    if (!user) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    const userMeta = await getUserWithMetaById(userId);
+    if (!user || !userMeta || !canAccessUser(scope, userMeta)) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
     return NextResponse.json({ ok: true, data: user });
   } catch (e) {

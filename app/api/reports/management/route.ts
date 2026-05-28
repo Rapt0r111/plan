@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { getManagementOverview, recordReportExport } from "@/entities/management/managementRepository";
-import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    const session = await requireSession();
+    const scope = await requireWorkspaceAccess();
+    const session = scope.session;
     const url = new URL(req.url);
     const format = url.searchParams.get("format") ?? "csv";
-    const overview = await getManagementOverview();
+    const overview = await getManagementOverview(new Date(), scope);
     await recordReportExport({
       type: "management",
       format,

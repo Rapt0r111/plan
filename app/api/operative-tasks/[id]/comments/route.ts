@@ -1,9 +1,11 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createOperativeTaskComment } from "@/entities/operative/operativeRepository";
+import { createOperativeTaskComment, getOperativeTaskById } from "@/entities/operative/operativeRepository";
+import { getUserWithMetaById } from "@/entities/user/userRepository";
 import { writeAuditLog } from "@/shared/lib/audit";
-import { authErrorToResponse, optionalSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { canAccessUser } from "@/shared/lib/access-scope";
 import { broadcast } from "@/shared/server/eventBus";
 
 const CreateCommentSchema = z.object({
@@ -28,12 +30,17 @@ export async function POST(req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 422 });
     }
 
-    const session = await optionalSession();
+    const scope = await requireWorkspaceAccess();
+    const task = await getOperativeTaskById(taskId);
+    const owner = task ? await getUserWithMetaById(task.userId) : null;
+    if (!task || !owner || !canAccessUser(scope, owner)) {
+      return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    }
     const comment = await createOperativeTaskComment({
       taskId,
       body: parsed.data.body,
-      authorUserId: session?.user.id ?? null,
-      authorName: session?.user.name ?? "Гость",
+      authorUserId: scope.session.user.id,
+      authorName: scope.session.user.name,
     });
 
     revalidatePath("/operative");
@@ -44,9 +51,7 @@ export async function POST(req: Request, { params }: Params) {
     });
 
     await writeAuditLog({
-      actor: session
-        ? { userId: session.user.id, role: session.user.role }
-        : { userId: null, role: null },
+      actor: { userId: scope.session.user.id, role: scope.session.user.role },
       action: "comment",
       entityType: "operative_task",
       entityId: taskId,

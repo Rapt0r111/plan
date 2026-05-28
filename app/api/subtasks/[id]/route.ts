@@ -11,9 +11,11 @@ import { z } from "zod";
 import { db } from "@/shared/db/client";
 import { subtasks } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
+import { getTaskById } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, requireAdminSession, optionalSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { canAccessTask } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const ToggleSubtaskSchema = z.object({
@@ -24,7 +26,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const session = await optionalSession();
+    const scope = await requireWorkspaceAccess();
     const { id } = await params;
     const subtaskId = Number(id);
 
@@ -41,6 +43,14 @@ export async function PATCH(req: Request, { params }: Params) {
         { status: 422 },
       );
     }
+
+    const [current] = await db
+      .select({ taskId: subtasks.taskId })
+      .from(subtasks)
+      .where(eq(subtasks.id, subtaskId));
+    if (!current) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    const task = await getTaskById(current.taskId);
+    if (!task || !canAccessTask(scope, task)) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
     const [updated] = await db
       .update(subtasks)
@@ -59,9 +69,7 @@ export async function PATCH(req: Request, { params }: Params) {
       isCompleted: parsed.data.isCompleted,
     });
     await writeAuditLog({
-      actor: session
-        ? { userId: session.user.id, role: session.user.role }
-        : { userId: null, role: null },
+      actor: { userId: scope.session.user.id, role: scope.session.user.role },
       action: "update_status",
       entityType: "subtask",
       entityId: subtaskId,
@@ -70,6 +78,8 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

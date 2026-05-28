@@ -2,11 +2,13 @@ import Link from "next/link";
 import { Header } from "@/widgets/header/Header";
 import { getManagementOverview } from "@/entities/management/managementRepository";
 import { formatRiskLabel } from "@/shared/lib/management-metrics";
+import { requireWorkspacePage } from "@/shared/lib/page-auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function ManagementPage() {
-  const overview = await getManagementOverview();
+  const scope = await requireWorkspacePage();
+  const overview = await getManagementOverview(new Date(), scope);
 
   const kpis = [
     { label: "Открыто задач", value: overview.kpi.openTasks, color: "#38bdf8" },

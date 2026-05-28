@@ -10,6 +10,8 @@ import { getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { Header } from "@/widgets/header/Header";
 import { StoreHydrator } from "@/shared/store/StoreHydrator";
 import { BoardPage } from "./BoardPage";
+import { requireWorkspacePage } from "@/shared/lib/page-auth";
+import { filterEpicsByAccess } from "@/shared/lib/access-scope";
 
 // `/board` зависит от содержимого SQLite.
 // По умолчанию Next может попытаться его статически пререндерить во время `next build`,
@@ -18,7 +20,8 @@ import { BoardPage } from "./BoardPage";
 export const dynamic = "force-dynamic";
 
 export default async function BoardRoute() {
-  const epics = await getAllEpicsWithTasks();
+  const scope = await requireWorkspacePage();
+  const epics = filterEpicsByAccess(await getAllEpicsWithTasks(), scope);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

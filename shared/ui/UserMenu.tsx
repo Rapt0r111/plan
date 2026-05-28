@@ -4,6 +4,7 @@
  * Shows current session user with logout button.
  */
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -87,9 +88,22 @@ export function UserMenu({ name, login, role }: Props) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute bottom-full left-0 right-0 mb-1 rounded-xl overflow-hidden shadow-2xl z-50"
+            className="fixed left-3 bottom-16 w-[calc(var(--sidebar-w)-24px)] max-h-[min(70dvh,360px)] overflow-y-auto rounded-xl shadow-2xl z-50"
             style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}
           >
+            <Link
+              href="/profile"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm transition-colors"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="8" cy="5" r="3" />
+                <path d="M2.5 14c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
+              </svg>
+              Профиль
+            </Link>
+
             {role === "admin" && (
               <div
                 className="px-3 py-2 flex items-center gap-2 border-b"

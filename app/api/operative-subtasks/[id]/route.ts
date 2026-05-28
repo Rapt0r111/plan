@@ -9,11 +9,13 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/shared/db/client";
-import { operativeSubtasks } from "@/shared/db/schema";
+import { operativeSubtasks, operativeTasks } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
+import { getUserWithMetaById } from "@/entities/user/userRepository";
 import { toggleOperativeSubtask } from "@/entities/operative/operativeRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, requireAdminSession, optionalSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { canAccessUser } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const ToggleSchema = z.object({
@@ -24,7 +26,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const session = await optionalSession();
+    const scope = await requireWorkspaceAccess();
     const { id }     = await params;
     const subtaskId  = Number(id);
 
@@ -39,6 +41,14 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 422 });
     }
 
+    const [ownerRow] = await db
+      .select({ userId: operativeTasks.userId })
+      .from(operativeSubtasks)
+      .innerJoin(operativeTasks, eq(operativeSubtasks.taskId, operativeTasks.id))
+      .where(eq(operativeSubtasks.id, subtaskId));
+    const owner = ownerRow ? await getUserWithMetaById(ownerRow.userId) : null;
+    if (!owner || !canAccessUser(scope, owner)) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+
     const subtask = await toggleOperativeSubtask(subtaskId, parsed.data.isCompleted);
     revalidatePath("/operative");
     broadcast("task:subtask:toggled", {
@@ -48,9 +58,7 @@ export async function PATCH(req: Request, { params }: Params) {
       isCompleted: parsed.data.isCompleted,
     });
     await writeAuditLog({
-      actor: session
-        ? { userId: session.user.id, role: session.user.role }
-        : { userId: null, role: null },
+      actor: { userId: scope.session.user.id, role: scope.session.user.role },
       action: "update_status",
       entityType: "operative_subtask",
       entityId: subtaskId,
@@ -59,6 +67,8 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: subtask });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     if (String(e).includes("not found")) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }

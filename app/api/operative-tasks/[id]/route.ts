@@ -13,11 +13,14 @@ import { db } from "@/shared/db/client";
 import { operativeTasks } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
 import {
+  getOperativeTaskById,
   updateOperativeTaskStatus,
   updateOperativeTaskDueDate,
 } from "@/entities/operative/operativeRepository";
+import { getUserWithMetaById } from "@/entities/user/userRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, requireAdminSession, optionalSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { canAccessUser } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchSchema = z.object({
@@ -60,7 +63,12 @@ export async function PATCH(req: Request, { params }: Params) {
       }
     }
 
-    const session = await optionalSession();
+    const scope = await requireWorkspaceAccess();
+    const current = await getOperativeTaskById(taskId);
+    const owner = current ? await getUserWithMetaById(current.userId) : null;
+    if (!current || !owner || !canAccessUser(scope, owner)) {
+      return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    }
     let task;
 
     if (status !== undefined) {
@@ -79,9 +87,7 @@ export async function PATCH(req: Request, { params }: Params) {
       ...(dueDate !== undefined && { dueDate }),
     });
     await writeAuditLog({
-      actor: session
-        ? { userId: session.user.id, role: session.user.role }
-        : { userId: null, role: null },
+      actor: { userId: scope.session.user.id, role: scope.session.user.role },
       action: "update",
       entityType: "operative_task",
       entityId: taskId,

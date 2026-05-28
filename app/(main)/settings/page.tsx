@@ -10,17 +10,24 @@ import { Header } from "@/widgets/header/Header";
 import { SettingsTabs } from "./SettingsTabs";
 import { auth } from "@/shared/lib/auth";
 import { headers } from "next/headers";
+import { requireWorkspacePage } from "@/shared/lib/page-auth";
+import { filterEpicsByAccess, filterPersonnelGroupsByAccess, filterRolesByAccess, filterUsersByAccess } from "@/shared/lib/access-scope";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [roles, users, personnelGroups, epics, session] = await Promise.all([
+  const scope = await requireWorkspacePage();
+  const [rawRoles, rawUsers, rawPersonnelGroups, rawEpics, session] = await Promise.all([
     getAllRoles(),
     getAllUsers(),
     getAllPersonnelGroups({ includeInactive: true }),
     getAllEpicsWithTasks(),
     auth.api.getSession({ headers: await headers() }),
   ]);
+  const roles = filterRolesByAccess(rawRoles, scope);
+  const users = filterUsersByAccess(rawUsers, scope);
+  const personnelGroups = filterPersonnelGroupsByAccess(rawPersonnelGroups, scope);
+  const epics = filterEpicsByAccess(rawEpics, scope);
 
   const isAdmin = session?.user?.role === "admin";
 

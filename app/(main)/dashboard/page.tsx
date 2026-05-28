@@ -37,28 +37,19 @@ import { DashboardClientWidgets } from "./DashboardClientWidgets";
 import Link from "next/link";
 import { EpicInteractionLayer } from "./EpicInteractionLayer";
 import type { EpicSummary } from "@/shared/types";
+import { requireWorkspacePage } from "@/shared/lib/page-auth";
+import { filterEpicsByAccess, filterUsersByAccess, summarizeEpics, type WorkspaceAccessScope } from "@/shared/lib/access-scope";
 
 export const dynamic = "force-dynamic";
 
 
 // ─── Async компонент для тяжёлых виджетов ────────────────────────────────────
 // getAllEpicsWithTasks() включает все данные из getAllEpics() — дублирование убрано.
-async function HeavyWidgets() {
-  const epicsWithTasks = await getAllEpicsWithTasks();
+async function HeavyWidgets({ scope }: { scope: WorkspaceAccessScope }) {
+  const epicsWithTasks = filterEpicsByAccess(await getAllEpicsWithTasks(), scope);
 
   // Вычисляем EpicSummary из EpicWithTasks — без лишнего SQL-запроса
-  const epicSummaries: EpicSummary[] = epicsWithTasks.map((e) => ({
-    id:          e.id,
-    title:       e.title,
-    description: e.description,
-    color:       e.color,
-    startDate:   e.startDate,
-    endDate:     e.endDate,
-    createdAt:   e.createdAt,
-    updatedAt:   e.updatedAt,
-    taskCount:   e.progress.total,
-    doneCount:   e.progress.done,
-  }));
+  const epicSummaries: EpicSummary[] = summarizeEpics(epicsWithTasks);
 
   return (
     <>
@@ -124,6 +115,7 @@ function HeavyWidgetsSkeleton() {
 
 // ─── Главная страница ─────────────────────────────────────────────────────────
 export default async function DashboardPage() {
+  const scope = await requireWorkspacePage();
   /*
    * БЫСТРЫЕ запросы — рендерим немедленно:
    *   getAllEpics()  → 1 SQL (только суммарные данные для stats/header)
@@ -133,10 +125,13 @@ export default async function DashboardPage() {
    * Эпики для EpicInteractionLayer теперь приходят из HeavyWidgets
    * чтобы избежать дублирования getAllEpics() + getAllEpicsWithTasks().
    */
-  const [epics, users] = await Promise.all([
-    getAllEpics(),
+  const [rawEpics, epicsWithTasks, rawUsers] = await Promise.all([
+    scope.isVariableRestricted ? Promise.resolve([]) : getAllEpics(),
+    scope.isVariableRestricted ? getAllEpicsWithTasks() : Promise.resolve([]),
     getAllUsers(),
   ]);
+  const epics = scope.isVariableRestricted ? summarizeEpics(filterEpicsByAccess(epicsWithTasks, scope)) : rawEpics;
+  const users = filterUsersByAccess(rawUsers, scope);
 
   const totalTasks = epics.reduce((s, e) => s + e.taskCount, 0);
   const doneTasks = epics.reduce((s, e) => s + e.doneCount, 0);
@@ -237,7 +232,7 @@ export default async function DashboardPage() {
          *   2. Epics grid + Workload + Timeline → как только getAllEpicsWithTasks() завершится
          */}
         <Suspense fallback={<HeavyWidgetsSkeleton />}>
-          <HeavyWidgets />
+          <HeavyWidgets scope={scope} />
         </Suspense>
       </div>
     </div>

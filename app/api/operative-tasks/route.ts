@@ -7,8 +7,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createOperativeTask } from "@/entities/operative/operativeRepository";
+import { getUserWithMetaById } from "@/entities/user/userRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, optionalSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const CreateSchema = z.object({
@@ -21,7 +22,7 @@ const CreateSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const session = await optionalSession();
+    const session = await requireAdminSession();
 
 
     const body = await req.json();
@@ -33,6 +34,9 @@ export async function POST(req: Request) {
         { status: 422 },
       );
     }
+
+    const assignee = await getUserWithMetaById(parsed.data.userId);
+    if (!assignee) return NextResponse.json({ ok: false, error: "User not found" }, { status: 404 });
 
     const task = await createOperativeTask(parsed.data);
 
@@ -52,9 +56,7 @@ export async function POST(req: Request) {
 
     // ✅ FIX: writeAuditLog was missing here
     await writeAuditLog({
-      actor: session
-        ? { userId: session.user.id, role: session.user.role }
-        : { userId: null, role: null }, action: "create",
+      actor: { userId: session.user.id, role: session.user.role }, action: "create",
       entityType: "operative_task",
       entityId: task.id,
       after: task,

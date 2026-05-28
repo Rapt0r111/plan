@@ -4,10 +4,16 @@ import { getPersonalPlanItemState } from "@/shared/lib/personal-plan";
 import { auth } from "@/shared/lib/auth";
 import { Header } from "@/widgets/header/Header";
 import { PersonalPlanBoard } from "./PersonalPlanBoard";
+import { requireWorkspacePage } from "@/shared/lib/page-auth";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function PersonalPlanPage() {
+  const scope = await requireWorkspacePage();
+  if (scope.isVariableRestricted) {
+    redirect("/dashboard");
+  }
   const [data, session] = await Promise.all([
     getPersonalPlanData(),
     auth.api.getSession({ headers: await headers() }),

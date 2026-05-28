@@ -8,7 +8,7 @@
 
 import { db } from "@/shared/db/client";
 import { authUsers, personnelGroups, users, roles } from "@/shared/db/schema";
-import { eq, max } from "drizzle-orm"; // Добавлен импорт max
+import { eq, isNull, max } from "drizzle-orm"; // Добавлен импорт max
 import type { UserWithMeta, DbUser, DbRole } from "@/shared/types";
 
 export const USERS_CACHE_TAG = "users";
@@ -117,4 +117,54 @@ export async function linkAuthUserToProfile(profileId: number, authUserId: strin
 export async function getAuthUserByLogin(login: string) {
   const [row] = await db.select().from(authUsers).where(eq(authUsers.login, login));
   return row ?? null;
+}
+
+
+export type UnlinkedAuthUser = {
+  id: string;
+  name: string;
+  login: string | null;
+  email: string;
+  role: "admin" | "member";
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export async function getUserWithMetaById(id: number): Promise<UserWithMeta | null> {
+  const [row] = await db
+    .select({
+      user: users,
+      role: roles,
+      personnelGroup: personnelGroups,
+    })
+    .from(users)
+    .innerJoin(roles, eq(users.roleId, roles.id))
+    .leftJoin(personnelGroups, eq(roles.personnelGroupId, personnelGroups.id))
+    .where(eq(users.id, id));
+
+  if (!row) return null;
+  return {
+    ...row.user,
+    roleMeta: { ...row.role, personnelGroup: row.personnelGroup },
+  };
+}
+
+export async function getAuthUserById(id: string) {
+  const [row] = await db.select().from(authUsers).where(eq(authUsers.id, id));
+  return row ?? null;
+}
+
+export async function getUnlinkedAuthUsers(): Promise<UnlinkedAuthUser[]> {
+  return db
+    .select({
+      id: authUsers.id,
+      name: authUsers.name,
+      login: authUsers.login,
+      email: authUsers.email,
+      role: authUsers.role,
+      createdAt: authUsers.createdAt,
+      updatedAt: authUsers.updatedAt,
+    })
+    .from(authUsers)
+    .where(isNull(authUsers.profileId));
 }

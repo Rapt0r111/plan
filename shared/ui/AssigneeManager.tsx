@@ -116,7 +116,7 @@ export function AssigneeManager({ taskId, assignees, users }: Props) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.12 }}
-                className="absolute bottom-full left-0 mb-1 z-30 rounded-xl overflow-hidden shadow-2xl"
+                className="absolute bottom-full left-0 mb-1 z-50 max-h-[min(60dvh,320px)] rounded-xl overflow-y-auto shadow-2xl"
                 style={{ background: "var(--bg-surface)", border: "1px solid var(--glass-border)", minWidth: 180 }}
               >
                 {available.map((u) => (

@@ -41,6 +41,7 @@ interface FloatingPosition {
   top: number;
   left: number;
   width: number;
+  maxHeight: number;
 }
 
 const EMPTY_VALUE = "";
@@ -80,10 +81,19 @@ export function SelectField({
     const trigger = triggerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
+    const margin = 12;
+    const desiredWidth = Math.max(rect.width, 180);
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const spaceBelow = viewportHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+    const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(160, Math.min(288, openUp ? spaceAbove - 7 : spaceBelow - 7));
     setPosition({
-      top: rect.bottom + 7,
-      left: rect.left,
+      top: openUp ? Math.max(margin, rect.top - maxHeight - 7) : Math.min(rect.bottom + 7, viewportHeight - margin - maxHeight),
+      left: Math.min(Math.max(margin, rect.left), viewportWidth - desiredWidth - margin),
       width: rect.width,
+      maxHeight,
     });
   }
 
@@ -205,12 +215,13 @@ export function SelectField({
           id={listboxId}
           role="listbox"
           aria-label={label ?? title ?? placeholder}
-          className="z-[9999] max-h-72 overflow-y-auto rounded-xl p-1 shadow-2xl backdrop-blur-xl"
+          className="z-[9999] overflow-y-auto rounded-xl p-1 shadow-2xl backdrop-blur-xl"
           style={{
             position: "fixed",
             top: position.top,
             left: position.left,
             width: Math.max(position.width, 180),
+            maxHeight: position.maxHeight,
             background: "linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 96%, white 4%), var(--bg-elevated))",
             border: "1px solid var(--glass-border-active)",
             boxShadow: "0 18px 48px rgba(0,0,0,0.48), 0 0 0 1px var(--glass-border), 0 0 28px color-mix(in srgb, var(--select-accent, var(--accent-400)) 14%, transparent)",

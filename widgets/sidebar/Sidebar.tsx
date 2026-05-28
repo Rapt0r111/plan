@@ -83,6 +83,7 @@ interface Props {
   epics: (DbEpic & { taskCount: number; doneCount: number })[];
   users: UserWithMeta[];
   session: Session | null;
+  isVariableRestricted?: boolean;
 }
 
 function SyncBadge({ isCollapsed }: { isCollapsed: boolean }) {
@@ -141,10 +142,12 @@ function SyncBadge({ isCollapsed }: { isCollapsed: boolean }) {
   );
 }
 
-export function Sidebar({ epics, users, session }: Props) {
+export function Sidebar({ epics, users, session, isVariableRestricted = false }: Props) {
   const pathname = usePathname();
   const { isCollapsed, mounted, toggle } = useSidebar();
 
+  const sessionProfileId = (session?.user as { profileId?: number | null } | undefined)?.profileId;
+  const isLimitedAccount = !!session?.user && session.user.role !== "admin" && typeof sessionProfileId !== "number";
   const overallTotal = epics.reduce((s, e) => s + e.taskCount, 0);
   const overallDone  = epics.reduce((s, e) => s + e.doneCount, 0);
   const overallPct   = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
@@ -211,40 +214,61 @@ export function Sidebar({ epics, users, session }: Props) {
           )}
         </div>
 
-        {/* ── Primary Nav ── */}
-        <nav className={cn("pt-4 space-y-1 transition-all duration-300", isCollapsed ? "px-1.5" : "px-3")}>
+        {/* -- Primary Nav -- */}
+        <nav className={cn("pt-4 space-y-3 transition-all duration-300", isCollapsed ? "px-1.5" : "px-3")}>
           {([
-            { href: "/dashboard",  label: "Обзор",             icon: DashboardIcon  },
-            { href: "/management", label: "Контроль",          icon: ManagementIcon },
-            { href: "/board",      label: "Доска",              icon: BoardIcon      },
-            { href: "/operative",  label: "Оперативные задачи", icon: OperativeIcon  },
-            { href: "/personal-plan", label: "Личный план", icon: PersonalPlanIcon },
-            { href: "/settings",   label: "Настройки",          icon: SettingsIcon   },
-          ] as const).map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(href + "/");
-            return (
-              <Link key={href} href={href}
-                className={cn(
-                  "nav-item group flex items-center transition-all duration-300 rounded-xl",
-                  active
-                    ? "bg-[var(--accent-glow)] text-[var(--accent-400)] border border-[rgba(139,92,246,0.25)] font-medium"
-                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent hover:bg-[var(--glass-01)]",
-                  isCollapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5"
-                )}
-                title={isCollapsed ? label : undefined}
-              >
-                <Icon active={active} />
-                <span className={cn(
-                  "truncate text-xs transition-all duration-300",
-                  isCollapsed ? "w-0 opacity-0 pointer-events-none select-none hidden" : "opacity-100"
-                )}>
-                  {label}
-                </span>
-              </Link>
-            );
-          })}
+            {
+              title: "Работа",
+              items: isLimitedAccount ? [] : [
+                { href: "/dashboard", label: "Обзор", icon: DashboardIcon },
+                { href: "/management", label: "Контроль", icon: ManagementIcon },
+                { href: "/board", label: "Доска", icon: BoardIcon },
+                { href: "/operative", label: "Оперативные", icon: OperativeIcon },
+                ...(!isVariableRestricted ? [{ href: "/personal-plan", label: "Личный план", icon: PersonalPlanIcon }] : []),
+              ],
+            },
+            {
+              title: "Аккаунт",
+              items: [
+                ...(session?.user ? [{ href: "/profile", label: "Профиль", icon: ProfileIcon }] : []),
+                ...(!isLimitedAccount ? [{ href: "/settings", label: "Настройки", icon: SettingsIcon }] : []),
+              ],
+            },
+          ] as const).filter((group) => group.items.length > 0).map((group) => (
+            <div key={group.title} className="space-y-1">
+              {!isCollapsed && (
+                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+                  {group.title}
+                </p>
+              )}
+              {group.items.map(({ href, label, icon: Icon }) => {
+                const active = pathname === href || pathname.startsWith(href + "/");
+                return (
+                  <Link key={href} href={href}
+                    className={cn(
+                      "nav-item group flex items-center transition-all duration-300 rounded-xl",
+                      active
+                        ? "bg-[var(--accent-glow)] text-[var(--accent-400)] border border-[rgba(139,92,246,0.25)] font-medium"
+                        : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent hover:bg-[var(--glass-01)]",
+                      isCollapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5"
+                    )}
+                    title={isCollapsed ? label : undefined}
+                  >
+                    <Icon active={active} />
+                    <span className={cn(
+                      "truncate text-xs transition-all duration-300",
+                      isCollapsed ? "w-0 opacity-0 pointer-events-none select-none hidden" : "opacity-100"
+                    )}>
+                      {label}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
+        {!isLimitedAccount && (<>
         {/* ── Overall progress (Схлопывается по вертикали) ── */}
         <div className={cn(
           "mx-3 transition-all duration-300 overflow-hidden shrink-0",
@@ -322,13 +346,15 @@ export function Sidebar({ epics, users, session }: Props) {
           <TeamAvatars users={users} maxVisible={6} />
         </div>
 
-        {/* ── User menu ── */}
-        {session?.user && (
+        </>)}
+
+        {/* -- User menu / auth CTA -- */}
+        {session?.user ? (
           <div className={cn("pb-2 transition-all duration-300 shrink-0", isCollapsed ? "px-1.5" : "px-3")} title={isCollapsed ? session.user.name : undefined}>
             <div className={cn("mb-2 transition-all duration-300", isCollapsed ? "max-h-0 opacity-0 overflow-hidden mb-0" : "max-h-12 opacity-100")}>
               <NotificationCenter />
             </div>
-            <div className={cn("overflow-hidden transition-all duration-300", isCollapsed ? "w-10 h-10 mx-auto rounded-xl bg-[var(--glass-01)] border border-[var(--glass-border)] flex items-center justify-center" : "w-full")}>
+            <div className={cn("overflow-visible transition-all duration-300", isCollapsed ? "w-10 h-10 mx-auto rounded-xl bg-[var(--glass-01)] border border-[var(--glass-border)] flex items-center justify-center" : "w-full")}>
               <UserMenu
                 userId={session.user.id}
                 name={session.user.name}
@@ -336,6 +362,32 @@ export function Sidebar({ epics, users, session }: Props) {
                 role={session.user.role ?? "member"}
               />
             </div>
+          </div>
+        ) : (
+          <div className={cn("pb-2 transition-all duration-300 shrink-0", isCollapsed ? "px-1.5" : "px-3")}>
+            {isCollapsed ? (
+              <Link
+                href="/login"
+                className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center border text-[var(--accent-400)]"
+                style={{ background: "var(--glass-01)", borderColor: "rgba(139,92,246,0.3)" }}
+                title="Войти"
+              >
+                <LoginIcon />
+              </Link>
+            ) : (
+              <div className="rounded-2xl p-3 space-y-2" style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>
+                <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>Войдите в аккаунт</p>
+                <p className="text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>Доступ к профилю и задачам после авторизации.</p>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <Link href="/login" className="px-3 py-2 rounded-xl text-xs font-semibold text-center" style={{ background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.3)" }}>
+                    Войти
+                  </Link>
+                  <Link href="/register" className="px-3 py-2 rounded-xl text-xs font-semibold text-center" style={{ background: "var(--glass-02)", color: "var(--text-secondary)", border: "1px solid var(--glass-border)" }}>
+                    Регистрация
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -428,6 +480,24 @@ function PersonalPlanIcon({ active }: { active: boolean }) {
       <path d="M5 1.5v2M11 1.5v2M2.5 6h11" />
       <path d="M5 9h2.2M5 11.5h4.5" />
       <circle cx="11.5" cy="9.5" r="1.4" fill={active ? "var(--accent-400)" : "transparent"} stroke="currentColor" strokeWidth="1.1" />
+    </svg>
+  );
+}
+
+function ProfileIcon({ active }: { active: boolean }) {
+  return (
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="5" r="3" />
+      <path d="M2.5 14c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
+    </svg>
+  );
+}
+
+function LoginIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 3.5V2.5A1.5 1.5 0 0 1 7.5 1h5A1.5 1.5 0 0 1 14 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 6 13.5v-1" />
+      <path d="M1.5 8h8M7.5 5.8 9.7 8l-2.2 2.2" />
     </svg>
   );
 }

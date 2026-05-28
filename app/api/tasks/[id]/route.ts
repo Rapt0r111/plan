@@ -15,7 +15,8 @@ import { eq } from "drizzle-orm";
 import { updateTask, deleteTask, getTaskById } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";
 import { broadcast } from "@/shared/server/eventBus";
-import { authErrorToResponse, requireAdminSession, optionalSession } from "@/shared/lib/route-auth";
+import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { canAccessTask } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 const PatchTaskSchema = z.object({
@@ -37,6 +38,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
   try {
+    const scope = await requireWorkspaceAccess();
     const { id } = await params;
     const taskId  = Number(id);
 
@@ -45,10 +47,12 @@ export async function GET(_req: Request, { params }: Params) {
     }
 
     const task = await getTaskById(taskId);
-    if (!task) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    if (!task || !canAccessTask(scope, task)) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
     return NextResponse.json({ ok: true, data: task });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
@@ -56,7 +60,7 @@ export async function GET(_req: Request, { params }: Params) {
 export async function PATCH(req: Request, { params }: Params) {
   try {
     // Auth is optional — anyone can update tasks; actor is logged for audit
-    const session = await optionalSession();
+    const scope = await requireWorkspaceAccess();
     const { id } = await params;
     const taskId  = Number(id);
 
@@ -110,15 +114,14 @@ export async function PATCH(req: Request, { params }: Params) {
     }
 
     const before = await getTaskById(taskId);
+    if (!before || !canAccessTask(scope, before)) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     await updateTask(taskId, patch);
     const after = await getTaskById(taskId);
     revalidateTag(EPICS_CACHE_TAG, "max");
 
     broadcast("task:updated", { taskId, patch });
     await writeAuditLog({
-      actor: session
-        ? { userId: session.user.id, role: session.user.role }
-        : { userId: null, role: null },
+      actor: { userId: scope.session.user.id, role: scope.session.user.role },
       action: "update",
       entityType: "task",
       entityId: taskId,
@@ -128,6 +131,8 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }

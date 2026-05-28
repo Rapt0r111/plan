@@ -660,6 +660,19 @@ docker exec taskflow_app \
 docker compose start taskflow
 ```
 
+# 1. Скопировать вашу резервную копию внутрь запущенного тестового контейнера
+docker cp ./taskflow_backup_20240115_030000.db taskflow_app_test:/tmp/restore.db
+
+# 2. Заменить текущую БД внутри тестового контейнера
+docker exec taskflow_app_test \
+  sh -c "cp /tmp/restore.db /app/data/taskflow.db"
+
+# 3. Перезапустить тестовый контейнер, чтобы сбросить кэш и обновить подключения к БД
+docker compose restart taskflow
+
+# 4. Удалить временный файл из контейнера (опционально, для чистоты)
+docker exec taskflow_app_test rm /tmp/restore.db
+
 ### Seed — заполнение тестовыми данными
 
 Seed содержит: 5 эпиков, 26 задач, 55+ подзадач, 9 пользователей, 8 ролей.

@@ -29,16 +29,14 @@
 import { Suspense } from "react";
 import { getAllEpics } from "@/entities/epic/epicRepository";
 import { getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
-import { getAllUsers } from "@/entities/user/userRepository";
 import { Header } from "@/widgets/header/Header";
-import { RoleBadge } from "@/features/role-badge/RoleBadge";
 import { StoreHydrator } from "@/shared/store/StoreHydrator";
 import { DashboardClientWidgets } from "./DashboardClientWidgets";
 import Link from "next/link";
 import { EpicInteractionLayer } from "./EpicInteractionLayer";
 import type { EpicSummary } from "@/shared/types";
 import { requireWorkspacePage } from "@/shared/lib/page-auth";
-import { filterEpicsByAccess, filterUsersByAccess, summarizeEpics, type WorkspaceAccessScope } from "@/shared/lib/access-scope";
+import { filterEpicsByAccess, summarizeEpics, type WorkspaceAccessScope } from "@/shared/lib/access-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -125,13 +123,11 @@ export default async function DashboardPage() {
    * Эпики для EpicInteractionLayer теперь приходят из HeavyWidgets
    * чтобы избежать дублирования getAllEpics() + getAllEpicsWithTasks().
    */
-  const [rawEpics, epicsWithTasks, rawUsers] = await Promise.all([
+  const [rawEpics, epicsWithTasks] = await Promise.all([
     scope.isVariableRestricted ? Promise.resolve([]) : getAllEpics(),
     scope.isVariableRestricted ? getAllEpicsWithTasks() : Promise.resolve([]),
-    getAllUsers(),
   ]);
   const epics = scope.isVariableRestricted ? summarizeEpics(filterEpicsByAccess(epicsWithTasks, scope)) : rawEpics;
-  const users = filterUsersByAccess(rawUsers, scope);
 
   const totalTasks = epics.reduce((s, e) => s + e.taskCount, 0);
   const doneTasks = epics.reduce((s, e) => s + e.doneCount, 0);

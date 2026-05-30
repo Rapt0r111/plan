@@ -14,6 +14,7 @@ import { broadcast } from "@/shared/server/eventBus";
 import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
 import { canAccessUser } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
+import { getBlockedReasonValidationError, normalizeTaskStatusPatch } from "@/shared/lib/task-status-rules";
 
 const SubtaskInputSchema = z.object({
   isCompleted: z.boolean().default(false),
@@ -50,6 +51,15 @@ export async function POST(req: Request) {
     }
 
     const { assigneeIds, subtasks, ...taskData } = parsed.data;
+    const blockedReasonError = getBlockedReasonValidationError({
+      nextStatus: taskData.status,
+      nextBlockedReason: taskData.blockedReason,
+    });
+    if (blockedReasonError) {
+      return NextResponse.json({ ok: false, error: blockedReasonError }, { status: 422 });
+    }
+
+    const normalizedTaskData = normalizeTaskStatusPatch(taskData);
     if (scope.isVariableRestricted) {
       const assignees = await Promise.all((assigneeIds ?? []).map((id) => getUserWithMetaById(id)));
       if (assignees.length === 0 || assignees.some((user) => !user || !canAccessUser(scope, user))) {
@@ -58,7 +68,7 @@ export async function POST(req: Request) {
     }
 
     const result = await createTaskWithRelations({
-      task:        taskData,
+      task:        normalizedTaskData,
       assigneeIds: assigneeIds ?? [],
       subtasks:    (subtasks ?? []).map((s, i) => ({
         title:       `Подзадача ${i + 1}`,
@@ -79,7 +89,7 @@ export async function POST(req: Request) {
       action: "create",
       entityType: "task",
       entityId: result.taskId,
-      after: { ...taskData, assigneeIds, subtasks },
+      after: { ...normalizedTaskData, assigneeIds, subtasks },
     });
 
     return NextResponse.json(

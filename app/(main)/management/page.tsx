@@ -14,7 +14,7 @@ export default async function ManagementPage() {
     { label: "Открыто задач", value: overview.kpi.openTasks, color: "#38bdf8" },
     { label: "Выполнено", value: `${overview.kpi.completionRate}%`, color: "#34d399" },
     { label: "Требует внимания", value: overview.kpi.attentionRequired, color: "#f87171" },
-    { label: "Личный план", value: `${overview.kpi.personalPlanCompletionRate}%`, color: "#a78bfa" },
+    { label: "Недельный план", value: `${overview.kpi.personalPlanCompletionRate}%`, color: "#a78bfa" },
   ];
 
   return (

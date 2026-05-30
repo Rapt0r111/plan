@@ -19,6 +19,13 @@ export function usePaletteCommands(): CommandItem[] {
   return useMemo<CommandItem[]>(() => {
     const nav: CommandItem[] = [
       {
+        id: "nav-today", category: "navigation",
+        label: "Открыть: Сегодня / Мой день",
+        description: "Личный фокус, просрочки, дедлайны и очередь внимания",
+        icon: "☀️", keywords: ["today", "сегодня", "мой день", "фокус", "просрочки"],
+        onSelect: () => { router.push("/today"); close(); },
+      },
+      {
         id: "nav-dashboard", category: "navigation",
         label: "Перейти на обзор",
         description: "Главная страница с эпиками и командой",
@@ -87,6 +94,14 @@ export function usePaletteCommands(): CommandItem[] {
         icon: "🚫", color: "#f87171",
         keywords: ["blocked", "заблокировано", "проблема"],
         onSelect: () => { router.push("/board"); close(); },
+      },
+      {
+        id: "action-my-overdue", category: "action",
+        label: "Показать мои просрочки",
+        description: "Открыть экран дня с личными и командными просрочками",
+        icon: "⚠️", color: "#f87171",
+        keywords: ["overdue", "просрочки", "мои просрочки", "дедлайн", "срок"],
+        onSelect: () => { router.push("/today"); close(); },
       },
       {
         id: "action-filter-done", category: "action",

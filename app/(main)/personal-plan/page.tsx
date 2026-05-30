@@ -39,7 +39,7 @@ export default async function PersonalPlanPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <Header
-        title="Личный план"
+        title="Недельный план"
         subtitle={subtitleParts.join(" · ")}
         actions={
           <div className="flex items-center gap-2">

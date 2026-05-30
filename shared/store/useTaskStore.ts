@@ -186,7 +186,7 @@ interface TaskStore {
   addTask: (epicId: number, title: string, status?: TaskStatus) => Promise<void>;
   createTask: (params: { epicId: number; title: string; status?: TaskStatus; priority?: TaskPriority }) => Promise<TaskView | null>;
   createTaskWithSubtasks: (params: CreateWithSubtasksParams) => Promise<TaskView | null>;
-  updateTaskStatus: (taskId: number, status: TaskStatus) => Promise<void>;
+  updateTaskStatus: (taskId: number, status: TaskStatus, options?: { blockedReason?: string | null }) => Promise<void>;
   updateTaskPriority: (taskId: number, priority: TaskPriority) => Promise<void>;
   updateTaskTitle: (taskId: number, title: string) => Promise<void>;
   updateTaskDescription: (taskId: number, description: string | null) => Promise<void>;
@@ -574,6 +574,7 @@ export const useTaskStore = create<TaskStore>()(
                 title: op.title,
                 status: op.status,
                 priority: op.priority,
+                blockedReason: op.blockedReason ?? null,
                 description: op.description,
                 dueDate: op.dueDate,
                 sortOrder: op.sortOrder,
@@ -1134,14 +1135,18 @@ export const useTaskStore = create<TaskStore>()(
     },
 
     // ── updateTaskStatus ──────────────────────────────────────────────────────
-    updateTaskStatus: async (taskId, status) => {
+    updateTaskStatus: async (taskId, status, options) => {
       // ✅ OFFLINE GUARD: block all writes when offline
       if (isCurrentlyOffline()) { notifyOfflineBlocked(); return; }
 
       const task = get().tasks[taskId];
       if (!task || task.status === status) return;
+      const nextBlockedReason = status === "blocked"
+        ? (options?.blockedReason?.trim() || task.blockedReason || null)
+        : null;
 
       const prevStatus = task.status;
+      const prevBlockedReason = task.blockedReason;
       const prevSubtasks = task.subtasks;
       const subtasksToUpdate: number[] = [];
 
@@ -1155,7 +1160,7 @@ export const useTaskStore = create<TaskStore>()(
       set((s) => {
         const doneCt = updatedSubtasks.filter((st) => st.isCompleted).length;
         const updated: TaskView = {
-          ...s.tasks[taskId], status, subtasks: updatedSubtasks,
+          ...s.tasks[taskId], status, blockedReason: nextBlockedReason, subtasks: updatedSubtasks,
           progress: { total: updatedSubtasks.length, done: doneCt },
         };
         return {
@@ -1177,7 +1182,7 @@ export const useTaskStore = create<TaskStore>()(
             isCompleted: st.isCompleted,
             sortOrder: st.sortOrder,
           }));
-          await updatePendingOp({ ...createOp, status, subtasks: mergedSubtasks });
+          await updatePendingOp({ ...createOp, status, blockedReason: nextBlockedReason, subtasks: mergedSubtasks });
         }
         return;
       }
@@ -1185,7 +1190,7 @@ export const useTaskStore = create<TaskStore>()(
       const stopTracking = get()._trackMutation(taskId);
       const done = get()._beginOp();
       try {
-        const res = await apiPatch(`/api/tasks/${taskId}`, { status });
+        const res = await apiPatch(`/api/tasks/${taskId}`, { status, blockedReason: nextBlockedReason });
         if (!res.ok && res.status !== 409) throw new Error(`status ${res.status}`);
         if (subtasksToUpdate.length > 0) {
           await Promise.all(
@@ -1197,7 +1202,7 @@ export const useTaskStore = create<TaskStore>()(
           await enqueuePendingOp({
             kind: "patch_task",
             url: `/api/tasks/${taskId}`,
-            patch: { status },
+            patch: { status, blockedReason: nextBlockedReason },
             expectedUpdatedAt: task.updatedAt,
           });
           for (const subtaskId of subtasksToUpdate) {
@@ -1215,7 +1220,7 @@ export const useTaskStore = create<TaskStore>()(
         } else {
           set((s) => {
             const rolled: TaskView = {
-              ...s.tasks[taskId], status: prevStatus, subtasks: prevSubtasks,
+              ...s.tasks[taskId], status: prevStatus, blockedReason: prevBlockedReason, subtasks: prevSubtasks,
               progress: { total: prevSubtasks.length, done: prevSubtasks.filter((st) => st.isCompleted).length },
             };
             return {

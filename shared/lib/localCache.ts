@@ -120,6 +120,7 @@ export type PendingOp =
       title:       string;
       status:      string;
       priority:    string;
+      blockedReason?: string | null;
       description: string | null;
       dueDate:     string | null;
       sortOrder:   number;
@@ -162,6 +163,7 @@ export type PendingOpInput =
       title:       string;
       status:      string;
       priority:    string;
+      blockedReason?: string | null;
       description: string | null;
       dueDate:     string | null;
       sortOrder:   number;

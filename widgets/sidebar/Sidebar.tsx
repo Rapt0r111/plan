@@ -220,11 +220,12 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
             {
               title: "Работа",
               items: isLimitedAccount ? [] : [
+                { href: "/today", label: "Сегодня", icon: TodayIcon },
                 { href: "/dashboard", label: "Обзор", icon: DashboardIcon },
                 { href: "/management", label: "Контроль", icon: ManagementIcon },
                 { href: "/board", label: "Доска", icon: BoardIcon },
                 { href: "/operative", label: "Оперативные", icon: OperativeIcon },
-                ...(!isVariableRestricted ? [{ href: "/personal-plan", label: "Личный план", icon: PersonalPlanIcon }] : []),
+                ...(!isVariableRestricted ? [{ href: "/personal-plan", label: "Недельный план", icon: PersonalPlanIcon }] : []),
               ],
             },
             {
@@ -266,7 +267,6 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
             </div>
           ))}
         </nav>
-
 
         {/* ── Epics list ── */}
         <div className={cn("pt-4 flex-1 overflow-y-auto min-h-0 transition-all duration-300", isCollapsed ? "px-1.5" : "px-3")}>
@@ -320,7 +320,6 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
             })}
           </div>
         </div>
-
 
 
         {/* -- User menu / auth CTA -- */}
@@ -411,6 +410,16 @@ function DashboardIcon({ active }: { active: boolean }) {
       <rect x="9" y="1" width="6" height="6" rx="1.5" fillOpacity={active ? 0.7 : 0.4} />
       <rect x="1" y="9" width="6" height="6" rx="1.5" fillOpacity={active ? 0.7 : 0.4} />
       <rect x="9" y="9" width="6" height="6" rx="1.5" fillOpacity={active ? 1 : 0.7} />
+    </svg>
+  );
+}
+
+function TodayIcon({ active }: { active: boolean }) {
+  return (
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2.5" width="12" height="11" rx="2" />
+      <path d="M5 1.5v2M11 1.5v2M2.5 6h11" />
+      <path d="M5 9.2l1.6 1.6L11 7.5" />
     </svg>
   );
 }

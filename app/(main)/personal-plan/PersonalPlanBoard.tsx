@@ -229,7 +229,7 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
       {/* Inject CSS animations once */}
       <style>{ANIMATION_STYLES}</style>
 
-      <main className="p-3 lg:p-4 space-y-3" aria-label="Личный план недели">
+      <main className="p-3 lg:p-4 space-y-3" aria-label="Недельный план">
         {/* Header card */}
         <section
           className="relative overflow-hidden rounded-[26px] px-3.5 py-3.5 lg:px-4"
@@ -254,7 +254,7 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
                 </span>
               </div>
               <h2 className="text-xl font-semibold tracking-tight text-(--text-primary) lg:text-2xl">
-                Личный план: недельный план постоянного состава
+                Недельный план: недельный план постоянного состава
               </h2>
 
             </div>

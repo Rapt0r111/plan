@@ -65,7 +65,7 @@ const PRIORITY_CFG: Record<string, { color: string; glow: string }> = {
   low: { color: "#475569", glow: "rgba(71,85,105,0.08)" },
 };
 
-const STATUS_CYCLE: TaskStatus[] = ["todo", "in_progress", "done", "blocked"];
+const STATUS_CYCLE: TaskStatus[] = ["todo", "in_progress", "done"];
 
 // ── SVG Subtask Ring ──────────────────────────────────────────────────────────
 

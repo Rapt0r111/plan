@@ -18,6 +18,7 @@ import { broadcast } from "@/shared/server/eventBus";
 import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
 import { canAccessTask } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
+import { getBlockedReasonValidationError, normalizeTaskStatusPatch } from "@/shared/lib/task-status-rules";
 
 const PatchTaskSchema = z.object({
   title:              z.string().min(1).max(200).optional(),
@@ -115,11 +116,26 @@ export async function PATCH(req: Request, { params }: Params) {
 
     const before = await getTaskById(taskId);
     if (!before || !canAccessTask(scope, before)) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
-    await updateTask(taskId, patch);
+    const blockedReasonError = getBlockedReasonValidationError({
+      currentStatus: before.status,
+      currentBlockedReason: before.blockedReason,
+      nextStatus: patch.status,
+      nextBlockedReason: patch.blockedReason,
+    });
+    if (blockedReasonError) {
+      return NextResponse.json({ ok: false, error: blockedReasonError }, { status: 422 });
+    }
+
+    const normalizedPatch = normalizeTaskStatusPatch(
+      patch.status === "blocked" && patch.blockedReason === undefined
+        ? { ...patch, blockedReason: before.blockedReason }
+        : patch
+    );
+    await updateTask(taskId, normalizedPatch);
     const after = await getTaskById(taskId);
     revalidateTag(EPICS_CACHE_TAG, "max");
 
-    broadcast("task:updated", { taskId, patch });
+    broadcast("task:updated", { taskId, patch: normalizedPatch });
     await writeAuditLog({
       actor: { userId: scope.session.user.id, role: scope.session.user.role },
       action: "update",

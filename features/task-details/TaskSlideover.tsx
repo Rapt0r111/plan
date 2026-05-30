@@ -219,6 +219,21 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
     updateTaskStatus(liveTask.id, isDone ? "todo" : "done");
   }, [liveTask, isDone, updateTaskStatus]);
 
+  const handleStatusChange = useCallback((nextStatus: TaskStatus) => {
+    if (!liveTask) return;
+
+    if (nextStatus !== "blocked") {
+      updateTaskStatus(liveTask.id, nextStatus);
+      return;
+    }
+
+    const currentReason = liveTask.blockedReason?.trim();
+    const reason = currentReason || window.prompt("Коротко укажите причину блокировки")?.trim();
+    if (!reason) return;
+
+    updateTaskStatus(liveTask.id, nextStatus, { blockedReason: reason });
+  }, [liveTask, updateTaskStatus]);
+
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -362,7 +377,7 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                       return (
                         <button
                           key={s}
-                          onClick={() => updateTaskStatus(liveTask.id, s)}
+                          onClick={() => handleStatusChange(s)}
                           style={{
                             padding:      "4px 12px",
                             borderRadius: 99,
@@ -382,6 +397,11 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                       );
                     })}
                   </div>
+                  {liveTask.status === "blocked" && (
+                    <p className="mt-2 rounded-xl px-3 py-2 text-xs" style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)", color: "#fca5a5" }}>
+                      Причина: {liveTask.blockedReason || "не указана"}
+                    </p>
+                  )}
                 </motion.div>
 
                 {/* Priority */}

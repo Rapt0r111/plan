@@ -187,38 +187,7 @@ export default async function DashboardPage() {
           ))}
         </div>
 
-        {/* ── Команда (рендерится мгновенно) ────────────────────────── */}
-        <section>
-          <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">
-            Команда
-          </h2>
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}
-          >
-            {users.map((user, idx) => (
-              <div
-                key={user.id}
-                className="px-4 py-3 flex items-center gap-3"
-                style={{
-                  borderBottom:
-                    idx < users.length - 1 ? "1px solid var(--glass-border)" : "none",
-                }}
-              >
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                  style={{ backgroundColor: user.roleMeta.hex }}
-                >
-                  {user.initials}
-                </div>
-                <span className="text-sm font-medium text-(--text-primary) flex-1">
-                  {user.name}
-                </span>
-                <RoleBadge roleMeta={user.roleMeta} size="sm" />
-              </div>
-            ))}
-          </div>
-        </section>
+
 
         {/*
          * ── Тяжёлые виджеты + Эпики (стримятся вместе) ────────────────

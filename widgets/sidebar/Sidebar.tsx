@@ -230,7 +230,6 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
             {
               title: "Аккаунт",
               items: [
-                ...(session?.user ? [{ href: "/profile", label: "Профиль", icon: ProfileIcon }] : []),
                 ...(!isLimitedAccount ? [{ href: "/settings", label: "Настройки", icon: SettingsIcon }] : []),
               ],
             },
@@ -268,21 +267,6 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
           ))}
         </nav>
 
-        {!isLimitedAccount && (<>
-        {/* ── Overall progress (Схлопывается по вертикали) ── */}
-        <div className={cn(
-          "mx-3 transition-all duration-300 overflow-hidden shrink-0",
-          isCollapsed ? "max-h-0 opacity-0 mt-0 mb-0 px-0 py-0 border-transparent" : "mt-4 mb-1 px-3 py-2.5 rounded-xl bg-[var(--glass-01)] border border-[var(--glass-border)] opacity-100"
-        )}>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs text-(--text-muted)">Общий прогресс</span>
-            <span className="text-xs font-mono font-semibold" style={{ color: "var(--accent-400)" }}>{overallPct}%</span>
-          </div>
-          <div className="h-1 bg-[var(--glass-02)] rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${overallPct}%`, background: "linear-gradient(90deg, var(--accent-500), var(--accent-400))", boxShadow: "0 0 8px var(--accent-glow)" }} />
-          </div>
-          <p className="mt-1 text-xs text-(--text-muted) font-mono">{overallDone}/{overallTotal} задач</p>
-        </div>
 
         {/* ── Epics list ── */}
         <div className={cn("pt-4 flex-1 overflow-y-auto min-h-0 transition-all duration-300", isCollapsed ? "px-1.5" : "px-3")}>
@@ -337,16 +321,7 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
           </div>
         </div>
 
-        {/* ── Team section (Схлопывается по вертикали) ── */}
-        <div className={cn(
-          "mx-3 transition-all duration-300 overflow-hidden shrink-0",
-          isCollapsed ? "max-h-0 opacity-0 mb-0 p-0 border-transparent" : "max-h-28 mb-3 px-3 py-3 rounded-xl bg-[var(--glass-01)] border border-[var(--glass-border)] opacity-100"
-        )}>
-          <p className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-2">Команда</p>
-          <TeamAvatars users={users} maxVisible={6} />
-        </div>
 
-        </>)}
 
         {/* -- User menu / auth CTA -- */}
         {session?.user ? (

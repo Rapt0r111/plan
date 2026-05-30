@@ -10,7 +10,7 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { db } from "@/shared/db/client";
-import { subtasks, tasks } from "@/shared/db/schema";
+import { subtasks } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
 import { getTaskById } from "@/entities/task/taskRepository";
 import { EPICS_CACHE_TAG } from "@/entities/epic/epicRepository";

@@ -58,7 +58,7 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
   return (
     <>
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-8 max-w-6xl">
+        <div className="p-6 space-y-8">
 
           {/* ── Hero progress banner ──────────────────────────────────── */}
           <motion.div
@@ -195,7 +195,7 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
                   </p>
                 ) : (
                   <motion.div
-                    className="grid grid-cols-1 lg:grid-cols-2 gap-3"
+                    className="grid grid-cols-1 gap-3"
                     initial="hidden"
                     animate="visible"
                     variants={{

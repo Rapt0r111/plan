@@ -5,7 +5,7 @@ import {
   getPersonalPlanItemById,
   setPersonalPlanCompletion,
 } from "@/entities/personal-plan/personalPlanRepository";
-import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
+import { authErrorToResponse, optionalSession } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 import { broadcast } from "@/shared/server/eventBus";
 
@@ -23,10 +23,7 @@ function parseId(raw: string): number | null {
 
 export async function PATCH(req: Request, { params }: Params) {
   try {
-    const scope = await requireWorkspaceAccess();
-    if (scope.isVariableRestricted) {
-      return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
-    }
+    const session = await optionalSession();
     const itemId = parseId((await params).id);
     if (!itemId) return NextResponse.json({ ok: false, error: "Invalid item id" }, { status: 400 });
 
@@ -43,7 +40,7 @@ export async function PATCH(req: Request, { params }: Params) {
       itemId,
       date: parsed.data.date,
       completed: parsed.data.completed,
-      completedByUserId: scope.session.user.id,
+      completedByUserId: session?.user.id ?? null,
     });
 
     revalidatePath("/personal-plan");
@@ -55,7 +52,7 @@ export async function PATCH(req: Request, { params }: Params) {
     });
 
     await writeAuditLog({
-      actor: { userId: scope.session.user.id, role: scope.session.user.role },
+      actor: { userId: session?.user.id ?? null, role: session?.user.role ?? "anonymous" },
       action: parsed.data.completed ? "complete" : "uncomplete",
       entityType: "personal_plan_completion",
       entityId: itemId,

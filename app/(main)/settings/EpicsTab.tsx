@@ -506,29 +506,7 @@ export function EpicsTab({ initialEpics }: Props) {
           <p className="text-xs text-(--text-muted)">Выполнено</p>
           <p className="text-xl font-bold font-mono" style={{ color: "#34d399" }}>{doneTasks}</p>
         </div>
-        {totalTasks > 0 && (
-          <>
-            <div className="w-px h-8 bg-[var(--glass-border)]" />
-            <div className="flex-1">
-              <div className="flex justify-between mb-1">
-                <p className="text-xs text-(--text-muted)">Общий прогресс</p>
-                <p className="text-xs font-mono font-semibold" style={{ color: "var(--accent-400)" }}>
-                  {Math.round((doneTasks / totalTasks) * 100)}%
-                </p>
               </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--glass-02)" }}>
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{
-                    width: `${Math.round((doneTasks / totalTasks) * 100)}%`,
-                    background: "linear-gradient(90deg, var(--accent-500), var(--accent-400))",
-                  }}
-                />
-              </div>
-            </div>
-          </>
-        )}
-      </div>
 
       {/* Error toast */}
       <AnimatePresence>

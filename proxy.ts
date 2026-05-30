@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// better-auth default session cookie name
-const SESSION_COOKIE = "better-auth.session_token";
-
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -19,14 +16,9 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const sessionToken = request.cookies.get(SESSION_COOKIE);
-  const isAuthenticated = !!sessionToken?.value;
-
-  // Auth pages: redirect to dashboard if already logged in
+  // Auth pages must stay reachable even when a stale/expired auth cookie exists.
+  // Validity is DB-backed and cannot be proven from the proxy cookie presence alone.
   if (pathname === "/login" || pathname === "/register") {
-    if (isAuthenticated) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
-    }
     return NextResponse.next();
   }
 

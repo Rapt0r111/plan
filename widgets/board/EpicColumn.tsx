@@ -10,6 +10,7 @@
  *  • Hover glow + ambient mesh BG retained
  */
 import { useMemo, useState, useRef } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { applyFilters, type FilterState } from "@/features/filters/SmartFilters";
 import { useBoardDnD } from "@/features/board/hooks/useBoardDnD";
@@ -307,25 +308,47 @@ export function EpicColumn({
           <div className="relative flex items-start gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1.5">
-                {/* Pulsing orb */}
-                <div className="relative shrink-0 mt-0.5">
-                  <motion.div
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{
-                      backgroundColor: epic.color,
-                      boxShadow: `0 0 8px ${epic.color}, 0 0 16px ${epic.color}60`,
-                    }}
-                    animate={hovered ? { scale: [1, 1.25, 1] } : {}}
-                    transition={{ duration: 1.8, repeat: hovered ? Infinity : 0 }}
-                  />
-                </div>
-
-                <h3
-                  className="text-sm font-semibold truncate flex-1"
-                  style={{ color: "var(--text-primary)" }}
+                <Link
+                  href={`/epics/${epic.id}`}
+                  className="group/epic-link flex min-w-0 flex-1 items-center gap-2 rounded-lg outline-none transition-colors duration-200 hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                  style={{ ["--tw-ring-color" as string]: epic.color }}
+                  aria-label={`Открыть эпик ${epic.title}`}
+                  title="Открыть страницу эпика"
                 >
-                  {epic.title}
-                </h3>
+                  {/* Pulsing orb */}
+                  <div className="relative shrink-0 mt-0.5">
+                    <motion.div
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{
+                        backgroundColor: epic.color,
+                        boxShadow: `0 0 8px ${epic.color}, 0 0 16px ${epic.color}60`,
+                      }}
+                      animate={hovered ? { scale: [1, 1.25, 1] } : {}}
+                      transition={{ duration: 1.8, repeat: hovered ? Infinity : 0 }}
+                    />
+                  </div>
+
+                  <h3
+                    className="truncate text-sm font-semibold transition-colors duration-200 group-hover/epic-link:underline"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    {epic.title}
+                  </h3>
+
+                  <svg
+                    className="h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity duration-200 group-hover/epic-link:opacity-80 group-focus-visible/epic-link:opacity-100"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ color: epic.color }}
+                    aria-hidden="true"
+                  >
+                    <path d="M4.5 2H10v5.5M10 2L2 10" />
+                  </svg>
+                </Link>
 
                 {/* Collapse toggle */}
                 <motion.button

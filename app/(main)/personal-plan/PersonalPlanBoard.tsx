@@ -254,11 +254,9 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
                 </span>
               </div>
               <h2 className="text-xl font-semibold tracking-tight text-(--text-primary) lg:text-2xl">
-                Личный план: плотный недельный пульт
+                Личный план: недельный план постоянного состава
               </h2>
-              <p className="mt-1 max-w-3xl text-xs leading-relaxed text-(--text-secondary)">
-                Фокус на том, что нужно выполнить сегодня: сотрудники, статусы, просрочки и быстрые отметки в одной компактной сетке.
-              </p>
+
             </div>
 
             <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:justify-end">

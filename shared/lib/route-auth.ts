@@ -1,8 +1,9 @@
 import { headers } from "next/headers";
 import { auth } from "@/shared/lib/auth";
 
-import { hasLinkedProfile } from "@/shared/lib/auth-access";
+import { hasLinkedProfile, requiresPasswordChange } from "@/shared/lib/auth-access";
 import { resolveAccessScope } from "@/shared/lib/access-scope";
+import { authErrorToResponse } from "@/shared/lib/auth-errors";
 
 export async function optionalSession() {
   return auth.api.getSession({ headers: await headers() });
@@ -20,8 +21,15 @@ export async function requireAuthenticatedSession() {
   return session;
 }
 
+function assertPasswordChangeCompleted(session: Awaited<ReturnType<typeof getCurrentSession>>) {
+  if (session?.user && requiresPasswordChange(session.user)) {
+    throw new Error("PASSWORD_CHANGE_REQUIRED");
+  }
+}
+
 export async function requireSession() {
   const session = await requireAuthenticatedSession();
+  assertPasswordChangeCompleted(session);
   if (!hasLinkedProfile(session.user)) {
     throw new Error("PROFILE_REQUIRED");
   }
@@ -35,17 +43,11 @@ export async function requireWorkspaceAccess() {
 
 export async function requireAdminSession() {
   const session = await requireAuthenticatedSession();
+  assertPasswordChangeCompleted(session);
   if (session.user.role !== "admin") {
     throw new Error("FORBIDDEN");
   }
   return session;
 }
 
-export function authErrorToResponse(error: unknown): { status: number; message: string; code?: string } | null {
-  const msg = String(error);
-  if (msg.includes("UNAUTHORIZED")) return { status: 401, message: "Unauthorized", code: "UNAUTHORIZED" };
-  if (msg.includes("PROFILE_REQUIRED")) return { status: 403, message: "Profile assignment required", code: "PROFILE_REQUIRED" };
-  if (msg.includes("ACCESS_DENIED")) return { status: 403, message: "Access denied", code: "ACCESS_DENIED" };
-  if (msg.includes("FORBIDDEN")) return { status: 403, message: "Forbidden: requires admin role", code: "FORBIDDEN" };
-  return null;
-}
+export { authErrorToResponse };

@@ -7,7 +7,6 @@ import { createContext, useContext, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/shared/lib/utils";
-import { TeamAvatars } from "@/features/team/TeamAvatars";
 import { useSyncStatus } from "@/shared/store/useTaskStore";
 import { UserMenu } from "@/shared/ui/UserMenu";
 import { NotificationCenter } from "@/features/notifications/NotificationCenter";
@@ -84,6 +83,7 @@ interface Props {
   users: UserWithMeta[];
   session: Session | null;
   isVariableRestricted?: boolean;
+  isPasswordChangeRequired?: boolean;
 }
 
 function SyncBadge({ isCollapsed }: { isCollapsed: boolean }) {
@@ -142,15 +142,14 @@ function SyncBadge({ isCollapsed }: { isCollapsed: boolean }) {
   );
 }
 
-export function Sidebar({ epics, users, session, isVariableRestricted = false }: Props) {
+export function Sidebar({ epics, users: _users, session, isVariableRestricted = false, isPasswordChangeRequired = false }: Props) {
   const pathname = usePathname();
   const { isCollapsed, mounted, toggle } = useSidebar();
+  void _users;
 
   const sessionProfileId = (session?.user as { profileId?: number | null } | undefined)?.profileId;
   const isLimitedAccount = !!session?.user && session.user.role !== "admin" && typeof sessionProfileId !== "number";
-  const overallTotal = epics.reduce((s, e) => s + e.taskCount, 0);
-  const overallDone  = epics.reduce((s, e) => s + e.doneCount, 0);
-  const overallPct   = overallTotal > 0 ? Math.round((overallDone / overallTotal) * 100) : 0;
+  const isRestrictedToPasswordChange = isPasswordChangeRequired;
 
   const sidebarTransitionStyle = mounted
     ? "width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
@@ -219,7 +218,7 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
           {([
             {
               title: "Работа",
-              items: isLimitedAccount ? [] : [
+              items: isRestrictedToPasswordChange ? [] : isLimitedAccount ? [] : [
                 { href: "/today", label: "Сегодня", icon: TodayIcon },
                 { href: "/dashboard", label: "Обзор", icon: DashboardIcon },
                 { href: "/management", label: "Контроль", icon: ManagementIcon },
@@ -231,7 +230,9 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
             {
               title: "Аккаунт",
               items: [
-                ...(!isLimitedAccount ? [{ href: "/settings", label: "Настройки", icon: SettingsIcon }] : []),
+                ...(isRestrictedToPasswordChange
+                  ? [{ href: "/profile", label: "Сменить пароль", icon: SettingsIcon }]
+                  : !isLimitedAccount ? [{ href: "/settings", label: "Настройки", icon: SettingsIcon }] : []),
               ],
             },
           ] as const).filter((group) => group.items.length > 0).map((group) => (
@@ -270,13 +271,21 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
 
         {/* ── Epics list ── */}
         <div className={cn("pt-4 flex-1 overflow-y-auto min-h-0 transition-all duration-300", isCollapsed ? "px-1.5" : "px-3")}>
+          {isRestrictedToPasswordChange && !isCollapsed && (
+            <div
+              className="mb-3 rounded-xl p-3 text-xs leading-relaxed"
+              style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.22)", color: "#fbbf24" }}
+            >
+              Сначала смените пароль. Остальные разделы временно недоступны.
+            </div>
+          )}
           <p className={cn(
             "pb-2 text-xs font-semibold text-(--text-muted) uppercase tracking-widest transition-all duration-300 text-center",
-            isCollapsed ? "opacity-0 h-0 overflow-hidden pb-0" : "px-3 opacity-100"
+            isCollapsed || isRestrictedToPasswordChange ? "opacity-0 h-0 overflow-hidden pb-0" : "px-3 opacity-100"
           )}>
             Эпики
           </p>
-          <div className="space-y-1">
+          <div className={cn("space-y-1", isRestrictedToPasswordChange ? "opacity-0 pointer-events-none h-0 overflow-hidden" : "")}>
             {epics.map((epic) => {
               const pct = epic.taskCount > 0 ? Math.round((epic.doneCount / epic.taskCount) * 100) : 0;
               const isActive = pathname === `/epics/${epic.id}`;
@@ -325,9 +334,11 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
         {/* -- User menu / auth CTA -- */}
         {session?.user ? (
           <div className={cn("pb-2 transition-all duration-300 shrink-0", isCollapsed ? "px-1.5" : "px-3")} title={isCollapsed ? session.user.name : undefined}>
-            <div className={cn("mb-2 transition-all duration-300", isCollapsed ? "max-h-0 opacity-0 overflow-hidden mb-0" : "max-h-12 opacity-100")}>
-              <NotificationCenter />
-            </div>
+            {!isRestrictedToPasswordChange && (
+              <div className={cn("mb-2 transition-all duration-300", isCollapsed ? "max-h-0 opacity-0 overflow-hidden mb-0" : "max-h-12 opacity-100")}>
+                <NotificationCenter />
+              </div>
+            )}
             <div className={cn("overflow-visible transition-all duration-300", isCollapsed ? "w-10 h-10 mx-auto rounded-xl bg-[var(--glass-01)] border border-[var(--glass-border)] flex items-center justify-center" : "w-full")}>
               <UserMenu
                 userId={session.user.id}
@@ -367,7 +378,7 @@ export function Sidebar({ epics, users, session, isVariableRestricted = false }:
 
         {/* ── Footer: sync status ── */}
         <div className={cn("border-t border-[var(--glass-border)] transition-all duration-300 shrink-0", isCollapsed ? "px-2 py-3" : "px-4 py-3")}>
-          <SyncBadge isCollapsed={isCollapsed} />
+          {!isRestrictedToPasswordChange && <SyncBadge isCollapsed={isCollapsed} />}
         </div>
       </div>
     </aside>
@@ -464,15 +475,6 @@ function PersonalPlanIcon({ active }: { active: boolean }) {
       <path d="M5 1.5v2M11 1.5v2M2.5 6h11" />
       <path d="M5 9h2.2M5 11.5h4.5" />
       <circle cx="11.5" cy="9.5" r="1.4" fill={active ? "var(--accent-400)" : "transparent"} stroke="currentColor" strokeWidth="1.1" />
-    </svg>
-  );
-}
-
-function ProfileIcon({ active }: { active: boolean }) {
-  return (
-    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="8" cy="5" r="3" />
-      <path d="M2.5 14c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
     </svg>
   );
 }

@@ -35,7 +35,8 @@ export default function LoginPage() {
           return;
         }
 
-        router.push("/dashboard");
+        const redirectTo = data?.data?.user?.forcePasswordChange ? "/profile" : "/dashboard";
+        router.push(redirectTo);
         router.refresh();
       } catch {
         setError("Ошибка соединения. Попробуйте снова.");

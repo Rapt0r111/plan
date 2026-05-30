@@ -181,6 +181,10 @@ export const authUsers = sqliteTable("user", {
   name: text("name").notNull(),
   login: text("login").unique(),
   profileId: integer("profile_id").references(() => users.id, { onDelete: "set null" }),
+  forcePasswordChange: integer("force_password_change", { mode: "boolean" }).notNull().default(false),
+  banned: integer("banned", { mode: "boolean" }).notNull().default(false),
+  banReason: text("ban_reason"),
+  banExpires: integer("ban_expires", { mode: "timestamp" }),
   email: text("email").notNull().unique(),
   emailVerified: integer("emailVerified", { mode: "boolean" }).notNull().default(false),
   image: text("image"),
@@ -196,6 +200,7 @@ export const sessions = sqliteTable("session", {
   ipAddress: text("ipAddress"),
   userAgent: text("userAgent"),
   userId: text("userId").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  impersonatedBy: text("impersonatedBy"),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull(),
 });

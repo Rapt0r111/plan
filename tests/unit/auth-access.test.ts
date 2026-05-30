@@ -1,5 +1,5 @@
 ﻿import { describe, expect, it } from "vitest";
-import { hasLinkedProfile } from "@/shared/lib/auth-access";
+import { hasLinkedProfile, requiresPasswordChange } from "@/shared/lib/auth-access";
 
 describe("auth workspace access", () => {
   it("lets admins bootstrap workspace access without a linked personnel profile", () => {
@@ -13,5 +13,11 @@ describe("auth workspace access", () => {
 
   it("allows regular members after profile assignment", () => {
     expect(hasLinkedProfile({ role: "member", profileId: 12 })).toBe(true);
+  });
+
+  it("detects when a password change is required before access", () => {
+    expect(requiresPasswordChange({ forcePasswordChange: true })).toBe(true);
+    expect(requiresPasswordChange({ forcePasswordChange: false })).toBe(false);
+    expect(requiresPasswordChange({})).toBe(false);
   });
 });

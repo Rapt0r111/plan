@@ -97,12 +97,14 @@ function UserCard({
     roles,
     personnelGroups,
     onUpdate,
+    onForcePasswordChange,
     onDelete,
 }: {
     user: UserWithMeta;
     roles: DbRole[];
     personnelGroups: DbPersonnelGroup[];
     onUpdate: (patch: { name?: string; login?: string; roleId?: number }) => void;
+    onForcePasswordChange: () => void;
     onDelete: () => void;
 }) {
     const [editField, setEditField] = useState<"name" | "login" | null>(null);
@@ -205,6 +207,18 @@ function UserCard({
             >
                 {user.initials}
             </span>
+
+            <button
+                onClick={onForcePasswordChange}
+                className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-(--text-muted) hover:text-amber-400 hover:bg-amber-500/10"
+                title="Принудительно сменить пароль"
+            >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M4.5 6V4.5a2.5 2.5 0 1 1 5 0V6" />
+                    <rect x="3" y="6" width="8" height="5" rx="1.2" />
+                    <path d="M7 8.2v1.1" />
+                </svg>
+            </button>
 
             {/* Delete */}
             <button
@@ -625,6 +639,7 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
     const [unlinkedAccounts, setUnlinkedAccounts] = useState<UnlinkedAccount[]>([]);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [notice, setNotice] = useState<string | null>(null);
     const [groupFilter, setGroupFilter] = useState<string | "all">("all");
     const visibleUsers =
         groupFilter === "all"
@@ -645,6 +660,7 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
     const handleUpdate = useCallback(
         async (user: UserWithMeta, patch: { name?: string; login?: string; roleId?: number }) => {
             const snapshot = localUsers;
+            setNotice(null);
 
             const newRoleMeta = patch.roleId
                 ? (roles.find((r) => r.id === patch.roleId) ?? user.roleMeta)
@@ -687,6 +703,7 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
     const handleDelete = useCallback(
         async (user: UserWithMeta) => {
             const snapshot = localUsers;
+            setNotice(null);
             setLocalUsers((prev) => prev.filter((u) => u.id !== user.id));
 
             try {
@@ -703,6 +720,39 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
         },
         [localUsers]
     );
+
+    const handleForcePasswordChange = useCallback(async (user: UserWithMeta) => {
+        const tempPassword = window.prompt(
+            `??????? ????????? ?????? ??? ${user.name}`,
+            `Tmp-${crypto.randomUUID().slice(0, 8)}!`
+        );
+
+        if (!tempPassword) return;
+        if (tempPassword.length < 8) {
+            setError("????????? ?????? ?????? ????????? ?? ????? 8 ????????");
+            return;
+        }
+
+        setError(null);
+        setNotice(null);
+
+        try {
+            const res = await fetch(`/api/users/${user.id}/force-password`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ newPassword: tempPassword }),
+            });
+            const json = await res.json();
+            if (!res.ok) {
+                setError(json.error ?? "?????? ?????????????? ????? ??????");
+                return;
+            }
+
+            setNotice(`??? ${user.name} ?????????? ????????? ?????? ? ???????????? ????? ??? ????????? ?????.`);
+        } catch {
+            setError("??????? ??????");
+        }
+    }, []);
 
     return (
         <div className="max-w-3xl space-y-4">
@@ -779,6 +829,22 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
                 })}
             </div>
 
+            {notice && (
+                <div
+                    className="px-4 py-3 rounded-xl text-sm flex items-center gap-3"
+                    style={{
+                        background: "rgba(52,211,153,0.1)",
+                        border: "1px solid rgba(52,211,153,0.25)",
+                        color: "#34d399",
+                    }}
+                >
+                    {notice}
+                    <button onClick={() => setNotice(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">
+                        ?
+                    </button>
+                </div>
+            )}
+
             {/* Error toast */}
             {error && (
                 <div
@@ -820,6 +886,7 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
                                     roles={roles}
                                     personnelGroups={personnelGroups}
                                     onUpdate={(patch) => handleUpdate(user, patch)}
+                                    onForcePasswordChange={() => handleForcePasswordChange(user)}
                                     onDelete={() => handleDelete(user)}
                                 />
                             ))}
@@ -846,6 +913,7 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
                                     roles={roles}
                                     personnelGroups={personnelGroups}
                                     onUpdate={(patch) => handleUpdate(user, patch)}
+                                    onForcePasswordChange={() => handleForcePasswordChange(user)}
                                     onDelete={() => handleDelete(user)}
                                 />
                             ))}

@@ -13,7 +13,7 @@ import { PrefsApplicator } from "@/shared/ui/PrefsApplicator";
 import { SyncOrchestrator } from "@/shared/store/SyncOrchestrator";
 import { RealtimeProvider } from "@/shared/store/RealtimeProvider";
 import { auth } from "@/shared/lib/auth";
-import { hasLinkedProfile } from "@/shared/lib/auth-access";
+import { hasLinkedProfile, requiresPasswordChange } from "@/shared/lib/auth-access";
 import { filterEpicsByAccess, filterRolesByAccess, filterUsersByAccess, resolveAccessScope, summarizeEpics } from "@/shared/lib/access-scope";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -23,6 +23,15 @@ async function SidebarLoader() {
 
   if (!session?.user) {
     redirect("/login");
+  }
+
+  if (session?.user && requiresPasswordChange(session.user)) {
+    return (
+      <>
+        <RoleHydrator roles={[]} />
+        <Sidebar epics={[]} users={[]} session={session} isPasswordChangeRequired />
+      </>
+    );
   }
 
   if (session?.user && !hasLinkedProfile(session.user)) {

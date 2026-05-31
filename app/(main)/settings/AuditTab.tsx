@@ -33,6 +33,10 @@ const ACTION_META: Record<string, { color: string; bg: string; icon: string; lab
   update:          { color: "#38bdf8", bg: "rgba(56,189,248,0.12)",  icon: "✎",  label: "Изменение"         },
   delete:          { color: "#f87171", bg: "rgba(239,68,68,0.12)",   icon: "✕",  label: "Удаление"          },
   update_status:   { color: "#a78bfa", bg: "rgba(139,92,246,0.12)", icon: "◉",  label: "Смена статуса"     },
+  update_due_date: { color: "#fbbf24", bg: "rgba(251,191,36,0.12)", icon: "⏱",  label: "Смена дедлайна"    },
+  create_subtask:  { color: "#34d399", bg: "rgba(52,211,153,0.12)",  icon: "+",  label: "Подзадача"         },
+  toggle_subtask:  { color: "#a78bfa", bg: "rgba(139,92,246,0.12)", icon: "✓",  label: "Статус подзадачи"  },
+  comment:         { color: "#38bdf8", bg: "rgba(56,189,248,0.12)",  icon: "◌",  label: "Комментарий"       },
   add_assignee:    { color: "#fbbf24", bg: "rgba(251,191,36,0.12)", icon: "+",  label: "Назначен исполнитель" },
   remove_assignee: { color: "#fb923c", bg: "rgba(251,146,60,0.12)", icon: "−",  label: "Снят исполнитель"  },
   reorder:         { color: "#64748b", bg: "rgba(100,116,139,0.12)",icon: "↕",  label: "Сортировка"        },
@@ -105,12 +109,28 @@ function humanReadableSummary(entry: AuditEntry): string {
     }
     case "update_status": {
       const oldStatus = (before as { status?: string })?.status;
-      const newStatus = (after as { status?: string })?.status ?? (meta as { status?: string })?.status;
+      const metaStatus = (meta as { status?: { to?: string } | string })?.status;
+      const newStatus = (after as { status?: string })?.status ?? (typeof metaStatus === "string" ? metaStatus : metaStatus?.to);
       if (oldStatus && newStatus) {
         return `${STATUS_LABELS[oldStatus] ?? oldStatus} → ${STATUS_LABELS[newStatus] ?? newStatus}`;
       }
       return `статус изменён`;
     }
+    case "update_due_date": {
+      const from = (meta as { dueDate?: { from?: string | null } })?.dueDate?.from ?? (before as { dueDate?: string | null })?.dueDate;
+      const to = (meta as { dueDate?: { to?: string | null } })?.dueDate?.to ?? (after as { dueDate?: string | null })?.dueDate;
+      return `${from ? formatTime(from).full.slice(0, 10) : "без дедлайна"} → ${to ? formatTime(to).full.slice(0, 10) : "без дедлайна"}`;
+    }
+    case "create_subtask": {
+      const title = (after as { title?: string })?.title;
+      return title ? `подзадача «${title}»` : `подзадача #${entry.entityId}`;
+    }
+    case "toggle_subtask": {
+      const state = (after as { isCompleted?: boolean })?.isCompleted;
+      return state ? "подзадача выполнена" : "подзадача возвращена в работу";
+    }
+    case "comment":
+      return "добавлен комментарий";
     case "add_assignee":
     case "remove_assignee": {
       const userId = (meta as { userId?: number })?.userId;

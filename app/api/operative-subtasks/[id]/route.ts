@@ -2,7 +2,7 @@
  * @file route.ts — app/api/operative-subtasks/[id]
  *
  * Permissions:
- *   PATCH (toggle isCompleted) — anyone (even unauthenticated)
+ *   PATCH (toggle isCompleted) — admins for anyone; members only for their own tasks
  *   DELETE                     — admin only (added v2)
  */
 import { NextResponse } from "next/server";
@@ -17,6 +17,7 @@ import { broadcast } from "@/shared/server/eventBus";
 import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
 import { canAccessUser } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
+import { canManageOperativeUser } from "@/shared/lib/operative-access";
 
 const ToggleSchema = z.object({
   isCompleted: z.boolean(),
@@ -42,12 +43,20 @@ export async function PATCH(req: Request, { params }: Params) {
     }
 
     const [ownerRow] = await db
-      .select({ userId: operativeTasks.userId })
+      .select({
+        userId: operativeTasks.userId,
+        taskId: operativeTasks.id,
+        subtaskTitle: operativeSubtasks.title,
+        isCompleted: operativeSubtasks.isCompleted,
+      })
       .from(operativeSubtasks)
       .innerJoin(operativeTasks, eq(operativeSubtasks.taskId, operativeTasks.id))
       .where(eq(operativeSubtasks.id, subtaskId));
     const owner = ownerRow ? await getUserWithMetaById(ownerRow.userId) : null;
-    if (!owner || !canAccessUser(scope, owner)) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    if (!ownerRow || !owner || !canAccessUser(scope, owner)) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    if (!canManageOperativeUser(scope, ownerRow.userId)) {
+      return NextResponse.json({ ok: false, error: "Forbidden: subtasks can be changed only by the owner or admin" }, { status: 403 });
+    }
 
     const subtask = await toggleOperativeSubtask(subtaskId, parsed.data.isCompleted);
     revalidatePath("/operative");
@@ -59,10 +68,18 @@ export async function PATCH(req: Request, { params }: Params) {
     });
     await writeAuditLog({
       actor: { userId: scope.session.user.id, role: scope.session.user.role },
-      action: "update_status",
+      action: "toggle_subtask",
       entityType: "operative_subtask",
       entityId: subtaskId,
+      before: { id: subtaskId, taskId: ownerRow.taskId, title: ownerRow.subtaskTitle, isCompleted: ownerRow.isCompleted },
       after: { ...subtask, isCompleted: parsed.data.isCompleted },
+      metadata: {
+        source: "api",
+        taskId: subtask.taskId,
+        targetUserId: ownerRow.userId,
+        changedFields: ["isCompleted"],
+        isCompleted: { from: ownerRow.isCompleted, to: parsed.data.isCompleted },
+      },
     });
 
     return NextResponse.json({ ok: true, data: subtask });

@@ -141,7 +141,12 @@ export default async function OperativeRoute({ searchParams }: OperativeRoutePro
 
       <div className="flex-1 overflow-y-auto">
         <OperativeCompositionTabs groups={personnelGroups} activeKey={activeGroupKey} />
-        <OperativePage initialData={data} isAdmin={isAdmin} groupKey={activeGroupKey} />
+        <OperativePage
+          initialData={data}
+          isAdmin={isAdmin}
+          currentUserId={scope.profile?.id ?? null}
+          groupKey={activeGroupKey}
+        />
       </div>
     </div>
   );

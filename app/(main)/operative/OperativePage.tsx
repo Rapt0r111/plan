@@ -27,15 +27,17 @@ import { getUserPersonnelGroupKey } from "@/shared/lib/personnel-composition";
 interface Props {
   initialData: UserWithOperativeTasks[];
   isAdmin: boolean;
+  currentUserId: number | null;
   groupKey: string;
 }
 
 // ── ИСПРАВЛЕНИЕ 1: memo — блок не ре-рендерится при DnD других блоков ─────────
 const SortableUserBlock = memo(function SortableUserBlock({
-  block, isAdmin, isDragEnabled,
+  block, isAdmin, currentUserId, isDragEnabled,
 }: {
   block: UserWithOperativeTasks;
   isAdmin: boolean;
+  currentUserId: number | null;
   isDragEnabled: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -55,6 +57,7 @@ const SortableUserBlock = memo(function SortableUserBlock({
       <UserTaskBlock
         block={block}
         isAdmin={isAdmin}
+        currentUserId={currentUserId}
         isDragging={isDragging}
         dragHandleProps={isDragEnabled ? { ...attributes, ...listeners } : null}
       />
@@ -64,7 +67,7 @@ const SortableUserBlock = memo(function SortableUserBlock({
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export function OperativePage({ initialData, isAdmin, groupKey }: Props) {
+export function OperativePage({ initialData, isAdmin, currentUserId, groupKey }: Props) {
   const hydrate = useOperativeStore((s) => s.hydrate);
   const isHydrated = useOperativeStore((s) => s.isHydrated);
   const userBlocks = useOperativeStore((s) => s.userBlocks);
@@ -203,6 +206,7 @@ export function OperativePage({ initialData, isAdmin, groupKey }: Props) {
               <SortableUserBlock
                 block={block}
                 isAdmin={isAdmin}
+                currentUserId={currentUserId}
                 isDragEnabled={isAdmin}
               />
             </motion.div>

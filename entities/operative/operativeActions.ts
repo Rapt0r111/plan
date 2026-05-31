@@ -19,13 +19,14 @@ import { db } from "@/shared/db/client";
 import { operativeTasks } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";
 import { createOperativeTask } from "@/entities/operative/operativeRepository";
+import { getUserWithMetaById } from "@/entities/user/userRepository";
 import { broadcast } from "@/shared/server/eventBus";
 import { writeAuditLog } from "@/shared/lib/audit";
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const CreateTaskSchema = z.object({
-  userId:      z.number().int().positive(),
+  userId:      z.number().int().positive().optional(),
   title:       z.string().min(1).max(200),
   description: z.string().max(2000).nullable().optional(),
   dueDate:     z.string().datetime().nullable().optional(),
@@ -55,12 +56,26 @@ const UpdateOrderSchema = z.object({
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 /**
- * createOperativeTaskAction — только администратор
+ * createOperativeTaskAction — admin can create for anyone; members only for themselves
  */
-export const createOperativeTaskAction = adminActionClient
+export const createOperativeTaskAction = authActionClient
   .schema(CreateTaskSchema)
   .action(async ({ parsedInput, ctx }) => {
-    const task = await createOperativeTask(parsedInput);
+    const profileId = (ctx.user as { profileId?: number | null }).profileId ?? null;
+    const targetUserId = ctx.user.role === "admin" ? parsedInput.userId : profileId;
+
+    if (targetUserId == null) {
+      throw new Error("Target user is required");
+    }
+    if (ctx.user.role !== "admin" && parsedInput.userId != null && parsedInput.userId !== targetUserId) {
+      throw new Error("Forbidden: operative tasks can be created only for yourself");
+    }
+
+    const assignee = await getUserWithMetaById(targetUserId);
+    if (!assignee) throw new Error(`User ${targetUserId} not found`);
+
+    const taskInput = { ...parsedInput, userId: targetUserId };
+    const task = await createOperativeTask(taskInput);
 
     revalidatePath("/operative");
     broadcast("task:created", { source: "operative", taskId: task.id });
@@ -71,7 +86,13 @@ export const createOperativeTaskAction = adminActionClient
       entityType: "operative_task",
       entityId:   task.id,
       after:      task,
-      metadata:   { userId: parsedInput.userId },
+      metadata:   {
+        source: "server_action",
+        mode: ctx.user.role === "admin" ? "admin_for_user" : "self",
+        targetUserId,
+        requestedUserId: parsedInput.userId ?? null,
+        changedFields: ["title", "description", "dueDate"].filter((field) => taskInput[field as keyof typeof taskInput] != null),
+      },
     });
 
     return { task };
@@ -91,6 +112,13 @@ export const updateOperativeTaskAction = authActionClient
     }
 
     const [before] = await db.select().from(operativeTasks).where(eq(operativeTasks.id, id));
+    if (!before) throw new Error(`Task ${id} not found`);
+
+    const profileId = (ctx.user as { profileId?: number | null }).profileId ?? null;
+    if (ctx.user.role !== "admin" && before.userId !== profileId) {
+      throw new Error("Forbidden: operative tasks can be changed only by the owner or admin");
+    }
+
     const [task] = await db
       .update(operativeTasks)
       .set({ ...patch, updatedAt: new Date().toISOString() })
@@ -113,6 +141,13 @@ export const updateOperativeTaskAction = authActionClient
       entityId:   id,
       before,
       after:      task,
+      metadata:   {
+        source: "server_action",
+        targetUserId: before.userId,
+        changedFields: Object.keys(patch),
+        ...(patch.status !== undefined && { status: { from: before.status, to: patch.status } }),
+        ...(patch.dueDate !== undefined && { dueDate: { from: before.dueDate, to: patch.dueDate } }),
+      },
     });
 
     return { task };

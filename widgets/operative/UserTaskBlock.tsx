@@ -97,14 +97,15 @@ function getDeadlineStyle(info: DeadlineInfo | null, isDone: boolean) {
 // ── Status pill ───────────────────────────────────────────────────────────────
 
 const StatusPill = memo(function StatusPill({
-  status, onClick,
-}: { status: OperativeTaskStatus; onClick: (e: React.MouseEvent) => void }) {
+  status, onClick, disabled = false,
+}: { status: OperativeTaskStatus; onClick: (e: React.MouseEvent) => void; disabled?: boolean }) {
   const s = STATUS[status];
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold select-none shrink-0"
-      style={{ background: s.bg, color: s.color, border: `1px solid ${s.dot}28`, cursor: "pointer" }}
+      style={{ background: s.bg, color: s.color, border: `1px solid ${s.dot}28`, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.82 : 1 }}
       title={`→ ${STATUS[s.next].label}`}
     >
       <motion.span
@@ -374,8 +375,8 @@ function QuickAddForm({ accentColor, onAdd, onCancel }: {
 // ── Sortable Task Card wrapper ─────────────────────────────────────────────────
 
 function SortableTaskCard({
-  task, userId, accentColor, isAdmin, isDragEnabled,
-}: { task: OperativeTaskView; userId: number; accentColor: string; isAdmin: boolean; isDragEnabled: boolean }) {
+  task, userId, accentColor, isAdmin, canEditTask, isDragEnabled,
+}: { task: OperativeTaskView; userId: number; accentColor: string; isAdmin: boolean; canEditTask: boolean; isDragEnabled: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id, disabled: !isDragEnabled,
   });
@@ -391,7 +392,7 @@ function SortableTaskCard({
     <div ref={setNodeRef} style={style}>
       <TaskCardInner
         task={task} userId={userId} accentColor={accentColor}
-        isAdmin={isAdmin} dragHandleProps={isDragEnabled ? { ...attributes, ...listeners } : null}
+        isAdmin={isAdmin} canEditTask={canEditTask} dragHandleProps={isDragEnabled ? { ...attributes, ...listeners } : null}
       />
     </div>
   );
@@ -400,12 +401,13 @@ function SortableTaskCard({
 // ── Task Card (inner) ─────────────────────────────────────────────────────────
 
 function TaskCardInner({
-  task, userId, accentColor, isAdmin, dragHandleProps,
+  task, userId, accentColor, isAdmin, canEditTask, dragHandleProps,
 }: {
   task:             OperativeTaskView;
   userId:           number;
   accentColor:      string;
   isAdmin:          boolean;
+  canEditTask:      boolean;
   dragHandleProps:  Record<string, unknown> | null;
 }) {
   const [open,          setOpen]          = useState(false);
@@ -433,21 +435,24 @@ function TaskCardInner({
 
   const cycleStatus = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canEditTask) return;
     updateStatus(liveTask.id, userId, STATUS[liveTask.status].next);
-  }, [liveTask.id, liveTask.status, userId, updateStatus]);
+  }, [canEditTask, liveTask.id, liveTask.status, userId, updateStatus]);
 
   const markDone = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canEditTask) return;
     updateStatus(liveTask.id, userId, liveTask.status !== "done" ? "done" : "todo");
-  }, [liveTask.id, liveTask.status, userId, updateStatus]);
+  }, [canEditTask, liveTask.id, liveTask.status, userId, updateStatus]);
 
   const handleDeleteTask = useCallback(() => {
     deleteTask(liveTask.id, userId);
   }, [liveTask.id, userId, deleteTask]);
 
   const handleAddComment = useCallback(async (body: string) => {
+    if (!canEditTask) return;
     await addComment(liveTask.id, userId, body);
-  }, [addComment, liveTask.id, userId]);
+  }, [addComment, canEditTask, liveTask.id, userId]);
 
   return (
     <motion.div
@@ -477,7 +482,7 @@ function TaskCardInner({
             </button>
           )}
 
-          <StatusPill status={liveTask.status} onClick={cycleStatus} />
+          <StatusPill status={liveTask.status} onClick={cycleStatus} disabled={!canEditTask} />
           <div className="flex-1 min-w-0" />
           <DueBadge dueDate={liveTask.dueDate} isDone={isDone} />
 
@@ -516,12 +521,15 @@ function TaskCardInner({
           </p>
           <motion.button
             onClick={markDone} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+            disabled={!canEditTask}
             title={isDone ? "Вернуть в работу" : "Выполнено"}
             className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5"
             style={{
               background: isDone ? "rgba(52,211,153,0.15)" : "var(--glass-01)",
               border:     isDone ? "1.5px solid #34d399" : "1.5px solid var(--glass-border-active)",
               color:      isDone ? "#34d399" : "var(--text-muted)",
+              cursor:     canEditTask ? "pointer" : "default",
+              opacity:    canEditTask ? 1 : 0.65,
             }}>
             <svg viewBox="0 0 10 10" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
               <path d="M1.5 5l2.5 2.5 4.5-4.5" />
@@ -594,7 +602,7 @@ function TaskCardInner({
                         subtask={st}
                         accentColor={accentColor}
                         isAdmin={isAdmin}
-                        onToggle={() => toggleSubtask(liveTask.id, userId, st.id, st.isCompleted)}
+                        onToggle={() => { if (canEditTask) toggleSubtask(liveTask.id, userId, st.id, st.isCompleted); }}
                         onDelete={() => deleteSubtask(liveTask.id, userId, st.id)}
                       />
                     ))}
@@ -614,8 +622,8 @@ function TaskCardInner({
                   )}
                 </AnimatePresence>
 
-                {/* Добавление подзадач — только для администратора */}
-                {!addingSub && isAdmin && (
+                {/* Добавление подзадач — владелец задачи или администратор */}
+                {!addingSub && canEditTask && (
                   <button onClick={() => setAddingSub(true)}
                     className="mt-2 flex items-center gap-1.5 text-xs w-full px-1 py-1 rounded-lg transition-all"
                     style={{ color: "var(--text-muted)" }}
@@ -633,7 +641,7 @@ function TaskCardInner({
                   <span className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "var(--text-muted)" }}>Комментарии</span>
                   {commentCount > 0 && <span className="text-[10px] font-mono" style={{ color: accentColor }}>{commentCount}</span>}
                 </div>
-                <CommentComposer accentColor={accentColor} onSave={handleAddComment} />
+                {canEditTask && <CommentComposer accentColor={accentColor} onSave={handleAddComment} />}
                 <div className="space-y-1.5">
                   {(liveTask.comments ?? []).map((comment) => (
                     <div
@@ -716,8 +724,8 @@ function TaskCardInner({
 
 // ── Sortable task list (admin with DnD) ───────────────────────────────────────
 
-function SortableTaskList({ tasks, userId, accentColor, isAdmin }: {
-  tasks: OperativeTaskView[]; userId: number; accentColor: string; isAdmin: boolean;
+function SortableTaskList({ tasks, userId, accentColor, isAdmin, canEditTask }: {
+  tasks: OperativeTaskView[]; userId: number; accentColor: string; isAdmin: boolean; canEditTask: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [optimisticTasks, setOptimisticTasks] = useOptimistic(
@@ -753,7 +761,7 @@ function SortableTaskList({ tasks, userId, accentColor, isAdmin }: {
           <AnimatePresence mode="popLayout">
             {optimisticTasks.map(task => (
               <SortableTaskCard key={task.id} task={task} userId={userId} accentColor={accentColor}
-                isAdmin={isAdmin} isDragEnabled={isAdmin} />
+                isAdmin={isAdmin} canEditTask={canEditTask} isDragEnabled={isAdmin} />
             ))}
           </AnimatePresence>
         </div>
@@ -768,6 +776,7 @@ function TaskStatusSection({
   userId,
   accentColor,
   isAdmin,
+  canEditTask,
   open,
   onToggle,
 }: {
@@ -776,6 +785,7 @@ function TaskStatusSection({
   userId: number;
   accentColor: string;
   isAdmin: boolean;
+  canEditTask: boolean;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -824,13 +834,13 @@ function TaskStatusSection({
             <div className="p-2.5 max-h-[420px] overflow-y-auto" style={{ borderTop: "1px solid var(--glass-border)" }}>
               {tasks.length > 0 ? (
                 isAdmin ? (
-                  <SortableTaskList tasks={tasks} userId={userId} accentColor={accentColor} isAdmin={isAdmin} />
+                  <SortableTaskList tasks={tasks} userId={userId} accentColor={accentColor} isAdmin={isAdmin} canEditTask={canEditTask} />
                 ) : (
                   <div className="grid gap-2">
                     <AnimatePresence mode="popLayout">
                       {tasks.map(task => (
                         <TaskCardInner key={task.id} task={task} userId={userId} accentColor={accentColor}
-                          isAdmin={false} dragHandleProps={null} />
+                          isAdmin={false} canEditTask={canEditTask} dragHandleProps={null} />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -856,12 +866,14 @@ function TaskStatusSection({
 interface Props {
   block:           UserWithOperativeTasks;
   isAdmin:         boolean;
+  currentUserId:   number | null;
   dragHandleProps?: Record<string, unknown> | null;
   isDragging?:     boolean;
 }
 
-export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: Props) {
+export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, isDragging }: Props) {
   const { user } = block;
+  const canEditTask = isAdmin || currentUserId === user.id;
 
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<OperativeTaskStatus, boolean>>({
@@ -980,6 +992,7 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
         {/* Header action buttons */}
         <div className="flex items-center gap-1 shrink-0 mt-0.5">
           {/* ✅ Кнопка «+» доступна ВСЕМ пользователям (не только admin) */}
+          {canEditTask && (
           <motion.button
             onClick={() => { setAddingFromHeader(v => !v); setAddingFromFooter(false); if (collapsed) setCollapsed(false); }}
             whileHover={{ scale: 1.1 }}
@@ -1001,6 +1014,7 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
               <path d="M6 1v10M1 6h10" />
             </motion.svg>
           </motion.button>
+          )}
 
           {/* Collapse / expand toggle */}
           <motion.button
@@ -1064,7 +1078,7 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
 
       {/* ── Quick-add form from header (shown above task list) ─────────── */}
       <AnimatePresence>
-        {addingFromHeader && !collapsed && (
+        {canEditTask && addingFromHeader && !collapsed && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -1105,7 +1119,9 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
                     </svg>
                   </div>
                   <p className="text-xs" style={{ color: "var(--text-muted)" }}>Нет задач</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>Нажмите «+» в заголовке чтобы добавить</p>
+                  {canEditTask && (
+                    <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>Нажмите «+» в заголовке чтобы добавить</p>
+                  )}
                 </motion.div>
               ) : (
                 <div className="space-y-2.5">
@@ -1117,6 +1133,7 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
                       userId={user.id}
                       accentColor={accentColor}
                       isAdmin={isAdmin}
+                      canEditTask={canEditTask}
                       open={openGroups[group.status]}
                       onToggle={() => toggleGroup(group.status)}
                     />
@@ -1125,7 +1142,7 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
               )}
 
               <AnimatePresence>
-                {addingFromFooter && (
+                {canEditTask && addingFromFooter && (
                   <QuickAddForm
                     key="add-footer" userId={user.id} accentColor={accentColor}
                     onAdd={handleAdd} onCancel={() => setAddingFromFooter(false)}
@@ -1135,7 +1152,7 @@ export function UserTaskBlock({ block, isAdmin, dragHandleProps, isDragging }: P
             </div>
 
             {/* ✅ Кнопка «Добавить задачу» в футере доступна ВСЕМ пользователям */}
-            {!addingFromFooter && !addingFromHeader && (
+            {canEditTask && !addingFromFooter && !addingFromHeader && (
               <div className="px-2.5 pb-2.5">
                 <motion.button
                   onClick={() => { setAddingFromFooter(true); setAddingFromHeader(false); }}

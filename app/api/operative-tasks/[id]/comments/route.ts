@@ -6,6 +6,7 @@ import { getUserWithMetaById } from "@/entities/user/userRepository";
 import { writeAuditLog } from "@/shared/lib/audit";
 import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
 import { canAccessUser } from "@/shared/lib/access-scope";
+import { canManageOperativeTask } from "@/shared/lib/operative-access";
 import { broadcast } from "@/shared/server/eventBus";
 
 const CreateCommentSchema = z.object({
@@ -36,6 +37,9 @@ export async function POST(req: Request, { params }: Params) {
     if (!task || !owner || !canAccessUser(scope, owner)) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }
+    if (!canManageOperativeTask(scope, task)) {
+      return NextResponse.json({ ok: false, error: "Forbidden: comments can be added only to your own operative tasks" }, { status: 403 });
+    }
     const comment = await createOperativeTaskComment({
       taskId,
       body: parsed.data.body,
@@ -56,6 +60,12 @@ export async function POST(req: Request, { params }: Params) {
       entityType: "operative_task",
       entityId: taskId,
       after: comment,
+      metadata: {
+        source: "api",
+        taskId,
+        targetUserId: task.userId,
+        changedFields: ["comment"],
+      },
     });
 
     return NextResponse.json({ ok: true, data: comment }, { status: 201 });

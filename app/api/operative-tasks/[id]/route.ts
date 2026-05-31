@@ -2,7 +2,7 @@
  * @file route.ts — app/api/operative-tasks/[id]
  *
  * Permissions:
- *   PATCH status  — anyone (even unauthenticated)
+ *   PATCH status  — admins for anyone; members only for their own tasks
  *   PATCH dueDate — admin only
  *   DELETE        — admin only (added v2)
  */
@@ -22,6 +22,7 @@ import { broadcast } from "@/shared/server/eventBus";
 import { authErrorToResponse, requireAdminSession, requireWorkspaceAccess } from "@/shared/lib/route-auth";
 import { canAccessUser } from "@/shared/lib/access-scope";
 import { writeAuditLog } from "@/shared/lib/audit";
+import { canManageOperativeTask } from "@/shared/lib/operative-access";
 
 const PatchSchema = z.object({
   status:  z.enum(["todo", "in_progress", "done"]).optional(),
@@ -69,6 +70,9 @@ export async function PATCH(req: Request, { params }: Params) {
     if (!current || !owner || !canAccessUser(scope, owner)) {
       return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     }
+    if (!canManageOperativeTask(scope, current)) {
+      return NextResponse.json({ ok: false, error: "Forbidden: operative tasks can be changed only by the owner or admin" }, { status: 403 });
+    }
     let task;
 
     if (status !== undefined) {
@@ -88,11 +92,25 @@ export async function PATCH(req: Request, { params }: Params) {
     });
     await writeAuditLog({
       actor: { userId: scope.session.user.id, role: scope.session.user.role },
-      action: "update",
+      action: status !== undefined && dueDate === undefined
+        ? "update_status"
+        : dueDate !== undefined && status === undefined
+          ? "update_due_date"
+          : "update",
       entityType: "operative_task",
       entityId: taskId,
+      before: current,
       after: task,
-      metadata: { status, dueDate },
+      metadata: {
+        source: "api",
+        targetUserId: current.userId,
+        changedFields: [
+          ...(status !== undefined ? ["status"] : []),
+          ...(dueDate !== undefined ? ["dueDate"] : []),
+        ],
+        status: status !== undefined ? { from: current.status, to: status } : undefined,
+        dueDate: dueDate !== undefined ? { from: current.dueDate, to: dueDate } : undefined,
+      },
     });
 
     return NextResponse.json({ ok: true, data: task });

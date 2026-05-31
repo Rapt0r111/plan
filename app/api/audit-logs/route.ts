@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/shared/db/client";
-import { auditLogs } from "@/shared/db/schema";
+import { auditLogs, authUsers, users } from "@/shared/db/schema";
 import { desc, eq, and, gte } from "drizzle-orm";
 import { authErrorToResponse, requireAdminSession } from "@/shared/lib/route-auth";
 
@@ -25,25 +25,43 @@ export async function GET(request: Request) {
     if (since) conditions.push(gte(auditLogs.createdAt, since));
 
     const rows = await db
-      .select()
+      .select({
+        audit: auditLogs,
+        authName: authUsers.name,
+        authLogin: authUsers.login,
+        profileName: users.name,
+        profileLogin: users.login,
+        profileInitials: users.initials,
+      })
       .from(auditLogs)
+      .leftJoin(authUsers, eq(auditLogs.actorUserId, authUsers.id))
+      .leftJoin(users, eq(authUsers.profileId, users.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
       .limit(limit)
       .offset(offset);
 
-    const parsed = rows.map((row) => ({
-      id: row.id,
-      actorUserId: row.actorUserId,
-      actorRole: row.actorRole,
-      action: row.action,
-      entityType: row.entityType,
-      entityId: row.entityId,
-      before: row.beforeJson ? safeParseJSON(row.beforeJson) : null,
-      after: row.afterJson ? safeParseJSON(row.afterJson) : null,
-      metadata: row.metadataJson ? safeParseJSON(row.metadataJson) : null,
-      createdAt: row.createdAt,
-    }));
+    const parsed = rows.map((row) => {
+      const audit = row.audit;
+      const actorName = row.profileName ?? row.authName ?? null;
+      const actorLogin = row.profileLogin ?? row.authLogin ?? null;
+
+      return {
+        id: audit.id,
+        actorUserId: audit.actorUserId,
+        actorName,
+        actorLogin,
+        actorInitials: row.profileInitials ?? makeInitials(actorName ?? actorLogin ?? ""),
+        actorRole: audit.actorRole,
+        action: audit.action,
+        entityType: audit.entityType,
+        entityId: audit.entityId,
+        before: audit.beforeJson ? safeParseJSON(audit.beforeJson) : null,
+        after: audit.afterJson ? safeParseJSON(audit.afterJson) : null,
+        metadata: audit.metadataJson ? safeParseJSON(audit.metadataJson) : null,
+        createdAt: audit.createdAt,
+      };
+    });
 
     return NextResponse.json(
       { ok: true, data: parsed, page, limit },
@@ -72,4 +90,14 @@ function safeParseJSON(str: string): unknown {
   } catch {
     return str;
   }
+}
+
+function makeInitials(value: string): string {
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }

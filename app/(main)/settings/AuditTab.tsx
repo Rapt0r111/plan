@@ -1,21 +1,15 @@
 "use client";
-/**
- * @file AuditTab.tsx — app/(main)/settings
- *
- * УЛУЧШЕНИЯ v2:
- *  - Добавлены все типы оперативных событий (operative_subtask, toggle подзадачи)
- *  - Человекочитаемый актёр (имя из сессии вместо UUID-среза)
- *  - Контекстные diff-описания вместо сырого JSON по умолчанию
- *  - Группировка по времени (сегодня / вчера / дата)
- *  - Поиск по тексту
- *  - Счётчик событий в фильтрах
- */
-import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+type JsonRecord = Record<string, unknown>;
 
 interface AuditEntry {
   id: number;
   actorUserId: string | null;
+  actorName: string | null;
+  actorLogin: string | null;
+  actorInitials: string | null;
   actorRole: string | null;
   action: string;
   entityType: string;
@@ -26,306 +20,245 @@ interface AuditEntry {
   createdAt: string;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const ACTION_META: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-  create:          { color: "#34d399", bg: "rgba(52,211,153,0.12)",  icon: "+",  label: "Создание"          },
-  update:          { color: "#38bdf8", bg: "rgba(56,189,248,0.12)",  icon: "✎",  label: "Изменение"         },
-  delete:          { color: "#f87171", bg: "rgba(239,68,68,0.12)",   icon: "✕",  label: "Удаление"          },
-  update_status:   { color: "#a78bfa", bg: "rgba(139,92,246,0.12)", icon: "◉",  label: "Смена статуса"     },
-  update_due_date: { color: "#fbbf24", bg: "rgba(251,191,36,0.12)", icon: "⏱",  label: "Смена дедлайна"    },
-  create_subtask:  { color: "#34d399", bg: "rgba(52,211,153,0.12)",  icon: "+",  label: "Подзадача"         },
-  toggle_subtask:  { color: "#a78bfa", bg: "rgba(139,92,246,0.12)", icon: "✓",  label: "Статус подзадачи"  },
-  comment:         { color: "#38bdf8", bg: "rgba(56,189,248,0.12)",  icon: "◌",  label: "Комментарий"       },
-  add_assignee:    { color: "#fbbf24", bg: "rgba(251,191,36,0.12)", icon: "+",  label: "Назначен исполнитель" },
-  remove_assignee: { color: "#fb923c", bg: "rgba(251,146,60,0.12)", icon: "−",  label: "Снят исполнитель"  },
-  reorder:         { color: "#64748b", bg: "rgba(100,116,139,0.12)",icon: "↕",  label: "Сортировка"        },
+const ACTION_META: Record<string, { label: string; tone: string }> = {
+  create: { label: "Создание", tone: "success" },
+  update: { label: "Изменение", tone: "info" },
+  delete: { label: "Удаление", tone: "danger" },
+  update_status: { label: "Смена статуса", tone: "accent" },
+  update_due_date: { label: "Срок", tone: "warning" },
+  create_subtask: { label: "Подзадача", tone: "success" },
+  toggle_subtask: { label: "Статус подзадачи", tone: "accent" },
+  comment: { label: "Комментарий", tone: "info" },
+  add_assignee: { label: "Назначение", tone: "warning" },
+  remove_assignee: { label: "Снятие исполнителя", tone: "warning" },
+  reorder: { label: "Сортировка", tone: "neutral" },
+  force_password_change: { label: "Смена пароля", tone: "danger" },
 };
 
-const ENTITY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
-  epic:               { label: "Эпик",               icon: "◈", color: "#a78bfa" },
-  task:               { label: "Задача",              icon: "▪", color: "#38bdf8" },
-  subtask:            { label: "Подзадача",           icon: "·", color: "#64748b" },
-  user_profile:       { label: "Профиль",             icon: "◎", color: "#fbbf24" },
-  operative_task:     { label: "Опер. задача",        icon: "▸", color: "#34d399" },
-  operative_subtask:  { label: "Опер. подзадача",     icon: "·", color: "#64748b" },
-  role:               { label: "Роль",                icon: "⬡", color: "#fb923c" },
+const ENTITY_LABELS: Record<string, string> = {
+  epic: "Эпик",
+  task: "Задача",
+  subtask: "Подзадача",
+  user_profile: "Профиль",
+  auth_user: "Аккаунт",
+  operative_task: "Оперативная задача",
+  operative_subtask: "Оперативная подзадача",
+  role: "Роль",
+  personnel_group: "Группа",
+  personal_plan_item: "Личный план",
+  app_settings: "Настройки",
 };
-
-const ENTITY_FILTER_KEYS = Object.keys(ENTITY_LABELS);
-const ACTION_FILTER_KEYS = Object.keys(ACTION_META);
-
-function formatTime(iso: string): { full: string; relative: string } {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  const full = d.toLocaleString("ru-RU", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
-
-  let relative = "";
-  if (diffMins < 1) relative = "только что";
-  else if (diffMins < 60) relative = `${diffMins} мин назад`;
-  else if (diffHours < 24) relative = `${diffHours} ч назад`;
-  else if (diffDays === 1) relative = "вчера";
-  else if (diffDays < 7) relative = `${diffDays} дн назад`;
-  else relative = full.slice(0, 10);
-
-  return { full, relative };
-}
-
-function humanReadableSummary(entry: AuditEntry): string {
-  const entity = ENTITY_LABELS[entry.entityType]?.label ?? entry.entityType;
-  const before = entry.before as Record<string, unknown> | null;
-  const after = entry.after as Record<string, unknown> | null;
-  const meta = entry.metadata as Record<string, unknown> | null;
-
-  switch (entry.action) {
-    case "create": {
-      const title = (after as { title?: string })?.title;
-      return title ? `«${title}»` : `#${entry.entityId}`;
-    }
-    case "delete": {
-      const title = (before as { title?: string })?.title;
-      return title ? `«${title}»` : `#${entry.entityId}`;
-    }
-    case "update": {
-      if (!before || !after) return `${entity} #${entry.entityId}`;
-      const changed: string[] = [];
-      const b = before as Record<string, unknown>;
-      const a = after as Record<string, unknown>;
-      for (const key of Object.keys(a)) {
-        if (b[key] !== a[key] && !["updatedAt", "createdAt"].includes(key)) {
-          const label = FIELD_LABELS[key] ?? key;
-          changed.push(label);
-        }
-      }
-      return changed.length > 0 ? `изменено: ${changed.join(", ")}` : `${entity} #${entry.entityId}`;
-    }
-    case "update_status": {
-      const oldStatus = (before as { status?: string })?.status;
-      const metaStatus = (meta as { status?: { to?: string } | string })?.status;
-      const newStatus = (after as { status?: string })?.status ?? (typeof metaStatus === "string" ? metaStatus : metaStatus?.to);
-      if (oldStatus && newStatus) {
-        return `${STATUS_LABELS[oldStatus] ?? oldStatus} → ${STATUS_LABELS[newStatus] ?? newStatus}`;
-      }
-      return `статус изменён`;
-    }
-    case "update_due_date": {
-      const from = (meta as { dueDate?: { from?: string | null } })?.dueDate?.from ?? (before as { dueDate?: string | null })?.dueDate;
-      const to = (meta as { dueDate?: { to?: string | null } })?.dueDate?.to ?? (after as { dueDate?: string | null })?.dueDate;
-      return `${from ? formatTime(from).full.slice(0, 10) : "без дедлайна"} → ${to ? formatTime(to).full.slice(0, 10) : "без дедлайна"}`;
-    }
-    case "create_subtask": {
-      const title = (after as { title?: string })?.title;
-      return title ? `подзадача «${title}»` : `подзадача #${entry.entityId}`;
-    }
-    case "toggle_subtask": {
-      const state = (after as { isCompleted?: boolean })?.isCompleted;
-      return state ? "подзадача выполнена" : "подзадача возвращена в работу";
-    }
-    case "comment":
-      return "добавлен комментарий";
-    case "add_assignee":
-    case "remove_assignee": {
-      const userId = (meta as { userId?: number })?.userId;
-      return userId ? `пользователь #${userId}` : "исполнитель";
-    }
-    case "reorder":
-      return "порядок обновлён";
-    default:
-      return `${entity} #${entry.entityId ?? ""}`;
-  }
-}
 
 const FIELD_LABELS: Record<string, string> = {
-  title: "название", description: "описание", status: "статус",
-  priority: "приоритет", dueDate: "дедлайн", color: "цвет",
-  startDate: "начало", endDate: "конец", roleId: "роль",
-  name: "имя", login: "логин",
+  title: "Название",
+  description: "Описание",
+  status: "Статус",
+  priority: "Приоритет",
+  dueDate: "Срок",
+  startDate: "Начало",
+  endDate: "Конец",
+  name: "Имя",
+  login: "Логин",
+  roleId: "Роль",
+  accountStatus: "Статус аккаунта",
+  forcePasswordChange: "Обязательная смена пароля",
+  blockOrder: "Порядок",
+  sortOrder: "Порядок",
+  color: "Цвет",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  todo: "К работе", in_progress: "В работе", done: "Готово", blocked: "Заблокировано",
+  todo: "К работе",
+  in_progress: "В работе",
+  done: "Готово",
+  blocked: "Заблокировано",
+  active: "Активен",
+  invited: "Приглашён",
+  disabled: "Отключён",
 };
 
-// ── Actor badge ───────────────────────────────────────────────────────────────
+const TONE_STYLES: Record<string, { bg: string; border: string; text: string }> = {
+  success: { bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.28)", text: "#34d399" },
+  info: { bg: "rgba(14,165,233,0.12)", border: "rgba(14,165,233,0.28)", text: "#38bdf8" },
+  danger: { bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.28)", text: "#f87171" },
+  warning: { bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.28)", text: "#fbbf24" },
+  accent: { bg: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.28)", text: "#a78bfa" },
+  neutral: { bg: "rgba(148,163,184,0.12)", border: "rgba(148,163,184,0.22)", text: "#94a3b8" },
+};
 
-function ActorBadge({ userId, role }: { userId: string | null; role: string | null }) {
-  if (!userId) {
-    return (
-      <span className="text-[10px] px-1.5 py-0.5 rounded font-mono"
-        style={{ background: "var(--glass-01)", color: "var(--text-muted)" }}>
-        система
-      </span>
-    );
+function asRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : null;
+}
+
+function parseAuditDate(value: string): Date {
+  const normalized = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? new Date(value) : date;
+}
+
+function formatDateTime(value: string) {
+  const date = parseAuditDate(value);
+  return {
+    day: date.toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" }),
+    time: date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
+    full: date.toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
+  };
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "не указано";
+  if (typeof value === "boolean") return value ? "да" : "нет";
+  if (typeof value === "string") return STATUS_LABELS[value] ?? value;
+  if (typeof value === "number") return String(value);
+  return JSON.stringify(value);
+}
+
+function changedFields(entry: AuditEntry) {
+  const before = asRecord(entry.before);
+  const after = asRecord(entry.after);
+  if (!before || !after) return [];
+
+  const ignored = new Set(["createdAt", "updatedAt"]);
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  return [...keys]
+    .filter((key) => !ignored.has(key))
+    .filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]))
+    .map((key) => ({ key, before: before[key], after: after[key] }));
+}
+
+function pickTitle(value: unknown): string | null {
+  const record = asRecord(value);
+  const title = record?.title ?? record?.name ?? record?.login;
+  return typeof title === "string" && title.trim() ? title : null;
+}
+
+function summaryFor(entry: AuditEntry): string {
+  const before = asRecord(entry.before);
+  const after = asRecord(entry.after);
+  const meta = asRecord(entry.metadata);
+  const entity = ENTITY_LABELS[entry.entityType] ?? entry.entityType;
+
+  if (entry.action === "update") {
+    const fields = changedFields(entry).map((field) => FIELD_LABELS[field.key] ?? field.key);
+    return fields.length ? `Изменено: ${fields.join(", ")}` : `${entity} #${entry.entityId ?? ""}`;
   }
-  const isAdmin = role === "admin";
-  const shortId = userId.slice(0, 6).toUpperCase();
+
+  if (entry.action === "update_status") {
+    const from = before?.status;
+    const to = after?.status ?? asRecord(meta?.status)?.to ?? meta?.status;
+    return `${formatValue(from)} → ${formatValue(to)}`;
+  }
+
+  if (entry.action === "update_due_date") {
+    const dueDate = asRecord(meta?.dueDate);
+    return `${formatValue(dueDate?.from ?? before?.dueDate)} → ${formatValue(dueDate?.to ?? after?.dueDate)}`;
+  }
+
+  if (entry.action === "create" || entry.action === "create_subtask") {
+    return pickTitle(entry.after) ?? `${entity} #${entry.entityId ?? ""}`;
+  }
+
+  if (entry.action === "delete") {
+    return pickTitle(entry.before) ?? `${entity} #${entry.entityId ?? ""}`;
+  }
+
+  if (entry.action === "toggle_subtask") {
+    return after?.isCompleted ? "Подзадача выполнена" : "Подзадача возвращена в работу";
+  }
+
+  if (entry.action === "comment") return "Добавлен комментарий";
+  if (entry.action === "reorder") return "Обновлён порядок отображения";
+
+  return `${entity}${entry.entityId ? ` #${entry.entityId}` : ""}`;
+}
+
+function Actor({ entry }: { entry: AuditEntry }) {
+  const isSystem = !entry.actorUserId;
+  const name = entry.actorName ?? entry.actorLogin ?? (isSystem ? "Система" : "Неизвестный пользователь");
+  const login = entry.actorLogin && entry.actorLogin !== name ? `@${entry.actorLogin}` : null;
+  const initials = entry.actorInitials || name.slice(0, 2).toUpperCase();
+
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex min-w-0 items-center gap-2">
       <div
-        className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0"
-        style={{ backgroundColor: isAdmin ? "#8b5cf6" : "#64748b" }}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
+        style={{ background: entry.actorRole === "admin" ? "#7c3aed" : "#475569" }}
       >
-        {shortId.slice(0, 2)}
+        {initials}
       </div>
-      <span className="text-[10px] font-mono" style={{ color: "var(--text-secondary)" }}>
-        {shortId}
-      </span>
-      <span
-        className="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
-        style={{
-          background: isAdmin ? "rgba(139,92,246,0.12)" : "rgba(100,116,139,0.12)",
-          color: isAdmin ? "#a78bfa" : "#94a3b8",
-        }}
-      >
-        {isAdmin ? "Адм." : "Участник"}
-      </span>
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+          {name}
+        </div>
+        <div className="truncate text-xs" style={{ color: "var(--text-muted)" }}>
+          {login ?? (entry.actorRole === "admin" ? "Администратор" : "Участник")}
+        </div>
+      </div>
     </div>
   );
 }
 
-// ── Diff viewer ───────────────────────────────────────────────────────────────
-
-function DiffView({ entry }: { entry: AuditEntry }) {
+function Details({ entry }: { entry: AuditEntry }) {
   const [open, setOpen] = useState(false);
-  const hasDiff = entry.before || entry.after || entry.metadata;
-  if (!hasDiff) return null;
-
-  const before = entry.before as Record<string, unknown> | null;
-  const after = entry.after as Record<string, unknown> | null;
-
-  // Smart diff: only show changed fields
-  const changedFields: Array<{ key: string; before: unknown; after: unknown }> = [];
-  if (before && after) {
-    const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
-    for (const key of allKeys) {
-      if (["updatedAt", "createdAt"].includes(key)) continue;
-      if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
-        changedFields.push({ key, before: before[key], after: after[key] });
-      }
-    }
-  }
+  const fields = changedFields(entry);
+  const hasDetails = fields.length > 0 || entry.before || entry.after || entry.metadata;
+  if (!hasDetails) return null;
 
   return (
     <div>
       <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded transition-colors"
-        style={{ color: "var(--text-muted)", background: "var(--glass-01)" }}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="rounded-lg px-2.5 py-1 text-xs transition-colors"
+        style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)" }}
       >
-        <motion.svg
-          className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none"
-          stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
-          animate={{ rotate: open ? 90 : 0 }} transition={{ duration: 0.15 }}
-        >
-          <path d="M3 2l4 3-4 3" />
-        </motion.svg>
-        {open ? "Скрыть детали" : "Детали"}
+        {open ? "Скрыть детали" : "Показать детали"}
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }}
-            className="overflow-hidden mt-2"
-          >
-            {/* Smart diff when we have before+after */}
-            {changedFields.length > 0 ? (
-              <div className="space-y-1.5">
-                {changedFields.map(({ key, before: b, after: a }) => (
-                  <div key={key} className="rounded-lg overflow-hidden text-[10px] font-mono"
-                    style={{ border: "1px solid var(--glass-border)" }}>
-                    <div className="px-2 py-1" style={{ background: "var(--glass-01)", color: "var(--text-muted)" }}>
-                      {FIELD_LABELS[key] ?? key}
-                    </div>
-                    <div className="grid grid-cols-2">
-                      <div className="px-2 py-1.5" style={{ background: "rgba(239,68,68,0.06)", borderRight: "1px solid var(--glass-border)", color: "#f87171" }}>
-                        <span className="opacity-50 mr-1">−</span>
-                        {b !== null && b !== undefined ? String(b) : "—"}
-                      </div>
-                      <div className="px-2 py-1.5" style={{ background: "rgba(52,211,153,0.06)", color: "#34d399" }}>
-                        <span className="opacity-50 mr-1">+</span>
-                        {a !== null && a !== undefined ? String(a) : "—"}
-                      </div>
-                    </div>
+      {open && (
+        <div className="mt-3 space-y-2">
+          {fields.length > 0 ? (
+            fields.map((field) => (
+              <div key={field.key} className="rounded-lg p-3" style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>
+                <div className="mb-2 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+                  {FIELD_LABELS[field.key] ?? field.key}
+                </div>
+                <div className="grid gap-2 text-xs sm:grid-cols-2">
+                  <div className="rounded-md px-2 py-1.5" style={{ background: "rgba(239,68,68,0.08)", color: "#fca5a5" }}>
+                    Было: {formatValue(field.before)}
                   </div>
-                ))}
+                  <div className="rounded-md px-2 py-1.5" style={{ background: "rgba(16,185,129,0.08)", color: "#6ee7b7" }}>
+                    Стало: {formatValue(field.after)}
+                  </div>
+                </div>
               </div>
-            ) : (
-              /* Fallback: raw JSON */
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {Boolean(entry.before) && (
-                  <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-widest mb-1" style={{ color: "#f87171" }}>
-                      До
-                    </p>
-                    <pre className="text-[10px] p-2 rounded-lg overflow-auto max-h-32 font-mono"
-                      style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--text-secondary)" }}>
-                      {JSON.stringify(entry.before, null, 2)}
-                    </pre>
-                  </div>
-                )}
-                {Boolean(entry.after) && (
-                  <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-widest mb-1" style={{ color: "#34d399" }}>
-                      После
-                    </p>
-                    <pre className="text-[10px] p-2 rounded-lg overflow-auto max-h-32 font-mono"
-                      style={{ background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.2)", color: "var(--text-secondary)" }}>
-                      {JSON.stringify(entry.after, null, 2)}
-                    </pre>
-                  </div>
-                )}
-                {Boolean(entry.metadata) && !entry.before && !entry.after && (
-                  <div className="sm:col-span-2">
-                    <p className="text-[9px] font-semibold uppercase tracking-widest mb-1" style={{ color: "#38bdf8" }}>
-                      Метаданные
-                    </p>
-                    <pre className="text-[10px] p-2 rounded-lg overflow-auto max-h-32 font-mono"
-                      style={{ background: "rgba(56,189,248,0.06)", border: "1px solid rgba(56,189,248,0.2)", color: "var(--text-secondary)" }}>
-                      {JSON.stringify(entry.metadata, null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            ))
+          ) : (
+            <pre className="max-h-64 overflow-auto rounded-lg p-3 text-xs" style={{ background: "var(--glass-01)", color: "var(--text-secondary)" }}>
+              {JSON.stringify({ before: entry.before, after: entry.after, metadata: entry.metadata }, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Filter chip ───────────────────────────────────────────────────────────────
-
-function FilterChip({
-  label, active, count, color, onClick,
-}: { label: string; active: boolean; count?: number; color?: string; onClick: () => void }) {
+function Chip({ children, tone = "neutral" }: { children: React.ReactNode; tone?: string }) {
+  const style = TONE_STYLES[tone] ?? TONE_STYLES.neutral;
   return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all"
-      style={active
-        ? { background: color ? `${color}20` : "var(--accent-glow)", color: color ?? "var(--accent-400)", border: `1px solid ${color ? color + "40" : "rgba(139,92,246,0.3)"}` }
-        : { background: "var(--glass-01)", color: "var(--text-secondary)", border: "1px solid var(--glass-border)" }}
-    >
-      {label}
-      {count !== undefined && count > 0 && (
-        <span className="text-[10px] font-mono opacity-70">{count}</span>
-      )}
-    </button>
+    <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: style.bg, border: `1px solid ${style.border}`, color: style.text }}>
+      {children}
+    </span>
   );
 }
-
-// ── Main ──────────────────────────────────────────────────────────────────────
 
 export function AuditTab() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
@@ -333,266 +266,209 @@ export function AuditTab() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  const [filterEntity, setFilterEntity] = useState<string>("all");
-  const [filterAction, setFilterAction] = useState<string>("all");
+  const [entityFilter, setEntityFilter] = useState("all");
+  const [actionFilter, setActionFilter] = useState("all");
   const [search, setSearch] = useState("");
 
-  const fetchLogs = useCallback(async (reset = false, pageOverride?: number) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const currentPage = reset ? 1 : (pageOverride ?? page);
-      const params = new URLSearchParams({
-        page: String(currentPage),
-        limit: "50",
-        _ts: String(Date.now()),
-      });
-      if (filterEntity !== "all") params.set("entityType", filterEntity);
-      if (filterAction !== "all") params.set("action", filterAction);
+  const fetchLogs = useCallback(
+    async (reset = false, pageOverride?: number) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const currentPage = reset ? 1 : pageOverride ?? 1;
+        const params = new URLSearchParams({ page: String(currentPage), limit: "50", _ts: String(Date.now()) });
+        if (entityFilter !== "all") params.set("entityType", entityFilter);
+        if (actionFilter !== "all") params.set("action", actionFilter);
 
-      const res = await fetch(`/api/audit-logs?${params}`, { cache: "no-store" });
-      const data = await res.json();
+        const response = await fetch(`/api/audit-logs?${params}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!payload.ok) throw new Error(payload.error ?? "Не удалось загрузить аудит");
 
-      if (!data.ok) { setError(data.error ?? "Ошибка загрузки"); return; }
-
-      if (reset) {
-        setEntries(data.data);
-        setPage(1);
-      } else {
-        setEntries((prev) => [...prev, ...data.data]);
+        setEntries((previous) => (reset ? payload.data : [...previous, ...payload.data]));
         setPage(currentPage);
+        setHasMore(payload.data.length === 50);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "Ошибка загрузки аудита");
+      } finally {
+        setLoading(false);
       }
-      setHasMore(data.data.length === 50);
-    } catch {
-      setError("Ошибка соединения");
-    } finally {
-      setLoading(false);
-    }
-  }, [page, filterEntity, filterAction]);
+    },
+    [actionFilter, entityFilter],
+  );
 
-  // Reset on filter change
   useEffect(() => {
-    setPage(1);
     fetchLogs(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterEntity, filterAction]);
+  }, [fetchLogs]);
 
   useEffect(() => {
-    const refreshIfVisible = () => {
-      if (document.visibilityState === "visible") {
-        fetchLogs(true);
-      }
+    const refresh = () => {
+      if (document.visibilityState === "visible") fetchLogs(true);
     };
-
-    window.addEventListener("focus", refreshIfVisible);
-    document.addEventListener("visibilitychange", refreshIfVisible);
-    const interval = window.setInterval(refreshIfVisible, 15000);
-
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
-      window.removeEventListener("focus", refreshIfVisible);
-      document.removeEventListener("visibilitychange", refreshIfVisible);
-      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
     };
   }, [fetchLogs]);
 
-  // Client-side search filter
-  const filtered = search.trim()
-    ? entries.filter((e) => {
-        const q = search.toLowerCase();
-        const entity = ENTITY_LABELS[e.entityType]?.label ?? e.entityType;
-        const action = ACTION_META[e.action]?.label ?? e.action;
-        const summary = humanReadableSummary(e);
-        return (
-          entity.toLowerCase().includes(q) ||
-          action.toLowerCase().includes(q) ||
-          summary.toLowerCase().includes(q) ||
-          (e.entityId ?? "").includes(q)
-        );
-      })
-    : entries;
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return entries;
+    return entries.filter((entry) => {
+      const text = [
+        entry.actorName,
+        entry.actorLogin,
+        entry.action,
+        ACTION_META[entry.action]?.label,
+        entry.entityType,
+        ENTITY_LABELS[entry.entityType],
+        entry.entityId,
+        summaryFor(entry),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return text.includes(query);
+    });
+  }, [entries, search]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, AuditEntry[]>();
+    for (const entry of filtered) {
+      const key = formatDateTime(entry.createdAt).day;
+      map.set(key, [...(map.get(key) ?? []), entry]);
+    }
+    return [...map.entries()];
+  }, [filtered]);
 
   return (
-    <div className="max-w-4xl space-y-4">
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="max-w-5xl space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+          <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
             Журнал аудита
           </h2>
-          <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-            Все действия в системе с детальными изменениями
+          <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+            Кто, когда и что изменил в системе.
           </p>
         </div>
         <button
+          type="button"
           onClick={() => fetchLogs(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
-          style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-muted)" }}
+          className="rounded-lg px-3 py-2 text-sm font-medium"
+          style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)" }}
         >
-          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <path d="M10 6A4 4 0 1 1 6 2M10 2v4H6" />
-          </svg>
           Обновить
         </button>
       </div>
 
-      {/* ── Search ── */}
-      <div className="relative">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" viewBox="0 0 16 16"
-          fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
-          style={{ color: "var(--text-muted)" }}>
-          <circle cx="7" cy="7" r="4.5" /><path d="m11 11 2.5 2.5" />
-        </svg>
+      <div className="grid gap-2 md:grid-cols-[1fr_220px_220px]">
         <input
-          type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Поиск по действию, сущности, тексту..."
-          className="w-full pl-9 pr-4 py-2 rounded-xl text-sm outline-none"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Поиск по пользователю, действию или объекту"
+          className="rounded-lg px-3 py-2 text-sm outline-none"
           style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-primary)" }}
         />
+        <select
+          value={entityFilter}
+          onChange={(event) => setEntityFilter(event.target.value)}
+          className="rounded-lg px-3 py-2 text-sm outline-none"
+          style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", color: "var(--text-primary)" }}
+        >
+          <option value="all">Все объекты</option>
+          {Object.entries(ENTITY_LABELS).map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={actionFilter}
+          onChange={(event) => setActionFilter(event.target.value)}
+          className="rounded-lg px-3 py-2 text-sm outline-none"
+          style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", color: "var(--text-primary)" }}
+        >
+          <option value="all">Все действия</option>
+          {Object.entries(ACTION_META).map(([key, meta]) => (
+            <option key={key} value={key}>
+              {meta.label}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* ── Entity filters ── */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Тип объекта:</span>
-          <FilterChip label="Все" active={filterEntity === "all"} onClick={() => setFilterEntity("all")} />
-          {ENTITY_FILTER_KEYS.map((et) => {
-            const meta = ENTITY_LABELS[et];
-            const count = entries.filter((e) => e.entityType === et).length;
-            return (
-              <FilterChip
-                key={et} label={meta.label} active={filterEntity === et}
-                color={meta.color} count={count}
-                onClick={() => setFilterEntity((v) => v === et ? "all" : et)}
-              />
-            );
-          })}
-        </div>
-
-        {/* ── Action filters ── */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs shrink-0" style={{ color: "var(--text-muted)" }}>Действие:</span>
-          <FilterChip label="Все" active={filterAction === "all"} onClick={() => setFilterAction("all")} />
-          {ACTION_FILTER_KEYS.map((a) => {
-            const meta = ACTION_META[a];
-            const count = entries.filter((e) => e.action === a).length;
-            return (
-              <FilterChip
-                key={a} label={meta.label} active={filterAction === a}
-                color={meta.color} count={count}
-                onClick={() => setFilterAction((v) => v === a ? "all" : a)}
-              />
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Error ── */}
       {error && (
-        <div className="px-4 py-3 rounded-xl text-sm"
-          style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
+        <div className="rounded-lg px-4 py-3 text-sm" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
           {error}
         </div>
       )}
 
-      {/* ── Count ── */}
-      {!loading && filtered.length > 0 && (
-        <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-          Показано: {filtered.length}{search ? ` из ${entries.length}` : ""}
-        </p>
-      )}
-
-      {/* ── Log entries ── */}
-      <div className="rounded-2xl overflow-hidden"
-        style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}>
+      <div className="rounded-xl" style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}>
         {loading && entries.length === 0 ? (
-          <div className="flex flex-col gap-2 p-4 animate-pulse">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-16 rounded-xl" style={{ background: "var(--glass-01)" }} />
+          <div className="space-y-3 p-4">
+            {[0, 1, 2, 3].map((item) => (
+              <div key={item} className="h-24 animate-pulse rounded-lg" style={{ background: "var(--glass-01)" }} />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center py-16 gap-2">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)" }}>
-              <svg className="w-5 h-5" viewBox="0 0 20 20" fill="none" stroke="var(--text-muted)" strokeWidth="1.5">
-                <path d="M9 5H7a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h0a2 2 0 002-2M9 5a2 2 0 012-2h0a2 2 0 012 2" />
-              </svg>
-            </div>
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-              {search ? "Ничего не найдено" : "Нет записей"}
-            </p>
+        ) : grouped.length === 0 ? (
+          <div className="p-10 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+            Записей аудита не найдено
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: "var(--glass-border)" }}>
-            {filtered.map((entry, i) => {
-              const actionMeta = ACTION_META[entry.action] ?? { color: "#94a3b8", bg: "rgba(100,116,139,0.12)", icon: "•", label: entry.action };
-              const entityMeta = ENTITY_LABELS[entry.entityType] ?? { label: entry.entityType, icon: "·", color: "var(--text-muted)" };
-              const time = formatTime(entry.createdAt);
-              const summary = humanReadableSummary(entry);
-
-              return (
-                <motion.div
-                  key={entry.id}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: Math.min(i * 0.015, 0.2) }}
-                  className="px-4 py-3.5 space-y-2.5 hover:bg-[var(--glass-01)] transition-colors"
-                >
-                  {/* Row 1: action badge + entity + summary + time */}
-                  <div className="flex items-start gap-2 flex-wrap">
-                    {/* Action */}
-                    <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold font-mono shrink-0"
-                      style={{ background: actionMeta.bg, color: actionMeta.color, border: `1px solid ${actionMeta.color}30` }}
-                    >
-                      <span>{actionMeta.icon}</span>
-                      {actionMeta.label}
-                    </span>
-
-                    {/* Entity type */}
-                    <span
-                      className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded shrink-0"
-                      style={{ background: `${entityMeta.color}15`, color: entityMeta.color, border: `1px solid ${entityMeta.color}25` }}
-                    >
-                      <span>{entityMeta.icon}</span>
-                      {entityMeta.label}
-                      {entry.entityId && <span className="opacity-50 ml-0.5">#{entry.entityId}</span>}
-                    </span>
-
-                    {/* Human-readable summary */}
-                    <span className="text-xs flex-1 min-w-0 truncate" style={{ color: "var(--text-secondary)" }}>
-                      {summary}
-                    </span>
-
-                    {/* Time */}
-                    <span className="text-[10px] font-mono shrink-0 ml-auto" style={{ color: "var(--text-muted)" }}
-                      title={time.full}>
-                      {time.relative}
-                    </span>
-                  </div>
-
-                  {/* Row 2: actor */}
-                  <ActorBadge userId={entry.actorUserId} role={entry.actorRole} />
-
-                  {/* Row 3: diff */}
-                  <DiffView entry={entry} />
-                </motion.div>
-              );
-            })}
+            {grouped.map(([day, dayEntries]) => (
+              <section key={day}>
+                <div className="sticky top-0 z-10 px-4 py-2 text-xs font-semibold uppercase" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>
+                  {day}
+                </div>
+                <div className="divide-y" style={{ borderColor: "var(--glass-border)" }}>
+                  {dayEntries.map((entry) => {
+                    const action = ACTION_META[entry.action] ?? { label: entry.action, tone: "neutral" };
+                    const entity = ENTITY_LABELS[entry.entityType] ?? entry.entityType;
+                    const time = formatDateTime(entry.createdAt);
+                    return (
+                      <article key={entry.id} className="grid gap-3 p-4 md:grid-cols-[180px_1fr_86px]">
+                        <Actor entry={entry} />
+                        <div className="min-w-0 space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Chip tone={action.tone}>{action.label}</Chip>
+                            <Chip>
+                              {entity}
+                              {entry.entityId ? ` #${entry.entityId}` : ""}
+                            </Chip>
+                          </div>
+                          <div className="text-sm" style={{ color: "var(--text-primary)" }}>
+                            {summaryFor(entry)}
+                          </div>
+                          <Details entry={entry} />
+                        </div>
+                        <div className="text-left md:text-right">
+                          <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }} title={time.full}>
+                            {time.time}
+                          </div>
+                          <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                            #{entry.id}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
         )}
 
-        {/* Load more */}
         {hasMore && !search && (
-          <div className="p-3 border-t" style={{ borderColor: "var(--glass-border)" }}>
+          <div className="border-t p-3" style={{ borderColor: "var(--glass-border)" }}>
             <button
+              type="button"
               onClick={() => fetchLogs(false, page + 1)}
               disabled={loading}
-              className="w-full py-2 rounded-xl text-xs font-medium transition-all"
-              style={{
-                background: "var(--glass-01)", border: "1px solid var(--glass-border)",
-                color: loading ? "var(--text-muted)" : "var(--text-secondary)", opacity: loading ? 0.6 : 1,
-              }}
+              className="w-full rounded-lg py-2 text-sm font-medium"
+              style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)", opacity: loading ? 0.65 : 1 }}
             >
               {loading ? "Загрузка..." : "Загрузить ещё"}
             </button>

@@ -3,8 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useNotificationStore } from "./useNotificationStore";
 import { useNotificationTimer } from "./model/useNotificationTimer";
-import { IslandPill } from "./ui/IslandPill";
-import { IslandExpanded } from "./ui/IslandExpanded";
+
 
 export function DynamicIsland() {
   const { notification, expanded, dismiss, expand, collapse } =
@@ -28,7 +27,6 @@ export function DynamicIsland() {
       style={{ width: "min(380px, calc(100vw - 32px))" }}
     >
       {/* Pill — always visible */}
-      <IslandPill notification={notification} onClick={handlePillClick} />
 
       {/* Expanded panel */}
       <AnimatePresence mode="wait">
@@ -41,7 +39,6 @@ export function DynamicIsland() {
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
             className="w-full overflow-hidden"
           >
-            <IslandExpanded notification={notification} onDismiss={dismiss} />
           </motion.div>
         )}
       </AnimatePresence>

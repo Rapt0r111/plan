@@ -30,6 +30,7 @@ import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { sql } from "drizzle-orm";
 import { personnelGroups, roles, users, epics, tasks, subtasks, taskAssignees } from "./schema";
+import { VARIABLE_PERSONNEL } from "./variable-personnel";
 import path from "path";
 
 const DB_PATH = path.resolve(process.cwd(), "local.db");
@@ -197,6 +198,10 @@ const SEED_USERS = [
     roleKey: "squad_commander_2",
     initials: "АА",
   },
+  ...VARIABLE_PERSONNEL.map((person) => ({
+    ...person,
+    roleKey: "variable_member",
+  })),
 ] as const;
 
 console.log("Seeding users...");

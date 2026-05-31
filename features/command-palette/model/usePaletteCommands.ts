@@ -73,13 +73,6 @@ export function usePaletteCommands(): CommandItem[] {
     const actions: CommandItem[] = [
       ...zenCmds,
       {
-        id: "action-sync", category: "action",
-        label: "Обновить данные",
-        description: "Принудительная синхронизация с базой данных",
-        icon: "🔄", keywords: ["refresh", "sync", "обновить", "перезагрузить"],
-        onSelect: () => { router.refresh(); close(); },
-      },
-      {
         id: "action-filter-todo", category: "action",
         label: "Показать: К работе",
         description: "Открыть доску с фильтром статуса",

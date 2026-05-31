@@ -11,7 +11,7 @@ import { AmbientCursor } from "@/shared/ui/AmbientCursor";
  *  вынесены сюда, в отдельный "use client" модуль.
  *
  * Этот компонент не рендерит никакой разметки — только монтирует
- * глобальные слои: CommandPalette, DynamicIsland, SyncNotificationBridge, ZenMode.
+ * ?????????? ????: CommandPalette, ZenMode, GlobalFAB.
  */
 import dynamic from "next/dynamic";
 
@@ -21,14 +21,6 @@ const CommandPalette = dynamic(
 );
 const ZenMode = dynamic(
   () => import("@/features/zen-mode/ZenMode").then(m => ({ default: m.ZenMode })),
-  { ssr: false }
-);
-const DynamicIsland = dynamic(
-  () => import("@/features/sync/DynamicIsland").then(m => ({ default: m.DynamicIsland })),
-  { ssr: false }
-);
-const SyncNotificationBridge = dynamic(
-  () => import("@/features/sync/SyncNotificationBridge").then(m => ({ default: m.SyncNotificationBridge })),
   { ssr: false }
 );
 const GlobalFAB = dynamic(
@@ -41,8 +33,6 @@ export function GlobalClientComponents() {
     <>
       <AmbientCursor />
       <CommandPalette />
-      <DynamicIsland />
-      <SyncNotificationBridge />
       <ZenMode />
       <GlobalFAB />  {/* ← новый FAB */}
     </>

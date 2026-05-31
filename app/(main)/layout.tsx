@@ -6,11 +6,9 @@ import { Suspense } from "react";
 import { Sidebar, SidebarProvider, MainContent } from "@/widgets/sidebar/Sidebar";
 import { getAllEpics, getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { getAllUsers } from "@/entities/user/userRepository";
-import { OfflineHydrator } from "@/shared/store/StoreHydrator";
 import { RoleHydrator } from "@/shared/store/RoleHydrator";
 import { getAllRoles } from "@/entities/role/roleRepository";
 import { PrefsApplicator } from "@/shared/ui/PrefsApplicator";
-import { SyncOrchestrator } from "@/shared/store/SyncOrchestrator";
 import { RealtimeProvider } from "@/shared/store/RealtimeProvider";
 import { auth } from "@/shared/lib/auth";
 import { hasLinkedProfile, requiresPasswordChange } from "@/shared/lib/auth-access";
@@ -94,8 +92,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     <SidebarProvider>
       <div className="flex h-screen overflow-hidden">
         <PrefsApplicator />
-        <OfflineHydrator />
-        <SyncOrchestrator />
         <RealtimeProvider />
 
         <Suspense fallback={<SidebarSkeleton />}>

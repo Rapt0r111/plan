@@ -337,16 +337,20 @@ export function AuditTab() {
   const [filterAction, setFilterAction] = useState<string>("all");
   const [search, setSearch] = useState("");
 
-  const fetchLogs = useCallback(async (reset = false) => {
+  const fetchLogs = useCallback(async (reset = false, pageOverride?: number) => {
     setLoading(true);
     setError(null);
     try {
-      const currentPage = reset ? 1 : page;
-      const params = new URLSearchParams({ page: String(currentPage), limit: "50" });
+      const currentPage = reset ? 1 : (pageOverride ?? page);
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        limit: "50",
+        _ts: String(Date.now()),
+      });
       if (filterEntity !== "all") params.set("entityType", filterEntity);
       if (filterAction !== "all") params.set("action", filterAction);
 
-      const res = await fetch(`/api/audit-logs?${params}`);
+      const res = await fetch(`/api/audit-logs?${params}`, { cache: "no-store" });
       const data = await res.json();
 
       if (!data.ok) { setError(data.error ?? "Ошибка загрузки"); return; }
@@ -356,6 +360,7 @@ export function AuditTab() {
         setPage(1);
       } else {
         setEntries((prev) => [...prev, ...data.data]);
+        setPage(currentPage);
       }
       setHasMore(data.data.length === 50);
     } catch {
@@ -371,6 +376,24 @@ export function AuditTab() {
     fetchLogs(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterEntity, filterAction]);
+
+  useEffect(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        fetchLogs(true);
+      }
+    };
+
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    const interval = window.setInterval(refreshIfVisible, 15000);
+
+    return () => {
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.clearInterval(interval);
+    };
+  }, [fetchLogs]);
 
   // Client-side search filter
   const filtered = search.trim()
@@ -563,7 +586,7 @@ export function AuditTab() {
         {hasMore && !search && (
           <div className="p-3 border-t" style={{ borderColor: "var(--glass-border)" }}>
             <button
-              onClick={() => { setPage((p) => p + 1); fetchLogs(); }}
+              onClick={() => fetchLogs(false, page + 1)}
               disabled={loading}
               className="w-full py-2 rounded-xl text-xs font-medium transition-all"
               style={{

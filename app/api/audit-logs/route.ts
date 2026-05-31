@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       .select()
       .from(auditLogs)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(auditLogs.createdAt))
+      .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
       .limit(limit)
       .offset(offset);
 
@@ -45,7 +45,16 @@ export async function GET(request: Request) {
       createdAt: row.createdAt,
     }));
 
-    return NextResponse.json({ ok: true, data: parsed, page, limit });
+    return NextResponse.json(
+      { ok: true, data: parsed, page, limit },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      },
+    );
   } catch (e) {
     const authErr = authErrorToResponse(e);
     if (authErr)

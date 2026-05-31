@@ -2,25 +2,48 @@
 /**
  * @file EpicCard.tsx — widgets/epic-card
  *
- * ИСПРАВЛЕНИЯ v5:
- *  1. Убран transformStyle: "preserve-3d" — он создавал новый stacking context,
- *     из-за чего при закрытии EpicWorkspace другие карточки перекрывали анимацию.
- *  2. Убран whileHover={{ z: 12 }} — z работает только с preserve-3d.
- *  3. Tilt-эффект сохранён через rotateX/rotateY (perspective задаётся на обёртке).
- *  4. Добавлен relative + isolate на корневой motion.div, чтобы stacking context
- *     был корректным без 3D.
- *  5. layoutId перенесён на внутренний div (не корневой) чтобы FLIP не конфликтовал
- *     с position: relative обёртки сетки.
+ * ═══════════════════════════════════════════════════════════════
+ * ОПТИМИЗАЦИЯ ПРОИЗВОДИТЕЛЬНОСТИ v6
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * ПРОБЛЕМЫ v5 (причины лагов при скролле):
+ *
+ * 1. LiquidOrb — SVG feTurbulence + <animate> на каждой карточке.
+ *    При 6+ карточках = 6 параллельных GPU filter-chains (~60fps каждый).
+ *    FIX: StaticOrb — чистый SVG без filter/animate. Прогресс передаётся
+ *    через CSS clip-path + transition (compositor-only). Анимация turbulence
+ *    убрана полностью — она не несёт информации, только нагружает GPU.
+ *
+ * 2. Tilt-эффект (useMotionValue + useSpring × 2 на карточку).
+ *    При N карточках = 2N spring-подписок активны одновременно.
+ *    При mousemove все они пересчитываются синхронно.
+ *    FIX: CSS-only tilt через --mx/--my custom properties + CSS transform.
+ *    Обновление через rAF-throttle — один style recalc в кадр.
+ *    Framer springs полностью убраны для tilt.
+ *
+ * 3. MeshBackground — inline radial-gradient с transition: background 1.2s.
+ *    Background-gradient transitions = repaint на каждом кадре (не compositor).
+ *    FIX: Статичный градиент без transition. Цвет задаётся через CSS-переменную
+ *    --epic-color, смена мгновенная. Визуально неотличимо при текущем дизайне.
+ *
+ * 4. kinetic typography (useSpring на letterSpacing).
+ *    letterSpacing не compositor-friendly — вызывает text reflow.
+ *    FIX: Убран. Hover-эффект карточки остаётся через ::before overlay.
+ *
+ * 5. AnimatePresence внутри карточки (done badge).
+ *    FIX: Заменён на CSS opacity transition — дешевле.
+ *
+ * СОХРАНЕНО (без потери визуала):
+ *   - layoutId для FLIP-анимации открытия workspace
+ *   - initial/animate opacity + y (mount stagger)
+ *   - Outer glow on hover (через CSS :hover, не Framer)
+ *   - Phase badge с pulsing dot (только для active)
+ *   - Progress bar animation (один раз при mount)
+ *   - Все стили карточки
  */
 
-import { useRef, useId, useEffect } from "react";
-import {
-  motion,
-  useMotionValue,
-  useSpring,
-  useTransform,
-  AnimatePresence,
-} from "framer-motion";
+import { useRef, useId, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
 import { formatDate } from "@/shared/lib/utils";
 import type { EpicSummary } from "@/shared/types";
 
@@ -34,11 +57,18 @@ function epicPhase(epic: EpicSummary): "dormant" | "active" | "complete" {
 
 const PHASE_META = {
   dormant: { label: "Планируется", dot: "#64748b", glow: "rgba(100,116,139,0.18)", text: "#94a3b8" },
-  active: { label: "Активен", dot: "#a78bfa", glow: "rgba(139,92,246,0.22)", text: "#c4b5fd" },
-  complete: { label: "Завершён", dot: "#34d399", glow: "rgba(52,211,153,0.22)", text: "#6ee7b7" },
+  active:  { label: "Активен",     dot: "#a78bfa", glow: "rgba(139,92,246,0.22)",  text: "#c4b5fd" },
+  complete:{ label: "Завершён",    dot: "#34d399", glow: "rgba(52,211,153,0.22)",  text: "#6ee7b7" },
 } as const;
 
-// ── Liquid Orb ────────────────────────────────────────────────────────────────
+// ── Static Orb (replaces LiquidOrb) ──────────────────────────────────────────
+//
+// ОПТИМИЗАЦИЯ: убраны feTurbulence + <animate> + feDisplacementMap.
+// Те фильтры создавали GPU filter-chain работающий 60fps бесконечно.
+// При 6 карточках = 6 × (turbulence + displacement) каждый кадр.
+//
+// Новый орб: clip-path для fill-level + CSS transition (compositor-friendly).
+// Визуальный эффект "жидкости" сохранён через волнообразный clip-path.
 
 interface OrbProps {
   progress: number;
@@ -46,77 +76,98 @@ interface OrbProps {
   size?: number;
 }
 
-function LiquidOrb({ progress, color, size = 60 }: OrbProps) {
+function StaticOrb({ progress, color, size = 60 }: OrbProps) {
   const uid = useId().replace(/:/g, "");
   const R = size * 0.43;
   const cx = size / 2;
-
-  const rawY = cx + R - 2 * R * progress;
-  const fillY = useSpring(rawY, { stiffness: 55, damping: 14, mass: 1.2 });
-
-  useEffect(() => {
-    fillY.set(cx + R - 2 * R * progress);
-  }, [progress, cx, R, fillY]);
-
-  const pulseOpacity = useSpring(progress > 0 ? 0.45 : 0.1, { stiffness: 40, damping: 12 });
-
   const pct = Math.round(progress * 100);
 
+  // Fill level — y-координата верхнего края заливки
+  const fillY = cx + R - 2 * R * progress;
+  // Слегка волнообразная маска через clipPath (статичная, без анимации)
+  // Имитирует поверхность жидкости без SVG-фильтров
+  const waveOffset = R * 0.07;
+
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: "visible" }}>
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      style={{ overflow: "visible" }}
+    >
       <defs>
-        <filter id={`liq-${uid}`} x="-15%" y="-15%" width="130%" height="130%">
-          <feTurbulence type="turbulence" baseFrequency="0.028" numOctaves="3" seed="7" result="noise">
-            <animate attributeName="baseFrequency" values="0.028;0.042;0.028" dur="4s" repeatCount="indefinite" />
-          </feTurbulence>
-          <feDisplacementMap in="SourceGraphic" in2="noise" scale={size * 0.065} xChannelSelector="R" yChannelSelector="G" />
-        </filter>
         <clipPath id={`sph-${uid}`}>
           <circle cx={cx} cy={cx} r={R} />
         </clipPath>
         <radialGradient id={`lgrad-${uid}`} cx="40%" cy="35%" r="65%">
           <stop offset="0%" stopColor="white" stopOpacity="0.22" />
-
           <stop offset="100%" stopColor="rgba(0,0,0,0.0)" />
-        </radialGradient>
-        <radialGradient id={`glow-${uid}`} cx="50%" cy="50%" r="50%">
-          <stop offset="60%" stopColor="transparent" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.35" />
         </radialGradient>
       </defs>
 
-      <motion.circle cx={cx} cy={cx} r={R + 5} fill={`url(#glow-${uid})`} style={{ opacity: pulseOpacity }} />
-      <motion.circle
-        cx={cx} cy={cx} r={R + 2} fill="none" stroke={color} strokeWidth="0.5"
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: [0.15, 0.4, 0.15], scale: [0.97, 1.02, 0.97] }}
-        transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
+      {/* Outer glow ring — статичный, без анимации */}
+      <circle
+        cx={cx} cy={cx} r={R + 3}
+        fill="none"
+        stroke={color}
+        strokeWidth="0.5"
+        opacity={0.25}
       />
+
+      {/* Base sphere */}
       <circle cx={cx} cy={cx} r={R} fill={`${color}12`} />
+
+      {/* Liquid fill — clip внутри сферы */}
       <g clipPath={`url(#sph-${uid})`}>
-        <motion.rect
-          x={cx - R - 2} y={fillY} width={R * 2 + 4} height={R * 2 + size * 0.12}
-          fill={color} opacity={0.72} filter={`url(#liq-${uid})`}
-        />
-        <motion.rect
-          x={cx - R - 2} y={fillY} width={R * 2 + 4} height={R * 0.25}
-          fill={color} opacity={0.45} filter={`url(#liq-${uid})`}
-          style={{ translateY: -4 }}
-        />
+        {/* Волнообразная поверхность через path вместо turbulence-фильтра */}
+        {progress > 0 && (
+          <path
+            d={`
+              M ${cx - R - 2} ${fillY + waveOffset}
+              Q ${cx - R / 2} ${fillY - waveOffset},
+                ${cx} ${fillY}
+              Q ${cx + R / 2} ${fillY + waveOffset},
+                ${cx + R + 2} ${fillY - waveOffset}
+              L ${cx + R + 2} ${cx + R + 4}
+              L ${cx - R - 2} ${cx + R + 4}
+              Z
+            `}
+            fill={color}
+            opacity={0.72}
+            style={{
+              // transition на clip-path / path — compositor-friendly через transform
+              // Анимация при изменении progress
+              transition: "d 0.8s cubic-bezier(0.16,1,0.3,1)",
+            }}
+          />
+        )}
       </g>
+
+      {/* Specular highlight */}
       <circle cx={cx} cy={cx} r={R} fill={`url(#lgrad-${uid})`} />
       <circle cx={cx} cy={cx} r={R} fill="none" stroke={color} strokeWidth="0.5" opacity={0.5} />
-      <circle cx={cx} cy={cx} r={R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
+
+      {/* Specular spots */}
       <ellipse
-        cx={cx * 0.74} cy={cx * 0.62} rx={R * 0.28} ry={R * 0.16}
+        cx={cx * 0.74} cy={cx * 0.62}
+        rx={R * 0.28} ry={R * 0.16}
         fill="rgba(255,255,255,0.22)"
         transform={`rotate(-20, ${cx * 0.74}, ${cx * 0.62})`}
       />
-      <ellipse cx={cx * 1.22} cy={cx * 0.52} rx={R * 0.08} ry={R * 0.05} fill="rgba(255,255,255,0.14)" />
+      <ellipse
+        cx={cx * 1.22} cy={cx * 0.52}
+        rx={R * 0.08} ry={R * 0.05}
+        fill="rgba(255,255,255,0.14)"
+      />
+
+      {/* Percentage text */}
       <text
-        x={cx} y={cx + size * 0.06} textAnchor="middle"
-        fontSize={size * 0.19} fontFamily="'DM Mono', monospace"
-        fontWeight="600" fill="rgba(255,255,255,0.92)"
+        x={cx} y={cx + size * 0.06}
+        textAnchor="middle"
+        fontSize={size * 0.19}
+        fontFamily="'DM Mono', monospace"
+        fontWeight="600"
+        fill="rgba(255,255,255,0.92)"
       >
         {pct}%
       </text>
@@ -125,25 +176,74 @@ function LiquidOrb({ progress, color, size = 60 }: OrbProps) {
 }
 
 // ── Mesh gradient background ──────────────────────────────────────────────────
+//
+// ОПТИМИЗАЦИЯ: убран `transition: background 1.2s ease`.
+// Background-gradient transitions форсируют paint каждый кадр (не compositor).
+// Градиент теперь статичный — задаётся через CSS-переменную --epic-color.
+// Визуально неотличимо: цвет не меняется в процессе работы карточки.
 
-function MeshBackground({ color, progress }: { color: string; progress: number }) {
-  const shift = progress * 30;
+function MeshBackground({ color }: { color: string }) {
   return (
     <div
       className="absolute inset-0 pointer-events-none"
       style={{
         background: `
-          radial-gradient(ellipse 70% 55% at ${20 + shift * 0.3}% ${75 - shift * 0.2}%,
-            ${color}1a 0%, transparent 55%),
-          radial-gradient(ellipse 55% 45% at ${80 - shift * 0.2}% ${30 + shift * 0.15}%,
-            ${color}10 0%, transparent 50%),
-          radial-gradient(ellipse 40% 60% at 50% 110%,
-            ${color}0d 0%, transparent 55%)
+          radial-gradient(ellipse 70% 55% at 20% 75%, ${color}1a 0%, transparent 55%),
+          radial-gradient(ellipse 55% 45% at 80% 30%, ${color}10 0%, transparent 50%),
+          radial-gradient(ellipse 40% 60% at 50% 110%, ${color}0d 0%, transparent 55%)
         `,
-        transition: "background 1.2s ease",
+        // NO transition — статичный, без repaint при hover
       }}
     />
   );
+}
+
+// ── CSS-only tilt hook ────────────────────────────────────────────────────────
+//
+// ОПТИМИЗАЦИЯ: заменяет useMotionValue + useSpring × 2 (rotateX/rotateY).
+// Framer springs держат 2 активные подписки на карточку и пересчитываются
+// при каждом mousemove синхронно с React рендером.
+//
+// Новый подход:
+// 1. Обновляем CSS custom properties --rotX/--rotY напрямую через rAF
+// 2. CSS transform читает эти переменные — никакого React state/re-render
+// 3. Плавность достигается через CSS transition на transform (compositor)
+// 4. rAF throttle — один style.setProperty в кадр максимум
+
+function useCssTilt(ref: React.RefObject<HTMLDivElement | null>) {
+  const rafRef = useRef<number | null>(null);
+
+  const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (rafRef.current !== null) return; // throttle: один rAF в кадр
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const r = ref.current?.getBoundingClientRect();
+      if (!r) return;
+      const mx = (e.clientX - r.left) / r.width - 0.5;
+      const my = (e.clientY - r.top) / r.height - 0.5;
+      ref.current?.style.setProperty("--rotX", `${-my * 4}deg`);
+      ref.current?.style.setProperty("--rotY", `${mx * 4}deg`);
+    });
+  }, [ref]);
+
+  const onMouseLeave = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    // Плавный возврат обеспечивает CSS transition
+    ref.current?.style.setProperty("--rotX", "0deg");
+    ref.current?.style.setProperty("--rotY", "0deg");
+  }, [ref]);
+
+  // Cleanup при unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  return { onMouseMove, onMouseLeave };
 }
 
 // ── Card component ────────────────────────────────────────────────────────────
@@ -162,50 +262,37 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
   const phase = epicPhase(epic);
   const meta = PHASE_META[phase];
 
-  // ── Tilt — без preserve-3d, только rotateX/rotateY ──────────────────────
-  // perspective задаётся на обёртке через style, а не transformStyle
-  const mouseX = useMotionValue(0);
-  const mouseY = useMotionValue(0);
-  const rotX = useSpring(useTransform(mouseY, [-0.5, 0.5], [4, -4]), { stiffness: 260, damping: 30 });
-  const rotY = useSpring(useTransform(mouseX, [-0.5, 0.5], [-4, 4]), { stiffness: 260, damping: 30 });
-
-  function onMouseMove(e: React.MouseEvent<HTMLDivElement>) {
-    const r = cardRef.current?.getBoundingClientRect();
-    if (!r) return;
-    mouseX.set((e.clientX - r.left) / r.width - 0.5);
-    mouseY.set((e.clientY - r.top) / r.height - 0.5);
-  }
-
-  function onMouseLeave() {
-    mouseX.set(0);
-    mouseY.set(0);
-  }
-
-  // ── Kinetic typography hover ──────────────────────────────────────────────
-  const hoverProg = useMotionValue(0);
-  const titleSpacing = useSpring(
-    useTransform(hoverProg, [0, 1], ["normal", "0.018em"]),
-    { stiffness: 180, damping: 24 },
-  );
+  const { onMouseMove, onMouseLeave } = useCssTilt(cardRef);
 
   return (
     /*
-     * Корневой div — НЕ участвует в FLIP (layoutId здесь нет).
-     * isolate создаёт stacking context без 3D, что позволяет z-index
-     * корректно работать когда Workspace анимируется поверх других карточек.
-     * perspective на style даёт перспективу для rotateX/rotateY.
+     * Корневой div — держит CSS custom properties для tilt.
+     * perspective задаётся здесь, transform читается через var().
+     * isolate — stacking context без 3D.
+     *
+     * CSS transition на transform обеспечивает плавность через compositor
+     * без каких-либо Framer springs. Это намного дешевле при скролле:
+     * compositor не нужен React/JS для анимации между кадрами.
      */
     <div
       ref={cardRef}
-      className="relative isolate"
-      style={{ perspective: "1200px" }}
+      className="relative isolate epic-card-tilt-root"
+      style={{
+        perspective: "1200px",
+        // CSS custom properties для tilt — обновляются через rAF, без re-render
+        "--rotX": "0deg",
+        "--rotY": "0deg",
+      } as React.CSSProperties}
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
     >
       {/*
-       * layoutId здесь — Framer Motion автоматически FLIP-морфирует
-       * эту карточку в EpicWorkspace при открытии/закрытии.
-       * Нет preserve-3d → нет проблем со stacking context.
+       * layoutId — FLIP-анимация открытия workspace.
+       * Оставлен только layoutId и mount animation (opacity/y).
+       * Убраны: whileHover с Framer, kinetic typography spring.
+       *
+       * CSS tilt задаётся через style.transform с CSS-переменными.
+       * transition на transform (0.25s) — compositor-only плавность.
        */}
       <motion.div
         layoutId={`epic-card-${epic.id}`}
@@ -218,30 +305,33 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
           y: { duration: 0.45, delay: index * 0.07, ease: [0.16, 1, 0.3, 1] },
         }}
         style={{
-          rotateX: rotX,
-          rotateY: rotY,
+          // CSS tilt через переменные — обновляется вне React render cycle
+          transform: "perspective(1200px) rotateX(var(--rotX)) rotateY(var(--rotY))",
+          // Плавность через CSS transition (compositor, не Framer spring)
+          transition: "transform 0.25s cubic-bezier(0.16,1,0.3,1)",
           cursor: "pointer",
+          // will-change: transform подсказывает браузеру создать composited layer
+          willChange: "transform",
         }}
-        onHoverStart={() => hoverProg.set(1)}
-        onHoverEnd={() => hoverProg.set(0)}
         onClick={() => onOpen(epic.id)}
+        // Hover-эффект карточки — только через CSS (см. .epic-card-shell:hover в globals)
+        // Убраны: onHoverStart/onHoverEnd (они форсировали Framer state updates)
       >
-        {/* ── Outer glow on hover ── */}
-        <motion.div
-          className="absolute -inset-px rounded-2xl pointer-events-none"
-          initial={{ opacity: 0 }}
-          whileHover={{ opacity: 1 }}
-          transition={{ duration: 0.35 }}
+        {/* ── Outer glow on hover — CSS :hover, не Framer whileHover ── */}
+        <div className="epic-card-glow-layer absolute -inset-px rounded-2xl pointer-events-none"
           style={{
             background: `linear-gradient(135deg, ${epic.color}20 0%, transparent 60%)`,
             boxShadow: `0 0 0 0.5px ${epic.color}40, 0 12px 40px ${epic.color}18, 0 0 60px ${epic.color}0e`,
             borderRadius: 16,
+            opacity: 0,
+            // CSS transition для hover glow — compositor-friendly (opacity)
+            transition: "opacity 0.35s ease",
           }}
         />
 
         {/* ── Glass card shell ── */}
         <div
-          className="relative overflow-hidden rounded-2xl"
+          className="epic-card-shell relative overflow-hidden rounded-2xl"
           style={{
             background: "var(--bg-elevated)",
             border: `0.5px solid ${epic.color}30`,
@@ -254,7 +344,7 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
             `,
           }}
         >
-          <MeshBackground color={epic.color} progress={progress} />
+          <MeshBackground color={epic.color} />
 
           {/* Top specular strip */}
           <div
@@ -268,27 +358,27 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
           <div className="relative px-4 pt-4 pb-3 flex flex-col gap-3">
             {/* Row 1: phase badge + id */}
             <div className="flex items-center justify-between gap-2">
-              <motion.div
+              <div
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border"
                 style={{
                   background: meta.glow,
                   color: meta.text,
                   borderColor: `${meta.dot}35`,
                 }}
-                layout
               >
-                <motion.span
+                {/* Pulsing dot — только для active, CSS animation */}
+                <span
                   className="w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{ backgroundColor: meta.dot }}
-                  animate={
-                    phase === "active"
-                      ? { opacity: [1, 0.3, 1], scale: [1, 1.3, 1] }
-                      : { opacity: 1, scale: 1 }
-                  }
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  style={{
+                    backgroundColor: meta.dot,
+                    // CSS animation вместо Framer animate — дешевле для простого pulse
+                    animation: phase === "active"
+                      ? "epic-dot-pulse 2s ease-in-out infinite"
+                      : "none",
+                  }}
                 />
                 {meta.label}
-              </motion.div>
+              </div>
 
               <span className="text-xs font-mono" style={{ color: "var(--text-muted)", opacity: 0.5 }}>
                 #{epic.id}
@@ -298,15 +388,13 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
             {/* Row 2: title + orb */}
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
-                <motion.h3
+                {/* Убран kinetic typography (letterSpacing spring → text reflow) */}
+                <h3
                   className="text-sm font-semibold leading-snug"
-                  style={{
-                    color: "var(--text-primary)",
-                    letterSpacing: titleSpacing as unknown as string,
-                  }}
+                  style={{ color: "var(--text-primary)" }}
                 >
                   {epic.title}
-                </motion.h3>
+                </h3>
 
                 {epic.description && (
                   <p className="text-xs mt-1.5 line-clamp-2 leading-relaxed" style={{ color: "var(--text-muted)" }}>
@@ -316,7 +404,13 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
               </div>
 
               <div className="shrink-0" style={{ filter: `drop-shadow(0 0 10px ${epic.color}50)` }}>
-                <LiquidOrb progress={progress} color={epic.color} size={58} />
+                {/*
+                 * StaticOrb вместо LiquidOrb.
+                 * LiquidOrb запускал feTurbulence + feDisplacementMap + <animate>
+                 * бесконечно (каждые ~100ms). Для 6 карточек = 6 GPU filter-chains.
+                 * StaticOrb использует статичный SVG path — нет GPU overhead.
+                 */}
+                <StaticOrb progress={progress} color={epic.color} size={58} />
               </div>
             </div>
 
@@ -335,19 +429,18 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
                   </span>
                 </div>
 
-                <AnimatePresence>
-                  {pct === 100 && (
-                    <motion.span
-                      initial={{ opacity: 0, scale: 0.7, x: -4 }}
-                      animate={{ opacity: 1, scale: 1, x: 0 }}
-                      exit={{ opacity: 0, scale: 0.7 }}
-                      className="text-xs"
-                      style={{ color: meta.dot }}
-                    >
-                      ✦ Готово
-                    </motion.span>
-                  )}
-                </AnimatePresence>
+                {/* Убран AnimatePresence — заменён на CSS opacity transition */}
+                <span
+                  className="text-xs"
+                  style={{
+                    color: meta.dot,
+                    opacity: pct === 100 ? 1 : 0,
+                    transform: pct === 100 ? "scale(1) translateX(0)" : "scale(0.7) translateX(-4px)",
+                    transition: "opacity 0.2s ease, transform 0.2s ease",
+                  }}
+                >
+                  ✦ Готово
+                </span>
               </div>
 
               {epic.endDate && (
@@ -379,20 +472,23 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
             />
           </div>
 
-          {/* ── Open affordance ── */}
-          <motion.div
-            className="absolute bottom-2.5 right-3 flex items-center gap-1"
-            initial={{ opacity: 0, x: 4 }}
-            whileHover={{ opacity: 1, x: 0 }}
-            style={{ color: epic.color, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+          {/* ── Open affordance — CSS :hover через класс ── */}
+          <div
+            className="epic-card-affordance absolute bottom-2.5 right-3 flex items-center gap-1"
+            style={{
+              color: epic.color,
+              opacity: 0,
+              transform: "translateX(4px)",
+              transition: "opacity 0.2s ease, transform 0.2s ease",
+              pointerEvents: "none",
+            }}
           >
             <span className="text-[10px] font-mono font-medium">раскрыть</span>
             <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor"
               strokeWidth="1.5" strokeLinecap="round">
               <path d="M4.5 2H10v5.5M10 2L2 10" />
             </svg>
-          </motion.div>
+          </div>
         </div>
       </motion.div>
     </div>

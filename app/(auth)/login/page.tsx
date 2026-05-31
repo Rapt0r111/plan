@@ -223,7 +223,7 @@ export default function LoginPage() {
                 Запомнить меня
               </span>
               <span className="mt-0.5 block text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>
-                Сохранит сессию после закрытия браузера и запомнит логин. Пароль сохраняет только менеджер паролей браузера.
+                Сохранит сессию после закрытия браузера.
               </span>
             </span>
           </label>

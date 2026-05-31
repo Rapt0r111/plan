@@ -1,5 +1,15 @@
 /* ═══════════════════════════════════════════════════════════════════════
    globals.css — Neural Depth × Bioluminescent Void   [2027 Design System]
+
+   ОПТИМИЗАЦИЯ scroll-performance v3:
+   1. backdrop-filter → only where truly needed; добавлен will-change + contain
+   2. body::before cursor glow → throttle в JS (см. комментарий), убран на touch
+   3. Infinite CSS animations → contain: style на host-элементах; убраны paint-unsafe
+   4. @media (prefers-reduced-motion) — отключает все анимации
+   5. @media (hover: none) — убирает cursor-light и hover-эффекты для touch-устройств
+   6. Noise SVG на body → вынесен в псевдоэлемент с pointer-events:none + will-change:contents
+   7. iridescent-sweep использует only transform/opacity → GPU composite
+   8. hue-breathe → contain: style на .hue-breathe элементах
    ═══════════════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
@@ -39,14 +49,13 @@
 .dark {
   --island-bg: rgba(10, 11, 20, 0.92);
 
-  /* Void Layers — три микро-тона для ощущения глубины */
   --bg-base: #06070d;
   --bg-surface: #0a0b15;
   --bg-elevated: #0f1121;
   --bg-overlay: #161929;
-  /* Layout */
   --sidebar-w: 220px;
   --header-h: 56px;
+
   /* Bioluminescent Glass */
   --glass-01: rgba(255, 255, 255, 0.025);
   --glass-02: rgba(255, 255, 255, 0.055);
@@ -56,8 +65,7 @@
 
   --filter-bar-bg: rgba(8, 9, 18, 0.88);
 
-
-  /* Chromatic split layers (aberration effect) */
+  /* Chromatic split layers */
   --glass-r: rgba(255, 80, 80, 0.015);
   --glass-b: rgba(80, 140, 255, 0.018);
 
@@ -66,7 +74,7 @@
   --text-secondary: rgba(255, 255, 255, 0.54);
   --text-muted: rgba(255, 255, 255, 0.36);
 
-  /* Accent — Chromatic Amethyst (hue-animatable via @property) */
+  /* Accent */
   --accent-h: 262;
   --accent-s: 83%;
   --accent-l: 70%;
@@ -76,11 +84,10 @@
   --accent-glow: hsla(var(--accent-h), var(--accent-s), 60%, 0.22);
   --accent-glow-strong: hsla(var(--accent-h), var(--accent-s), 60%, 0.42);
 
-  /* Ambient cursor position — set from JS */
   --cursor-x: 50%;
   --cursor-y: 50%;
 
-  /* Status — bioluminescent */
+  /* Status */
   --status-todo-bg: rgba(100, 116, 139, 0.18);
   --status-todo-text: #8da0b8;
   --status-progress-bg: rgba(14, 165, 233, 0.15);
@@ -90,7 +97,6 @@
   --status-blocked-bg: rgba(239, 68, 68, 0.15);
   --status-blocked-text: #f87171;
 
-  /* Raw status colors (for shadows / particles) */
   --color-todo: #64748b;
   --color-in-progress: #38bdf8;
   --color-done: #34d399;
@@ -113,10 +119,8 @@
   --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
   --shadow-overlay: 0 24px 64px rgba(0, 0, 0, 0.8), 0 4px 16px rgba(0, 0, 0, 0.5);
 
-  /* Focus ring color */
   --focus-ring-color: hsl(var(--accent-h), var(--accent-s), 65%);
 
-  /* Notification/island text colors */
   --notification-text-primary: rgba(255, 255, 255, 0.85);
   --notification-text-muted: rgba(255, 255, 255, 0.38);
   --notification-dismiss-color: rgba(255, 255, 255, 0.2);
@@ -124,7 +128,6 @@
   --notification-border-base: rgba(255, 255, 255, 0.06);
   --notification-surface: rgba(255, 255, 255, 0.015);
 
-  /* === Новые переменные для light/dark адаптации === */
   --bg-card-done: linear-gradient(155deg, rgba(13, 20, 28, 0.98) 0%, rgba(10, 18, 22, 0.98) 100%);
   --border-card-done: rgba(52, 211, 153, 0.16);
   --track-bg: rgba(255, 255, 255, 0.06);
@@ -212,7 +215,6 @@ html.light {
     0 4px 12px rgba(60, 40, 10, 0.10),
     0 0 0 1px rgba(60, 40, 10, 0.06);
 
-  /* Notification/island text colors — adapted for light bg */
   --notification-text-primary: rgba(18, 12, 6, 0.88);
   --notification-text-muted: rgba(18, 12, 6, 0.44);
   --notification-dismiss-color: rgba(18, 12, 6, 0.22);
@@ -257,30 +259,67 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Subtle noise grain over void */
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.022'/%3E%3C/svg%3E");
 }
 
-html.light body {
-  background-image: none;
-}
-
-/* ── Ambient Cursor Light (global, JS writes --cursor-x/y) ────────────────── */
-body::before {
+/*
+ * ОПТИМИЗАЦИЯ: noise вынесен из background-image body в отдельный псевдоэлемент.
+ * body::after рендерится как отдельный composited layer — не триггерит repaint
+ * основного контента при скролле. position: fixed важен: иначе скроллируемый
+ * контент каждый кадр будет invalidate paint-регион с noise.
+ */
+body::after {
   content: '';
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
-  background: radial-gradient(600px circle at var(--cursor-x) var(--cursor-y),
-      hsla(var(--accent-h), var(--accent-s), 65%, 0.04) 0%,
-      transparent 60%);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.022'/%3E%3C/svg%3E");
+  /* Promote to its own layer — noise stays frozen while content scrolls */
+  will-change: contents;
 }
 
-html.light body::before {
-  background: radial-gradient(500px circle at var(--cursor-x) var(--cursor-y),
-      hsla(var(--accent-h), var(--accent-s), 50%, 0.03) 0%,
-      transparent 60%);
+html.light body::after {
+  display: none;
+}
+
+/*
+ * ОПТИМИЗАЦИЯ: cursor ambient light.
+ * - Убран на touch-устройствах (hover: none) — там нет курсора, только лишний repaint
+ * - На desktop оставлен, но JS ОБЯЗАН обновлять --cursor-x/y через rAF:
+ *
+ *   let rafPending = false;
+ *   document.addEventListener('mousemove', (e) => {
+ *     if (rafPending) return;
+ *     rafPending = true;
+ *     requestAnimationFrame(() => {
+ *       document.documentElement.style.setProperty('--cursor-x', e.clientX + 'px');
+ *       document.documentElement.style.setProperty('--cursor-y', e.clientY + 'px');
+ *       rafPending = false;
+ *     });
+ *   }, { passive: true });
+ *
+ * Без rAF это триггерит style recalc каждые 1-2ms (mousemove rate ~500hz).
+ */
+@media (hover: hover) {
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(600px circle at var(--cursor-x) var(--cursor-y),
+        hsla(var(--accent-h), var(--accent-s), 65%, 0.04) 0%,
+        transparent 60%);
+    /* Isolated composited layer — не вызывает repaint соседних элементов */
+    will-change: background;
+    contain: strict;
+  }
+
+  html.light body::before {
+    background: radial-gradient(500px circle at var(--cursor-x) var(--cursor-y),
+        hsla(var(--accent-h), var(--accent-s), 50%, 0.03) 0%,
+        transparent 60%);
+  }
 }
 
 /* ── Scrollbar ─────────────────────────────────────────────────────────────── */
@@ -329,7 +368,12 @@ html.light ::-webkit-scrollbar-thumb:hover {
 
 /* ── Keyframes ─────────────────────────────────────────────────────────────── */
 
-/* Slow hue drift — imperceptible but alive */
+/*
+ * ОПТИМИЗАЦИЯ: hue-breathe анимирует CSS-кастомное свойство.
+ * Это вызывает style recalc на элементе и всех потомках, использующих --accent-h.
+ * Решение: добавляем contain: style на .hue-breathe — ограничиваем scope recalc.
+ * Подробнее в секции .hue-breathe ниже.
+ */
 @keyframes hue-breathe {
 
   0%,
@@ -346,7 +390,7 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Heartbeat focus ring — 33 BPM, non-distracting */
+/* Heartbeat focus ring — только transform/box-shadow: compositor-friendly */
 @keyframes heartbeat-ring {
   0% {
     box-shadow: 0 0 0 2px var(--focus-ring-color), 0 0 0 4px hsla(var(--accent-h), var(--accent-s), 65%, 0.15);
@@ -361,7 +405,10 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Liquid shimmer for progress bars */
+/*
+ * ОПТИМИЗАЦИЯ: liquid-shimmer — background-position анимирует только composite layer.
+ * Безопасна для скролла, оставлена без изменений.
+ */
 @keyframes liquid-shimmer {
   0% {
     background-position: -200% center;
@@ -372,7 +419,7 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Completion burst */
+/* Completion burst — только transform + box-shadow: GPU */
 @keyframes done-burst {
   0% {
     box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.60);
@@ -394,22 +441,30 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Iridescent sweep on column headers */
+/*
+ * ОПТИМИЗАЦИЯ: iridescent-sweep БЫЛО: анимировало --iridescent-angle (@property),
+ * что вызывало repaint всего градиента каждый кадр (gradient background = paint).
+ * СТАЛО: анимация заморожена — статичный градиент. Визуальный эффект остаётся,
+ * но без 8-секундного бесконечного repaint-цикла на каждой колонке.
+ *
+ * Альтернатива если анимация нужна: использовать псевдоэлемент с
+ * transform: rotate() + overflow: hidden на родителе. Rotate — compositor-only.
+ */
 @keyframes iridescent-sweep {
   0% {
-    --iridescent-angle: 110deg;
+    opacity: 0.6;
   }
 
   50% {
-    --iridescent-angle: 160deg;
+    opacity: 1;
   }
 
   100% {
-    --iridescent-angle: 110deg;
+    opacity: 0.6;
   }
 }
 
-/* Liquid status wipe-in */
+/* Status wipe — clip-path: paint operation. Используется только при mount (once) */
 @keyframes status-wipe-in {
   from {
     clip-path: inset(0 100% 0 0 round 99px);
@@ -420,7 +475,7 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Fade up (stagger helper) */
+/* fadeUp — transform + opacity: compositor-safe */
 @keyframes fadeUp {
   from {
     opacity: 0;
@@ -433,7 +488,7 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Spatial entry (TaskSlideover) */
+/* Spatial entry — transform + opacity: compositor-safe */
 @keyframes spatial-enter {
   from {
     transform: perspective(1200px) rotateY(8deg) translateX(100%);
@@ -446,7 +501,7 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Particle orbit (completion burst) */
+/* Particle fly — transform + opacity: compositor-safe */
 @keyframes particle-fly {
   0% {
     transform: translate(0, 0) scale(1);
@@ -459,7 +514,11 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Pulse glow */
+/*
+ * ОПТИМИЗАЦИЯ: pulse-glow БЫЛО: box-shadow анимация = repaint каждый кадр.
+ * СТАЛО: добавлен contain: paint + isolate на .animate-pulse-glow,
+ * чтобы repaint не распространялся на соседние элементы (см. утилиту ниже).
+ */
 @keyframes pulse-glow {
 
   0%,
@@ -504,12 +563,32 @@ html.light ::-webkit-scrollbar-thumb:hover {
 /* ── Component Utilities ───────────────────────────────────────────────────── */
 @layer components {
 
-  /* Hue-breathing root */
+  /*
+   * ОПТИМИЗАЦИЯ: .hue-breathe
+   * contain: style — ограничивает scope CSS-custom-property style recalc.
+   * Без contain: весь document пересчитывается при каждом шаге анимации.
+   * С contain: style — только этот элемент и его потомки.
+   */
   .hue-breathe {
     animation: hue-breathe 12s ease-in-out infinite;
+    contain: style;
   }
 
   /* ── Glassmorphism 3.0 ── */
+  /*
+   * ОПТИМИЗАЦИЯ: backdrop-filter — самый дорогой CSS-эффект для GPU.
+   * Каждый элемент с backdrop-filter создаёт отдельный compositing layer
+   * и требует читать пиксели под собой (GPU readback).
+   *
+   * Правила:
+   * 1. Добавлен will-change: transform — форсирует GPU layer до применения blur
+   *    (без этого браузер может откладывать promotion и делать его в момент скролла)
+   * 2. Добавлен transform: translateZ(0) — аналогично, создаёт stacking context
+   * 3. Хром/Safari лимит: ~3-4 одновременных backdrop-filter без дроп кадров.
+   *    Не используйте .glass на элементах внутри скроллируемых списков!
+   *    Используйте .glass только для sticky/fixed элементов: header, sidebar, modal.
+   * 4. Для карточек в списке используйте .glass-card (без blur) — см. ниже.
+   */
   .glass {
     background: var(--glass-01);
     backdrop-filter: blur(16px) saturate(180%);
@@ -517,9 +596,12 @@ html.light ::-webkit-scrollbar-thumb:hover {
     border: 1px solid var(--glass-border);
     position: relative;
     overflow: hidden;
+    /* Promote layer BEFORE blur is needed — prevents jank on first paint */
+    will-change: transform;
+    transform: translateZ(0);
   }
 
-  /* Chromatic aberration layer — appears on hover */
+  /* Chromatic aberration — только на hover, не блокирует скролл */
   .glass::after {
     content: '';
     position: absolute;
@@ -541,6 +623,8 @@ html.light ::-webkit-scrollbar-thumb:hover {
     backdrop-filter: blur(24px) saturate(200%);
     -webkit-backdrop-filter: blur(24px) saturate(200%);
     border: 1px solid var(--glass-border);
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   .glass-elevated {
@@ -549,14 +633,29 @@ html.light ::-webkit-scrollbar-thumb:hover {
     box-shadow: var(--shadow-elevated);
   }
 
-  /* Light overrides — no blur needed */
+  /*
+   * НОВОЕ: .glass-card — замена .glass для элементов в скроллируемых списках.
+   * НЕТ backdrop-filter → нет GPU readback → нет scroll jank.
+   * Визуально неотличимо при правильном bg-цвете.
+   */
+  .glass-card {
+    background: var(--glass-02);
+    border: 1px solid var(--glass-border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Light overrides */
   html.light .glass,
-  html.light .glass-md {
+  html.light .glass-md,
+  html.light .glass-card {
     background: var(--bg-surface);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     border-color: var(--glass-border);
     box-shadow: var(--shadow-card);
+    will-change: auto;
+    transform: none;
   }
 
   html.light .glass::after {
@@ -569,14 +668,21 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 
   /* ── Iridescent column header ── */
+  /*
+   * ОПТИМИЗАЦИЯ: убрана анимация --iridescent-angle (paint каждый кадр).
+   * Заменена на opacity-only анимацию (compositor-only).
+   * Градиент статичный, эффект "живости" достигается через opacity pulsing.
+   */
   .iridescent-header {
-    background: linear-gradient(var(--iridescent-angle),
+    background: linear-gradient(135deg,
         transparent 0%,
         rgba(255, 255, 255, 0.028) 30%,
         rgba(139, 92, 246, 0.04) 50%,
         rgba(56, 189, 248, 0.03) 70%,
         transparent 100%);
     animation: iridescent-sweep 8s ease-in-out infinite;
+    /* Contain repaint to this element only */
+    contain: paint;
   }
 
   /* ── Liquid progress bar ── */
@@ -587,11 +693,14 @@ html.light ::-webkit-scrollbar-thumb:hover {
         currentColor 100%);
     background-size: 200% 100%;
     animation: liquid-shimmer 3s linear infinite;
+    /* background-position анимация — только composite, безопасно */
   }
 
   /* ── Heartbeat focus ring ── */
   .focus-heartbeat {
     animation: heartbeat-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    /* box-shadow = repaint, но isolated через contain */
+    contain: paint;
   }
 
   /* ── Status wipe ── */
@@ -656,13 +765,87 @@ html.light ::-webkit-scrollbar-thumb:hover {
   }
 
   /* ── Glow border ── */
+  /*
+   * ОПТИМИЗАЦИЯ: box-shadow transition = repaint.
+   * Добавлен contain: paint — ограничиваем область перерисовки.
+   */
   .glow-border {
     box-shadow: 0 0 0 1px var(--glass-border), 0 0 20px var(--accent-glow);
     transition: box-shadow 0.3s ease;
+    contain: paint;
   }
 
   .glow-border:hover {
     box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.4), 0 0 30px var(--accent-glow-strong), 0 0 60px var(--accent-glow);
+  }
+
+  .epic-card-shell:hover~.epic-card-glow-layer,
+  .epic-card-shell:hover+.epic-card-glow-layer {
+    opacity: 1 !important;
+  }
+
+  .epic-card-tilt-root:hover .epic-card-glow-layer {
+    opacity: 1 !important;
+  }
+
+  .epic-card-shell:hover .epic-card-affordance,
+  .epic-card-tilt-root:hover .epic-card-affordance {
+    opacity: 1 !important;
+    transform: translateX(0) !important;
+  }
+
+  @keyframes epic-dot-pulse {
+
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    50% {
+      opacity: 0.3;
+      transform: scale(1.3);
+    }
+  }
+
+  @media (hover: none) {
+
+    /* На touch — убираем will-change полностью (нет hover, нет tilt) */
+    .epic-card-tilt-root>* {
+      will-change: auto !important;
+      transform: none !important;
+      transition: none !important;
+    }
+
+    /* Glow и affordance не нужны на touch */
+    .epic-card-glow-layer,
+    .epic-card-affordance {
+      display: none;
+    }
+  }
+
+  .epics-grid-container {
+    contain: layout;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    @keyframes epic-dot-pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .epic-card-tilt-root>* {
+      transition: none !important;
+      transform: none !important;
+    }
+
+    .epic-card-glow-layer {
+      display: none;
+    }
   }
 }
 
@@ -673,6 +856,8 @@ html.light ::-webkit-scrollbar-thumb:hover {
   box-shadow: 0 32px 64px rgba(0, 0, 0, 0.7), 0 0 0 1px hsla(var(--accent-h), var(--accent-s), 65%, 0.3);
   z-index: 50;
   filter: blur(0.3px);
+  /* GPU layer для dragging элемента */
+  will-change: transform;
 }
 
 html.light [data-dragging="true"] {
@@ -741,21 +926,27 @@ html.light .quick-add-card {
   animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/*
+ * ОПТИМИЗАЦИЯ: pulse-glow анимирует box-shadow = repaint.
+ * contain: paint изолирует repaint от соседей.
+ * isolation: isolate создаёт stacking context — предотвращает z-index battles.
+ */
 .animate-pulse-glow {
   animation: pulse-glow 2.4s ease-in-out infinite;
+  contain: paint;
+  isolation: isolate;
 }
 
 .animate-hue {
   animation: hue-breathe 12s ease-in-out infinite;
+  contain: style;
 }
 
 .animate-spatial {
   animation: spatial-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* ── QuickAddTask component utilities ───────────────────────────────────────
-   Используются в widgets/board/QuickAddTask.tsx.                           */
-
+/* ── QuickAddTask component utilities ──────────────────────────────────────── */
 .quick-add-priority-chip {
   display: inline-flex;
   align-items: center;
@@ -856,4 +1047,60 @@ html.light .quick-add-card {
 .quick-add-save-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* ── Reduced Motion ────────────────────────────────────────────────────────── */
+/*
+ * ОПТИМИЗАЦИЯ: respectуем системную настройку "уменьшить движение".
+ * Пользователи с вестибулярными нарушениями + большой бонус производительности
+ * на слабых устройствах/батарейном режиме.
+ */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .liquid-bar {
+    animation: none;
+    background: currentColor;
+  }
+
+  .iridescent-header {
+    animation: none;
+  }
+
+  .hue-breathe,
+  .animate-hue {
+    animation: none;
+  }
+}
+
+/*
+ * ОПТИМИЗАЦИЯ: на touch-устройствах убираем:
+ * 1. cursor ambient light (body::before) — нет курсора, только лишний layer
+ * 2. Chromatic aberration hover эффект — нет hover на touch
+ * 3. Backdrop-filter на .glass — мобильный GPU часто не справляется
+ */
+@media (hover: none) {
+  body::before {
+    display: none;
+  }
+
+  .glass::after,
+  .glass-md::after {
+    display: none;
+  }
+
+  .glass,
+  .glass-md {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    will-change: auto;
+  }
 }

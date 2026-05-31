@@ -1,23 +1,17 @@
 "use client";
 /**
  * @file BoardPage.tsx — app/(main)/board/BoardPage.tsx
- *
- * РЕФАКТОРИНГ v6:
- *
- * 1. COL_WIDTHS вынесен ЗА пределы компонента.
- *    БЫЛО: const COL_WIDTHS = {...} объявлялся внутри render → новый объект при каждом ререндере
- *    СТАЛО: модульная константа → один объект на всё время жизни модуля
- *    Почему важно: COL_WIDTHS использовался в зависимостях useColumnCount (через boardColumnWidth)
- *    и потенциально передавался в дочерние компоненты — стабильная ссылка важна.
- *
- * 2. boardColumnWidth selector оптимизирован — читает только нужное поле из prefs.
- *
- * 3. Остальной код без изменений — BoardPage уже хорошо написан:
- *    - useSyncExternalStore в KeyboardHint (образцово)
- *    - useColumnCount с правильным useEffect для resize
- *    - useBoardKeyNav с useLayoutEffect для stale closure fix
  */
-import { useState, useMemo, useEffect, useSyncExternalStore } from "react";
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  useTransition,
+  useSyncExternalStore,
+  memo,
+  useRef,
+} from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
@@ -33,12 +27,31 @@ const TaskSlideover = dynamic(
   { ssr: false },
 );
 
-// ИСПРАВЛЕНО: вынесено за пределы компонента — не пересоздаётся при каждом рендере
+// ── Модульные константы ───────────────────────────────────────────────────────
+
 const COL_WIDTHS = { narrow: 320, default: 420, wide: 520 } as const;
 type ColWidthKey = keyof typeof COL_WIDTHS;
 
-// ── Animated board stats ──────────────────────────────────────────────────────
-function BoardStats({ total, done, inProgress, epicsCount }: {
+const SUBSCRIBE_NOOP = () => () => {};
+
+const HINT_KEY = "board_keynav_hint_v5";
+
+
+const exitVariant = {
+  exit: {
+    opacity: 0,
+    scale: 0.95,
+    y: -8,
+    transition: { duration: 0.22, ease: [0.4, 0, 1, 1] as const },
+  },
+};
+
+const MemoEpicColumn = memo(EpicColumn);
+
+// ── BoardStats ────────────────────────────────────────────────────────────────
+const BoardStats = memo(function BoardStats({
+  total, done, inProgress, epicsCount,
+}: {
   total: number; done: number; inProgress: number; epicsCount: number;
 }) {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -80,12 +93,17 @@ function BoardStats({ total, done, inProgress, epicsCount }: {
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg ml-1"
           style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)" }}
         >
-          <div className="w-16 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-            <motion.div
+          <div
+            className="w-16 h-1 rounded-full overflow-hidden"
+            style={{ background: "rgba(255,255,255,0.08)" }}
+          >
+            <div
               className="h-full rounded-full"
-              style={{ background: "linear-gradient(90deg, #8b5cf6, #34d399)" }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+              style={{
+                width: `${pct}%`,
+                background: "linear-gradient(90deg, #8b5cf6, #34d399)",
+                transition: "width 1.2s cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
             />
           </div>
           <span className="text-xs font-mono font-semibold" style={{ color: "#a78bfa" }}>{pct}%</span>
@@ -93,10 +111,10 @@ function BoardStats({ total, done, inProgress, epicsCount }: {
       )}
     </motion.div>
   );
-}
+});
 
 // ── Empty state ───────────────────────────────────────────────────────────────
-function EmptyState({ onClear }: { onClear: () => void }) {
+const EmptyState = memo(function EmptyState({ onClear }: { onClear: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16, scale: 0.97 }}
@@ -152,29 +170,22 @@ function EmptyState({ onClear }: { onClear: () => void }) {
       </motion.button>
     </motion.div>
   );
-}
+});
 
 // ── Keyboard hint ─────────────────────────────────────────────────────────────
-const HINT_KEY = "board_keynav_hint_v5";
-
-/**
- * useSyncExternalStore — React-благословлённый способ читать внешние сторы
- * (localStorage, cookies и т.д.) с правильным SSR/гидрацией поведением.
- * Server snapshot всегда возвращает false → нет hydration mismatch.
- */
 function useHintVisible() {
   const notDismissedInStorage = useSyncExternalStore(
-    () => () => {},
+    SUBSCRIBE_NOOP,
     () => !localStorage.getItem(HINT_KEY),
     () => false,
   );
   const [dismissedLocally, setDismissedLocally] = useState(false);
   const visible = notDismissedInStorage && !dismissedLocally;
 
-  function dismiss() {
+  const dismiss = useCallback(() => {
     setDismissedLocally(true);
     try { localStorage.setItem(HINT_KEY, "1"); } catch {}
-  }
+  }, []);
 
   return { visible, dismiss };
 }
@@ -195,16 +206,14 @@ function KbdKey({ children }: { children: React.ReactNode }) {
   );
 }
 
-function KeyboardHint() {
+const KeyboardHint = memo(function KeyboardHint() {
   const { visible, dismiss } = useHintVisible();
 
-  // useEffect правомерен: управляет таймером (side-effect с cleanup)
   useEffect(() => {
     if (!visible) return;
     const t = setTimeout(dismiss, 9000);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+  }, [visible, dismiss]);
 
   const shortcuts = [
     { keys: ["J", "K"], label: "навигация" },
@@ -258,10 +267,9 @@ function KeyboardHint() {
       )}
     </AnimatePresence>
   );
-}
+});
 
 // ── Column count hook ─────────────────────────────────────────────────────────
-// useEffect правомерен: DOM measurement + event listener (side-effects)
 function useColumnCount(minColWidth: number): number {
   const [count, setCount] = useState(3);
 
@@ -270,9 +278,20 @@ function useColumnCount(minColWidth: number): number {
       const available = document.documentElement.clientWidth - 48;
       setCount(Math.max(1, Math.floor(available / minColWidth)));
     }
+
     calc();
-    window.addEventListener("resize", calc);
-    return () => window.removeEventListener("resize", calc);
+
+    let rafId: number;
+    function handleResize() {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(calc);
+    }
+
+    window.addEventListener("resize", handleResize, { passive: true });
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      cancelAnimationFrame(rafId);
+    };
   }, [minColWidth]);
 
   return count;
@@ -284,52 +303,60 @@ function splitIntoColumns<T>(items: T[], n: number): T[][] {
   return cols;
 }
 
-const columnVariants = {
-  hidden: { opacity: 0, y: 24, scale: 0.96 },
-  visible: (i: number) => ({
-    opacity: 1, y: 0, scale: 1,
-    transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] as const, delay: i * 0.08 },
-  }),
-  exit: {
-    opacity: 0, scale: 0.95, y: -8,
-    transition: { duration: 0.22, ease: [0.4, 0, 1, 1] as const },
-  },
-};
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 export function BoardPage() {
   const epics = useTaskStore((s) => s.epics);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [activeTask, setActiveTask] = useState<TaskView | null>(null);
 
-  const showBoardStats     = usePrefsStore((s) => s.prefs.showBoardStats);
-  // ИСПРАВЛЕНО: читаем только нужное поле, не весь prefs объект
-  const boardColumnWidth   = usePrefsStore((s) => s.prefs.boardColumnWidth) as ColWidthKey;
+  const [, startFilterTransition] = useTransition();
+
+  const showBoardStats   = usePrefsStore((s) => s.prefs.showBoardStats);
+  const boardColumnWidth = usePrefsStore((s) => s.prefs.boardColumnWidth) as ColWidthKey;
+
+  const hasFilters = useMemo(
+    () =>
+      filters.roleKeys.length > 0 ||
+      filters.statuses.length > 0 ||
+      filters.priorities.length > 0,
+    [filters],
+  );
 
   const visibleEpics = useMemo(() => {
-    if (!filters.roleKeys.length && !filters.statuses.length && !filters.priorities.length) {
-      return epics;
-    }
+    if (!hasFilters) return epics;
     return epics.filter((e) => applyFilters(e.tasks, filters).length > 0);
-  }, [epics, filters]);
+  }, [epics, filters, hasFilters]);
 
   const { focusedTaskId, setFocusedTaskId } = useBoardKeyNav({
     visibleEpics,
     onOpenTask: setActiveTask,
   });
 
-  // ИСПРАВЛЕНО: COL_WIDTHS теперь модульная константа — стабильная ссылка
+  const handleOpenTask = useCallback(
+    (task: TaskView) => {
+      setFocusedTaskId(task.id);
+      setActiveTask(task);
+    },
+    [setFocusedTaskId],
+  );
+
+  const clearFilters = useCallback(() => {
+    startFilterTransition(() => setFilters(EMPTY_FILTERS));
+  }, [startFilterTransition]);
+
+  const handleFiltersChange = useCallback(
+    (next: FilterState) => {
+      startFilterTransition(() => setFilters(next));
+    },
+    [startFilterTransition],
+  );
+
   const colCount = useColumnCount(COL_WIDTHS[boardColumnWidth]);
 
   const columns = useMemo(
     () => splitIntoColumns(visibleEpics, colCount),
     [visibleEpics, colCount],
   );
-
-  const hasFilters =
-    filters.roleKeys.length > 0 ||
-    filters.statuses.length > 0 ||
-    filters.priorities.length > 0;
 
   const stats = useMemo(() => {
     const allTasks = epics.flatMap((e) => e.tasks);
@@ -344,20 +371,20 @@ export function BoardPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* ── Filter bar ───────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-        className="shrink-0 border-b"
+      <div
+        className="shrink-0 border-b animate-fade-up"
         style={{
           background: "var(--filter-bar-bg)",
           backdropFilter: "blur(20px)",
           borderColor: "var(--glass-border)",
+
+          willChange: "transform",
+          transform: "translateZ(0)",
         }}
       >
         <div className="px-6 py-2.5 flex items-center gap-4">
           <div className="flex-1">
-            <SmartFilters filters={filters} onChange={setFilters} />
+            <SmartFilters filters={filters} onChange={handleFiltersChange} />
           </div>
         </div>
 
@@ -366,39 +393,49 @@ export function BoardPage() {
             <BoardStats {...stats} />
           </div>
         )}
-      </motion.div>
+      </div>
 
       {/* ── Board area ───────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-x-auto overflow-y-auto">
+      <div
+        className="flex-1 overflow-x-auto overflow-y-auto"
+        style={{
+          contain: "layout",
+          overscrollBehaviorX: "contain",
+        }}
+      >
         <div className="p-6 min-h-full">
           <AnimatePresence>
             {hasFilters && visibleEpics.length === 0 && (
-              <EmptyState onClear={() => setFilters(EMPTY_FILTERS)} />
+              <EmptyState onClear={clearFilters} />
             )}
           </AnimatePresence>
 
           <div className="flex gap-5 items-start">
             {columns.map((colEpics, colIdx) => (
-              <div key={colIdx} className="flex flex-col gap-5 flex-1 min-w-0">
+              <div
+                key={colEpics[0]?.id ?? colIdx}
+                className="flex flex-col gap-5 flex-1 min-w-0"
+              >
                 <AnimatePresence>
                   {colEpics.map((epic, rowIdx) => {
                     const globalIdx = colIdx + rowIdx * colCount;
+                    const delay = Math.min(globalIdx * 60, 400); // cap at 400ms
+
                     return (
                       <motion.div
                         key={epic.id}
-                        custom={globalIdx}
-                        variants={columnVariants}
-                        initial="hidden"
-                        animate="visible"
+                        variants={exitVariant}
                         exit="exit"
+                        // CSS handles mount animation — no initial/animate on motion.div
+                        style={{
+                          animationDelay: `${delay}ms`,
+                        }}
+                        className="animate-fade-up"
                       >
-                        <EpicColumn
+                        <MemoEpicColumn
                           epic={epic}
                           filters={filters}
-                          onOpenTask={(task) => {
-                            setFocusedTaskId(task.id);
-                            setActiveTask(task);
-                          }}
+                          onOpenTask={handleOpenTask}
                           focusedTaskId={focusedTaskId}
                           onFocusTask={setFocusedTaskId}
                         />

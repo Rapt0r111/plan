@@ -1,6 +1,7 @@
 import { createSafeActionClient } from "next-safe-action";
 import { headers } from "next/headers";
 import { auth } from "./auth";
+import { hasLinkedProfile, requiresPasswordChange } from "@/shared/lib/auth-access";
 
 // ── Базовый клиент — только проверка аутентификации ──────────────────────────
 export const authActionClient = createSafeActionClient().use(async ({ next }) => {
@@ -12,6 +13,13 @@ export const authActionClient = createSafeActionClient().use(async ({ next }) =>
     throw new Error("Unauthorized: необходима авторизация");
   }
 
+  if (requiresPasswordChange(session.user)) {
+    throw new Error("Password change required");
+  }
+
+  if (!hasLinkedProfile(session.user)) {
+    throw new Error("Profile assignment required");
+  }
   return next({ ctx: { user: session.user } });
 });
 

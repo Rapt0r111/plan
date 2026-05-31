@@ -33,12 +33,23 @@
  */
 
 import { eventBus } from "@/shared/server/eventBus";
+import { authErrorToResponse, requireSession } from "@/shared/lib/route-auth";
 import type { RealtimeEvent } from "@/shared/server/eventBus";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs"; // EventEmitter требует Node.js runtime
 
-export function GET(request: Request): Response {
+export async function GET(request: Request): Promise<Response> {
+  try {
+    await requireSession();
+  } catch (e) {
+    const authErr = authErrorToResponse(e);
+    return Response.json(
+      { ok: false, error: authErr?.message ?? "Unauthorized", code: authErr?.code },
+      { status: authErr?.status ?? 401 },
+    );
+  }
+
   const { signal } = request;
 
   const encoder = new TextEncoder();

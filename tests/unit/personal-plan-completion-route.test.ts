@@ -5,7 +5,7 @@ import {
   setPersonalPlanCompletion,
 } from "@/entities/personal-plan/personalPlanRepository";
 import { writeAuditLog } from "@/shared/lib/audit";
-import { optionalSession } from "@/shared/lib/route-auth";
+import { requireWorkspaceAccess } from "@/shared/lib/route-auth";
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock("@/shared/server/eventBus", () => ({
 }));
 
 vi.mock("@/shared/lib/route-auth", () => ({
-  optionalSession: vi.fn(),
+  requireWorkspaceAccess: vi.fn(),
   authErrorToResponse: vi.fn(() => null),
 }));
 
@@ -29,7 +29,7 @@ vi.mock("@/entities/personal-plan/personalPlanRepository", () => ({
   setPersonalPlanCompletion: vi.fn(),
 }));
 
-const mockedOptionalSession = vi.mocked(optionalSession);
+const mockedRequireWorkspaceAccess = vi.mocked(requireWorkspaceAccess);
 const mockedGetPersonalPlanItemById = vi.mocked(getPersonalPlanItemById);
 const mockedSetPersonalPlanCompletion = vi.mocked(setPersonalPlanCompletion);
 const mockedWriteAuditLog = vi.mocked(writeAuditLog);
@@ -54,13 +54,21 @@ describe("personal plan completion route", () => {
       id: 10,
       itemId: 6,
       date: "2026-05-25",
-      completedByUserId: null,
+      completedByUserId: "auth-1",
       completedAt: "2026-05-25T09:00:00.000Z",
     });
   });
 
-  it("allows an anonymous viewer to mark a task completed", async () => {
-    mockedOptionalSession.mockResolvedValue(null);
+  it("requires workspace access to mark a task completed", async () => {
+    mockedRequireWorkspaceAccess.mockResolvedValue({
+      session: {
+        user: { id: "auth-1", role: "admin" },
+      },
+      profile: null,
+      isAdmin: true,
+      groupKey: null,
+      isVariableRestricted: false,
+    } as Awaited<ReturnType<typeof requireWorkspaceAccess>>);
 
     const response = await PATCH(
       new Request("http://localhost/api/personal-plan/6/completion", {
@@ -76,10 +84,10 @@ describe("personal plan completion route", () => {
       itemId: 6,
       date: "2026-05-25",
       completed: true,
-      completedByUserId: null,
+      completedByUserId: "auth-1",
     });
     expect(mockedWriteAuditLog).toHaveBeenCalledWith(expect.objectContaining({
-      actor: { userId: null, role: "anonymous" },
+      actor: { userId: "auth-1", role: "admin" },
       action: "complete",
       entityType: "personal_plan_completion",
       entityId: 6,

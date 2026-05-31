@@ -5,6 +5,7 @@ import { auth } from "@/shared/lib/auth";
 const LoginSchema = z.object({
   login: z.string().min(3).max(64),
   password: z.string().min(1).max(128),
+  rememberMe: z.boolean().optional().default(true),
 });
 
 function makeSyntheticEmail(login: string) {
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
       body: {
         email: makeSyntheticEmail(parsed.data.login.trim()),
         password: parsed.data.password,
+        rememberMe: parsed.data.rememberMe,
       },
       asResponse: true,
     });

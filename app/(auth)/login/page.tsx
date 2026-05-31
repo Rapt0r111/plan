@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -9,9 +9,18 @@ export default function LoginPage() {
   const router = useRouter();
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    const savedLogin = localStorage.getItem("taskflow:remembered-login");
+    if (savedLogin) {
+      setLogin(savedLogin);
+      setRememberMe(true);
+    }
+  }, []);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {
@@ -25,7 +34,7 @@ export default function LoginPage() {
         const res = await fetch("/api/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ login: login.trim(), password }),
+          body: JSON.stringify({ login: login.trim(), password, rememberMe }),
         });
 
         const data = await res.json();
@@ -35,7 +44,15 @@ export default function LoginPage() {
           return;
         }
 
-        const redirectTo = data?.data?.user?.forcePasswordChange ? "/profile" : "/dashboard";
+        if (rememberMe) {
+          localStorage.setItem("taskflow:remembered-login", login.trim());
+        } else {
+          localStorage.removeItem("taskflow:remembered-login");
+        }
+
+        const nextPath = new URLSearchParams(window.location.search).get("next");
+        const safeNextPath = nextPath?.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/dashboard";
+        const redirectTo = data?.data?.user?.forcePasswordChange ? "/profile" : safeNextPath;
         router.push(redirectTo);
         router.refresh();
       } catch {
@@ -44,7 +61,7 @@ export default function LoginPage() {
         setLoading(false);
       }
     },
-    [login, password, router]
+    [login, password, rememberMe, router]
   );
 
   return (
@@ -127,6 +144,7 @@ export default function LoginPage() {
               Логин
             </label>
             <input
+              name="username"
               type="text"
               value={login}
               onChange={(e) => setLogin(e.target.value)}
@@ -155,6 +173,7 @@ export default function LoginPage() {
             </label>
             <div className="relative">
               <input
+                name="password"
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -188,6 +207,26 @@ export default function LoginPage() {
               </button>
             </div>
           </div>
+
+          <label
+            className="flex cursor-pointer items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-[var(--glass-01)]"
+            style={{ border: "1px solid var(--glass-border)" }}
+          >
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="mt-0.5 h-4 w-4 cursor-pointer accent-[var(--accent-500)]"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+                Запомнить меня
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-snug" style={{ color: "var(--text-muted)" }}>
+                Сохранит сессию после закрытия браузера и запомнит логин. Пароль сохраняет только менеджер паролей браузера.
+              </span>
+            </span>
+          </label>
 
           {/* Submit */}
           <motion.button

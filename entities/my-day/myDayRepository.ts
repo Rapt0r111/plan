@@ -103,6 +103,7 @@ export async function getMyDayOverview(referenceDate = new Date(), scope: Worksp
     completions: personalPlan.completions,
     referenceDate,
     policy,
+    includeAssignedFallback: true,
   });
 
   const todayKey = getLocalDateKey(referenceDate);

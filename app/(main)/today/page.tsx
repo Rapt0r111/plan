@@ -1,21 +1,56 @@
 import Link from "next/link";
 import { getMyDayOverview } from "@/entities/my-day/myDayRepository";
+import { groupMyDayAttentionBySection } from "@/shared/lib/my-day";
 import { requireWorkspacePage } from "@/shared/lib/page-auth";
 import { Header } from "@/widgets/header/Header";
-import type { MyDayAttentionItem } from "@/shared/lib/my-day";
+import type { MyDayAttentionItem, MyDaySection } from "@/shared/lib/my-day";
+import { TodayQuickActions } from "./TodayQuickActions";
 
 export const dynamic = "force-dynamic";
+
+const WORK_SECTIONS: Array<{
+  key: MyDaySection;
+  title: string;
+  subtitle: string;
+  color: string;
+}> = [
+  {
+    key: "urgent",
+    title: "Срочно",
+    subtitle: "Просрочено и высокий приоритет — начать отсюда.",
+    color: "#f87171",
+  },
+  {
+    key: "today",
+    title: "Сегодня",
+    subtitle: "Срок сегодня и пункты недельного плана на текущий день.",
+    color: "#f59e0b",
+  },
+  {
+    key: "later",
+    title: "Можно позже",
+    subtitle: "Назначенные задачи, близкие сроки и задачи без движения.",
+    color: "#8b5cf6",
+  },
+  {
+    key: "waiting",
+    title: "Ожидает других",
+    subtitle: "Заблокированные задачи и зависимость от других участников.",
+    color: "#fb7185",
+  },
+];
 
 export default async function TodayPage() {
   const scope = await requireWorkspacePage();
   const overview = await getMyDayOverview(new Date(), scope);
   const hasProfile = !!scope.profile;
+  const mySections = groupMyDayAttentionBySection(overview.my.attention);
 
   return (
     <div>
       <Header
         title="Сегодня / Мой день"
-        subtitle={`${formatDayLabel(overview.todayKey)} · ${overview.my.stats.total} личных сигналов · ${overview.team.stats.total} по команде`}
+        subtitle={`${formatDayLabel(overview.todayKey)} · ${overview.my.stats.total} задач в личном плане · ${overview.team.stats.total} сигналов по команде`}
         actions={
           <div className="flex items-center gap-2">
             <Link
@@ -40,11 +75,11 @@ export default async function TodayPage() {
 
       <div className="p-6 space-y-8">
         <section className="grid grid-cols-2 xl:grid-cols-5 gap-4">
-          <StatCard label="В фокусе" value={overview.my.stats.total} color="#a78bfa" />
+          <StatCard label="Что делать" value={overview.my.stats.total} color="#a78bfa" />
           <StatCard label="Сегодня" value={overview.my.stats.dueToday} color="#f59e0b" />
           <StatCard label="Просрочено" value={overview.my.stats.overdue} color="#f87171" />
-          <StatCard label="Блокировки" value={overview.team.stats.blocked} color="#fb7185" />
-          <StatCard label="Без движения" value={overview.team.stats.stale} color="#fbbf24" />
+          <StatCard label="Блокировки" value={overview.my.stats.blocked} color="#fb7185" />
+          <StatCard label="Без движения" value={overview.my.stats.stale} color="#fbbf24" />
         </section>
 
         {!hasProfile && (
@@ -56,14 +91,25 @@ export default async function TodayPage() {
           </div>
         )}
 
-        <section className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
-          <Panel
-            title="Что сделать сейчас"
-            subtitle="Недельный план, назначенные задачи, просрочки и дедлайны на сегодня."
-          >
-            <AttentionList items={overview.my.attention.slice(0, 12)} empty="На сегодня нет личных срочных сигналов." />
-          </Panel>
+        <Panel
+          title="Что делать сейчас"
+          subtitle="Единый рабочий список: назначенные задачи, оперативка, недельный план, просрочки, близкие сроки и важные задачи без движения. Сортировка: просрочено → сегодня → высокий приоритет → блок → нет движения."
+        >
+          <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 p-4">
+            {WORK_SECTIONS.map((section) => (
+              <WorkSection
+                key={section.key}
+                title={section.title}
+                subtitle={section.subtitle}
+                color={section.color}
+                items={mySections[section.key]}
+                todayKey={overview.todayKey}
+              />
+            ))}
+          </div>
+        </Panel>
 
+        <section className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-6">
           <Panel
             title="Кому нужно внимание"
             subtitle="Очередь руководителя по просрочкам, блокировкам и задачам без движения."
@@ -94,9 +140,7 @@ export default async function TodayPage() {
               </div>
             )}
           </Panel>
-        </section>
 
-        <section className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <Panel title="Недельный план сегодня" subtitle="Повторяющиеся задачи текущего дня.">
             {overview.my.personalPlan.length === 0 ? (
               <EmptyState text="На сегодня нет пунктов личного плана." />
@@ -112,7 +156,9 @@ export default async function TodayPage() {
               </div>
             )}
           </Panel>
+        </section>
 
+        <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <Panel title="Назначенные задачи" subtitle="Открытые задачи доски на вас.">
             {overview.my.boardTasks.length === 0 ? (
               <EmptyState text="Открытых задач доски на вас нет." />
@@ -122,7 +168,7 @@ export default async function TodayPage() {
                   <Link key={task.id} href={`/tasks/${task.id}`} className="block px-5 py-3 hover:bg-[var(--glass-01)] transition-colors">
                     <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{task.title}</p>
                     <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                      {task.epicTitle}{task.dueDate ? ` · срок ${formatShortDate(task.dueDate)}` : ""}
+                      {task.epicTitle}{task.dueDate ? ` · срок ${formatShortDate(task.dueDate)}` : ""} · {priorityLabel(task.priority)}
                     </p>
                     {task.blockedReason && <p className="text-xs mt-1" style={{ color: "#fb7185" }}>Причина блокировки: {task.blockedReason}</p>}
                   </Link>
@@ -178,22 +224,39 @@ function Panel({ title, subtitle, children }: { title: string; subtitle?: string
   );
 }
 
-function AttentionList({ items, empty }: { items: MyDayAttentionItem[]; empty: string }) {
+function WorkSection({ title, subtitle, color, items, todayKey }: { title: string; subtitle: string; color: string; items: MyDayAttentionItem[]; todayKey: string }) {
+  return (
+    <section className="rounded-2xl overflow-hidden" style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>
+      <div className="px-4 py-3 border-b flex items-start gap-3" style={{ borderColor: "var(--glass-border)" }}>
+        <span className="mt-1.5 h-2.5 w-2.5 rounded-full shrink-0" style={{ background: color }} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h3>
+            <span className="text-xs font-mono" style={{ color }}>{items.length}</span>
+          </div>
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{subtitle}</p>
+        </div>
+      </div>
+      <AttentionList items={items} empty={`В разделе «${title}» сейчас пусто.`} todayKey={todayKey} showActions />
+    </section>
+  );
+}
+
+function AttentionList({ items, empty, todayKey, showActions = false }: { items: MyDayAttentionItem[]; empty: string; todayKey?: string; showActions?: boolean }) {
   if (items.length === 0) return <EmptyState text={empty} />;
 
   return (
     <div className="divide-y" style={{ borderColor: "var(--glass-border)" }}>
       {items.map((item) => (
-        <Link
-          key={`${item.source}-${item.id}-${item.risk}`}
-          href={item.href}
-          className="block px-5 py-3.5 hover:bg-[var(--glass-01)] transition-colors"
+        <article
+          key={`${item.source}-${item.id}-${item.sortReason}`}
+          className="px-5 py-3.5 hover:bg-[var(--glass-01)] transition-colors"
         >
           <div className="flex items-start gap-3">
             <span className="mt-1 w-2 h-2 rounded-full shrink-0" style={{ background: riskColor(item.risk) }} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{item.title}</p>
+                <Link href={item.href} className="text-sm font-medium hover:underline truncate" style={{ color: "var(--text-primary)" }}>{item.title}</Link>
                 <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: `${riskColor(item.risk)}20`, color: riskColor(item.risk) }}>
                   {item.label}
                 </span>
@@ -202,15 +265,17 @@ function AttentionList({ items, empty }: { items: MyDayAttentionItem[]; empty: s
                 {sourceLabel(item.source)} · {item.subtitle}
                 {item.assigneeNames.length ? ` · ${item.assigneeNames.join(", ")}` : " · без ответственного"}
                 {item.dueDate ? ` · ${formatShortDate(item.dueDate)}` : ""}
+                {item.priority ? ` · ${priorityLabel(item.priority)}` : ""}
               </p>
               {item.blockedReason && (
                 <p className="text-xs mt-1" style={{ color: "#fb7185" }}>
                   Причина блокировки: {item.blockedReason}
                 </p>
               )}
+              {showActions && todayKey && <TodayQuickActions item={item} todayKey={todayKey} />}
             </div>
           </div>
-        </Link>
+        </article>
       ))}
     </div>
   );
@@ -227,6 +292,16 @@ function sourceLabel(source: MyDayAttentionItem["source"]) {
     personal_plan: "Недельный план",
   };
   return labels[source];
+}
+
+function priorityLabel(priority: string) {
+  const labels: Record<string, string> = {
+    critical: "критический",
+    high: "высокий",
+    medium: "средний",
+    low: "низкий",
+  };
+  return labels[priority] ?? priority;
 }
 
 function riskColor(risk: string) {

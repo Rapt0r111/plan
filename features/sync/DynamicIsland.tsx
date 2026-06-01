@@ -6,20 +6,10 @@ import { useNotificationTimer } from "./model/useNotificationTimer";
 
 
 export function DynamicIsland() {
-  const { notification, expanded, dismiss, expand, collapse } =
+  const { notification, expanded } =
     useNotificationStore();
 
   useNotificationTimer();
-
-  const handlePillClick = () => {
-    if (!notification) return;
-
-    if (expanded) {
-      collapse();
-    } else {
-      expand();
-    }
-  };
 
   return (
     <div

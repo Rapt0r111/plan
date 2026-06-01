@@ -49,6 +49,7 @@ import type {
   OperativeTaskStatus,
 } from "@/entities/operative/operativeRepository";
 import { useShallow } from "zustand/react/shallow";
+import { usePerformanceMode } from "@/shared/lib/usePerformanceMode";
 
 // ── Status config ─────────────────────────────────────────────────────────────
 
@@ -100,6 +101,7 @@ const StatusPill = memo(function StatusPill({
   status, onClick, disabled = false,
 }: { status: OperativeTaskStatus; onClick: (e: React.MouseEvent) => void; disabled?: boolean }) {
   const s = STATUS[status];
+  const { lowMotion } = usePerformanceMode();
   return (
     <button
       onClick={onClick}
@@ -111,8 +113,8 @@ const StatusPill = memo(function StatusPill({
       <motion.span
         className="w-1.5 h-1.5 rounded-full shrink-0"
         style={{ backgroundColor: s.dot }}
-        animate={status === "in_progress" ? { scale: [1, 1.5, 1], opacity: [1, 0.4, 1] } : {}}
-        transition={{ duration: 1.8, repeat: Infinity }}
+        animate={!lowMotion && status === "in_progress" ? { scale: [1, 1.5, 1], opacity: [1, 0.4, 1] } : {}}
+        transition={!lowMotion && status === "in_progress" ? { duration: 1.8, repeat: Infinity } : undefined}
       />
       {s.label}
     </button>
@@ -124,6 +126,7 @@ const StatusPill = memo(function StatusPill({
 function DueBadge({ dueDate, isDone }: { dueDate: string | null | undefined; isDone: boolean }) {
   const info  = deadlineInfo(dueDate);
   const style = getDeadlineStyle(info, isDone);
+  const { lowMotion } = usePerformanceMode();
   if (!info) return null;
   if (isDone) return <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>{info.label}</span>;
   if (!style) return <span className="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded" style={{ color: "#64748b" }}>{info.label}</span>;
@@ -132,7 +135,7 @@ function DueBadge({ dueDate, isDone }: { dueDate: string | null | undefined; isD
       style={{ color: style.color, background: style.bg, border: `1px solid ${style.border}` }}>
       {style.pulse
         ? <motion.span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: style.color }}
-            animate={{ scale: [1, 1.6, 1], opacity: [1, 0.4, 1] }} transition={{ duration: 1.2, repeat: Infinity }} />
+            animate={lowMotion ? undefined : { scale: [1, 1.6, 1], opacity: [1, 0.4, 1] }} transition={lowMotion ? undefined : { duration: 1.2, repeat: Infinity }} />
         : <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: style.color }} />}
       {style.label}
     </span>
@@ -151,10 +154,11 @@ const SubtaskRow = memo(function SubtaskRow({
   isAdmin:      boolean;
 }) {
   const [hovered, setHovered] = useState(false);
+  const { lowMotion } = usePerformanceMode();
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+      layout={!lowMotion}
+      initial={lowMotion ? false : { opacity: 0, x: -8 }} animate={lowMotion ? undefined : { opacity: 1, x: 0 }}
       className="flex items-center gap-2.5 py-1.5 group/st"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -171,8 +175,8 @@ const SubtaskRow = memo(function SubtaskRow({
         <AnimatePresence>
           {subtask.isCompleted && (
             <motion.svg
-              initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
-              transition={{ duration: 0.12, ease: "backOut" }}
+              initial={lowMotion ? false : { scale: 0, opacity: 0 }} animate={lowMotion ? undefined : { scale: 1, opacity: 1 }} exit={lowMotion ? undefined : { scale: 0, opacity: 0 }}
+              transition={lowMotion ? undefined : { duration: 0.12, ease: "backOut" }}
               className="w-2.5 h-2.5 text-white" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
               <path d="M1.5 5l2.5 2.5 4.5-4.5" />
             </motion.svg>
@@ -195,8 +199,8 @@ const SubtaskRow = memo(function SubtaskRow({
       <AnimatePresence>
         {isAdmin && hovered && (
           <motion.button
-            initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-            transition={{ duration: 0.1 }}
+            initial={lowMotion ? false : { opacity: 0, scale: 0.8 }} animate={lowMotion ? undefined : { opacity: 1, scale: 1 }} exit={lowMotion ? undefined : { opacity: 0, scale: 0.8 }}
+            transition={lowMotion ? undefined : { duration: 0.1 }}
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             className="shrink-0 w-5 h-5 rounded-md flex items-center justify-center transition-colors"
             style={{ color: "var(--text-muted)" }}
@@ -432,6 +436,7 @@ function TaskCardInner({
   const subTotal  = liveTask.progress.total;
   const subPct    = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
   const commentCount = liveTask.comments?.length ?? 0;
+  const { lowMotion, noMotion } = usePerformanceMode();
 
   const cycleStatus = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -456,8 +461,8 @@ function TaskCardInner({
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
+      layout={!lowMotion}
+      initial={noMotion ? false : { opacity: 0, y: 6 }} animate={noMotion ? undefined : { opacity: 1, y: 0 }} exit={noMotion ? undefined : { opacity: 0, scale: 0.97 }}
       className="rounded-xl overflow-hidden relative group/card"
       style={{
         background:  "var(--bg-overlay)",
@@ -520,7 +525,7 @@ function TaskCardInner({
             {liveTask.title}
           </p>
           <motion.button
-            onClick={markDone} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+            onClick={markDone} whileHover={lowMotion ? undefined : { scale: 1.1 }} whileTap={lowMotion ? undefined : { scale: 0.9 }}
             disabled={!canEditTask}
             title={isDone ? "Вернуть в работу" : "Выполнено"}
             className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5"
@@ -541,7 +546,7 @@ function TaskCardInner({
           <div className="flex items-center gap-2">
             <div className="flex-1 h-0.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
               <motion.div className="h-full rounded-full" style={{ backgroundColor: s.dot }}
-                animate={{ width: `${subPct}%` }} transition={{ duration: 0.4, ease: "easeOut" }} />
+                animate={{ width: `${subPct}%` }} transition={noMotion ? { duration: 0 } : { duration: 0.4, ease: "easeOut" }} />
             </div>
             <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>{subDone}/{subTotal}</span>
           </div>
@@ -552,8 +557,8 @@ function TaskCardInner({
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            initial={noMotion ? false : { height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
+            exit={noMotion ? undefined : { height: 0, opacity: 0 }} transition={noMotion ? { duration: 0 } : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             style={{ overflow: "hidden", borderTop: "1px solid var(--glass-border)" }}>
             <div className="px-3 py-3 space-y-3" onClick={e => e.stopPropagation()}>
 
@@ -888,6 +893,7 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
 
   const tasks    = useOperativeStore(useShallow(s => s.getTasksForUser(user.id)));
   const addTask  = useOperativeStore(s => s.addTask);
+  const { lowMotion, noMotion } = usePerformanceMode();
 
   const accentColor = user.roleMeta.hex;
   const groupedTasks = groupOperativeTasksByStatus(tasks);
@@ -912,9 +918,9 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
 
   return (
     <motion.div
-      layout
+      layout={!lowMotion}
       animate={{ opacity: isDragging ? 0.4 : 1, scale: isDragging ? 0.98 : 1 }}
-      transition={{ duration: 0.15 }}
+      transition={noMotion ? { duration: 0 } : { duration: 0.15 }}
       className="flex flex-col rounded-2xl overflow-hidden"
       style={{
         background:  "var(--bg-elevated)",
@@ -952,8 +958,8 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
                 border: "2px solid var(--bg-elevated)",
                 boxShadow: "0 0 10px rgba(239,68,68,0.75)",
               }}
-              animate={{ scale: [1, 1.18, 1], opacity: [1, 0.72, 1] }}
-              transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+              animate={lowMotion ? undefined : { scale: [1, 1.18, 1], opacity: [1, 0.72, 1] }}
+              transition={lowMotion ? undefined : { duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
               aria-label="Появились новые задачи"
             />
           )}
@@ -973,7 +979,7 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
                 <div className="flex items-center gap-2 text-[10px] font-mono flex-wrap">
                   {inProg > 0 && <span style={{ color: "#38bdf8" }}>● {inProg} в работе</span>}
                   {overdue > 0 && (
-                    <motion.span style={{ color: "#f87171" }} animate={{ opacity: [1, 0.5, 1] }} transition={{ duration: 1.5, repeat: Infinity }}>
+                    <motion.span style={{ color: "#f87171" }} animate={lowMotion ? undefined : { opacity: [1, 0.5, 1] }} transition={lowMotion ? undefined : { duration: 1.5, repeat: Infinity }}>
                       ⚠ {overdue} просроч.
                     </motion.span>
                   )}
@@ -983,7 +989,7 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
               </div>
               <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
                 <motion.div className="h-full rounded-full" style={{ backgroundColor: accentColor }}
-                  animate={{ width: `${pct}%` }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }} />
+                  animate={{ width: `${pct}%` }} transition={noMotion ? { duration: 0 } : { duration: 0.8, ease: [0.16, 1, 0.3, 1] }} />
               </div>
             </div>
           )}
@@ -995,8 +1001,8 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
           {canEditTask && (
           <motion.button
             onClick={() => { setAddingFromHeader(v => !v); setAddingFromFooter(false); if (collapsed) setCollapsed(false); }}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
+            whileHover={lowMotion ? undefined : { scale: 1.1 }}
+            whileTap={lowMotion ? undefined : { scale: 0.9 }}
             title="Добавить задачу"
             className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
             style={{
@@ -1040,10 +1046,10 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
       <AnimatePresence>
         {collapsed && total > 0 && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
+            initial={noMotion ? false : { opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            exit={noMotion ? undefined : { opacity: 0, height: 0 }}
+            transition={noMotion ? { duration: 0 } : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             style={{ overflow: "hidden" }}
           >
             <div className="px-4 py-2.5 flex flex-wrap gap-1.5">
@@ -1080,10 +1086,10 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
       <AnimatePresence>
         {canEditTask && addingFromHeader && !collapsed && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
+            initial={noMotion ? false : { opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            exit={noMotion ? undefined : { opacity: 0, height: 0 }}
+            transition={noMotion ? { duration: 0 } : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             style={{ overflow: "hidden" }}
           >
             <div className="pt-2">
@@ -1102,16 +1108,16 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
         {!collapsed && (
           <motion.div
             key="task-list"
-            initial={{ opacity: 0, height: 0 }}
+            initial={noMotion ? false : { opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            exit={noMotion ? undefined : { opacity: 0, height: 0 }}
+            transition={noMotion ? { duration: 0 } : { duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             style={{ overflow: "hidden" }}
           >
             {/* Task groups */}
             <div className="flex-1 p-2.5" style={{ minHeight: 80 }}>
               {total === 0 && !addingFromFooter ? (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center py-6 text-center">
+                <motion.div initial={noMotion ? false : { opacity: 0 }} animate={noMotion ? undefined : { opacity: 1 }} className="flex flex-col items-center py-6 text-center">
                   <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2"
                     style={{ background: `${accentColor}12`, border: `1px dashed ${accentColor}30` }}>
                     <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke={accentColor} strokeWidth="1.5" strokeLinecap="round" opacity="0.7">

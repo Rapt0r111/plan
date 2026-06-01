@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",
-    "build": "next build --webpack",
+    "build": "bun --bun ./node_modules/next/dist/bin/next build --webpack",
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",

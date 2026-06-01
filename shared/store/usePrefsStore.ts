@@ -75,11 +75,11 @@ export const DEFAULT_PREFS: UIPrefs = {
   epicColumnsCollapsed: true,
   showBoardStats: true,
 
-  animationLevel: "full",
+  animationLevel: "subtle",
   radiusScale: "default",
-  glassIntensity: "default",
-  showAmbientGlow: true,
-  showGrainTexture: true,
+  glassIntensity: "solid",
+  showAmbientGlow: false,
+  showGrainTexture: false,
 };
 
 // ── CSS variable mappings ──────────────────────────────────────────────────

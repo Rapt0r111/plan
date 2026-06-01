@@ -1104,3 +1104,45 @@ html.light .quick-add-card {
     will-change: auto;
   }
 }
+
+/* App-level performance mode from ui-prefs-v1.
+   Old laptops without a usable GPU benefit more from predictable paint than
+   from glass, noise, cursor lighting and long/infinite animations. */
+html[data-show-grain-texture="false"] body::after,
+html[data-animation-level="none"] body::after {
+  display: none;
+}
+
+html[data-show-ambient-glow="false"] body::before,
+html[data-animation-level="none"] body::before,
+html[data-animation-level="subtle"] body::before {
+  display: none;
+}
+
+html[data-animation-level="none"] *,
+html[data-animation-level="none"] *::before,
+html[data-animation-level="none"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-animation-level="subtle"] .animate-pulse,
+html[data-animation-level="subtle"] .animate-pulse-glow,
+html[data-animation-level="subtle"] .animate-hue,
+html[data-animation-level="subtle"] .hue-breathe,
+html[data-animation-level="subtle"] .liquid-bar {
+  animation: none !important;
+}
+
+html[data-animation-level="none"] .glass,
+html[data-animation-level="none"] .glass-md,
+html[data-animation-level="none"] [class*="backdrop-blur"],
+html[data-glass-intensity="solid"] .glass,
+html[data-glass-intensity="solid"] .glass-md,
+html[data-glass-intensity="solid"] [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  will-change: auto !important;
+}

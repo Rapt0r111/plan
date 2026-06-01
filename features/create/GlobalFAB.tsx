@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useSpring, useMotionValue } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
+import { usePerformanceMode } from "@/shared/lib/usePerformanceMode";
 import { CreateEpicModal } from "./CreateEpicModal";
 import { CreateTaskModal } from "./CreateTaskModal";
 
@@ -67,22 +68,23 @@ function ActionButton({
   onAction: (id: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const { lowMotion, noMotion } = usePerformanceMode();
 
   return (
     <motion.div
       className="flex items-center gap-3 justify-end"
-      initial={{ opacity: 0, x: 40, scale: 0.7, filter: "blur(8px)" }}
-      animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
-      exit={{ opacity: 0, x: 30, scale: 0.75, filter: "blur(6px)" }}
-      transition={{ type: "spring", stiffness: 420, damping: 30, delay: index * 0.06 }}
+      initial={noMotion ? false : { opacity: 0, x: 40, scale: 0.7, filter: lowMotion ? "none" : "blur(8px)" }}
+      animate={noMotion ? undefined : { opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
+      exit={noMotion ? undefined : { opacity: 0, x: 30, scale: 0.75, filter: lowMotion ? "none" : "blur(6px)" }}
+      transition={noMotion ? undefined : { type: "spring", stiffness: 420, damping: 30, delay: lowMotion ? 0 : index * 0.06 }}
     >
       <AnimatePresence>
         {hovered && (
           <motion.div
-            initial={{ opacity: 0, x: 8, scale: 0.9 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 6, scale: 0.9 }}
-            transition={{ duration: 0.15 }}
+            initial={noMotion ? false : { opacity: 0, x: 8, scale: 0.9 }}
+            animate={noMotion ? undefined : { opacity: 1, x: 0, scale: 1 }}
+            exit={noMotion ? undefined : { opacity: 0, x: 6, scale: 0.9 }}
+            transition={noMotion ? undefined : { duration: 0.15 }}
             className="flex flex-col items-end"
           >
             <span
@@ -91,7 +93,7 @@ function ActionButton({
                 color: action.color,
                 background: action.bg,
                 border: `1px solid ${action.color}30`,
-                backdropFilter: "blur(16px)",
+                backdropFilter: lowMotion ? "none" : "blur(16px)",
                 boxShadow: `0 0 20px ${action.glow}20, inset 0 1px 0 rgba(255,255,255,0.08)`,
                 fontFamily: "'SF Pro Display', system-ui, sans-serif",
                 letterSpacing: "-0.01em",
@@ -109,15 +111,15 @@ function ActionButton({
         onHoverEnd={() => setHovered(false)}
         className="relative w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden"
         style={{ color: action.color }}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.88 }}
+        whileHover={lowMotion ? undefined : { scale: 1.1 }}
+        whileTap={lowMotion ? undefined : { scale: 0.88 }}
       >
         <div
           className="absolute inset-0 rounded-2xl"
           style={{
             background: `linear-gradient(135deg, ${action.color}18 0%, ${action.bg} 100%)`,
             border: `1px solid ${action.color}35`,
-            backdropFilter: "blur(20px)",
+            backdropFilter: lowMotion ? "none" : "blur(20px)",
             boxShadow: hovered
               ? `0 0 32px ${action.glow}55, 0 8px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.12)`
               : `0 0 16px ${action.glow}22, 0 4px 12px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.07)`,
@@ -135,6 +137,9 @@ function ActionButton({
 }
 
 function PulseRings({ color }: { color: string }) {
+  const { lowMotion } = usePerformanceMode();
+  if (lowMotion) return null;
+
   return (
     <div className="absolute inset-0 pointer-events-none">
       {[0, 1].map((i) => (
@@ -153,6 +158,7 @@ function PulseRings({ color }: { color: string }) {
 export function GlobalFAB() {
   const router = useRouter();
   const offline = useIsOffline();
+  const { lowMotion, noMotion } = usePerformanceMode();
 
   const [open, setOpen] = useState(false);
   const [epicOpen, setEpicOpen] = useState(false);
@@ -166,7 +172,7 @@ export function GlobalFAB() {
   const springY = useSpring(my, { stiffness: 200, damping: 20 });
 
   const handleMouse = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (open || offline) return;
+    if (open || offline || lowMotion) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
@@ -211,10 +217,10 @@ export function GlobalFAB() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            transition={noMotion ? { duration: 0 } : { duration: 0.25 }}
             style={{
               background: "var(--modal-backdrop)",
-              backdropFilter: "blur(3px)",
+              backdropFilter: lowMotion ? "none" : "blur(3px)",
             }}
           />
         )}
@@ -241,7 +247,7 @@ export function GlobalFAB() {
               initial={{ scaleX: 0, opacity: 0 }}
               animate={{ scaleX: 1, opacity: 1 }}
               exit={{ scaleX: 0, opacity: 0 }}
-              transition={{ duration: 0.3, delay: 0.15 }}
+              transition={noMotion ? { duration: 0 } : { duration: 0.3, delay: lowMotion ? 0 : 0.15 }}
               className="w-14 h-px self-center"
               style={{ background: "linear-gradient(90deg, transparent, rgba(139,92,246,0.5), transparent)" }}
             />
@@ -258,11 +264,11 @@ export function GlobalFAB() {
             onMouseLeave={() => { mx.set(0); my.set(0); }}
             className="relative w-14 h-14 backdrop-blur rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden"
             style={{
-              x: offline ? 0 : springX,
-              y: offline ? 0 : springY,
+              x: offline || lowMotion ? 0 : springX,
+              y: offline || lowMotion ? 0 : springY,
               cursor: offline ? "not-allowed" : "pointer",
             }}
-            whileTap={offline ? {} : { scale: 0.88 }}
+            whileTap={offline || lowMotion ? undefined : { scale: 0.88 }}
             title={offline ? "Недоступно в офлайн-режиме" : undefined}
           >
             <div
@@ -273,7 +279,9 @@ export function GlobalFAB() {
                   : open
                     ? "linear-gradient(135deg, rgba(239,68,68,0.9) 0%, rgba(220,38,38,0.7) 100%)"
                     : "linear-gradient(135deg, rgba(109,40,217,0.95) 0%, rgba(124,58,237,0.8) 50%, rgba(139,92,246,0.7) 100%)",
-                boxShadow: offline
+                boxShadow: lowMotion
+                  ? "0 4px 16px rgba(0,0,0,0.25)"
+                  : offline
                   ? "0 4px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.08)"
                   : open
                     ? "0 0 40px rgba(239,68,68,0.6), 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2)"
@@ -283,7 +291,7 @@ export function GlobalFAB() {
                   : open
                     ? "1px solid rgba(239,68,68,0.5)"
                     : "1px solid rgba(139,92,246,0.5)",
-                transition: "all 0.35s ease",
+                transition: noMotion ? "none" : "all 0.35s ease",
               }}
             />
             {!offline && (
@@ -300,7 +308,7 @@ export function GlobalFAB() {
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </svg>
               ) : (
-                <motion.div animate={{ rotate: open ? 45 : 0 }} transition={{ type: "spring", stiffness: 320, damping: 24 }}>
+                <motion.div animate={{ rotate: open ? 45 : 0 }} transition={noMotion ? { duration: 0 } : { type: "spring", stiffness: 320, damping: 24 }}>
                   <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
                     <motion.line x1="11" y1="4" x2="11" y2="18" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
                     <motion.line x1="4" y1="11" x2="18" y2="11" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
@@ -315,10 +323,10 @@ export function GlobalFAB() {
         <AnimatePresence>
           {offline && (
             <motion.div
-              initial={{ opacity: 0, y: 4, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 4, scale: 0.9 }}
-              transition={{ duration: 0.2 }}
+              initial={noMotion ? false : { opacity: 0, y: 4, scale: 0.9 }}
+              animate={noMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+              exit={noMotion ? undefined : { opacity: 0, y: 4, scale: 0.9 }}
+              transition={noMotion ? undefined : { duration: 0.2 }}
               className="absolute bottom-full mb-3 right-0 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap"
               style={{
                 background: "var(--bg-elevated)",

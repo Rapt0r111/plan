@@ -19,6 +19,7 @@ import { QuickAddTask } from "./QuickAddTask";
 import { STATUS_META, STATUS_ORDER } from "@/shared/config/task-meta";
 import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
 import { usePrefsStore } from "@/shared/store/usePrefsStore";
+import { usePerformanceMode } from "@/shared/lib/usePerformanceMode";
 
 export interface EpicColumnProps {
   epic: EpicWithTasks;
@@ -30,6 +31,7 @@ export interface EpicColumnProps {
 
 // ── Progress ring ──────────────────────────────────────────────────────────────
 function ProgressRing({ pct, color }: { pct: number; color: string }) {
+  const { noMotion } = usePerformanceMode();
   const size = 34;
   const R = 13;
   const C = 2 * Math.PI * R;
@@ -47,9 +49,9 @@ function ProgressRing({ pct, color }: { pct: number; color: string }) {
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeDasharray={C}
-        initial={{ strokeDashoffset: C }}
+        initial={noMotion ? false : { strokeDashoffset: C }}
         animate={{ strokeDashoffset: C * (1 - pct / 100) }}
-        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
+        transition={noMotion ? undefined : { duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
         style={{ filter: `drop-shadow(0 0 3px ${color})` }}
       />
@@ -78,6 +80,7 @@ function StatusLabel({
   count: number;
   meta: (typeof STATUS_META)[TaskStatus];
 }) {
+  const { lowMotion, noMotion } = usePerformanceMode();
   return (
     <div className="flex items-center gap-2 mb-2">
       <div
@@ -87,16 +90,16 @@ function StatusLabel({
         <motion.span
           className="w-1.5 h-1.5 rounded-full shrink-0"
           style={{ backgroundColor: meta.solid }}
-          animate={status === "in_progress" ? { scale: [1, 1.4, 1], opacity: [1, 0.5, 1] } : {}}
-          transition={{ duration: 2, repeat: Infinity }}
+          animate={!lowMotion && status === "in_progress" ? { scale: [1, 1.4, 1], opacity: [1, 0.5, 1] } : {}}
+          transition={!lowMotion && status === "in_progress" ? { duration: 2, repeat: Infinity } : undefined}
         />
         {meta.label}
       </div>
       <motion.span
         key={count}
-        initial={{ scale: 1.4, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.2 }}
+        initial={noMotion ? false : { scale: 1.4, opacity: 0 }}
+        animate={noMotion ? undefined : { scale: 1, opacity: 1 }}
+        transition={noMotion ? undefined : { duration: 0.2 }}
         className="text-[10px] font-mono tabular-nums"
         style={{ color: "var(--text-muted)" }}
       >
@@ -166,12 +169,13 @@ function DropZone({
 
 // ── Chevron icon ──────────────────────────────────────────────────────────────
 function ChevronIcon({ collapsed }: { collapsed: boolean }) {
+  const { noMotion } = usePerformanceMode();
   return (
     <motion.svg
       width="14" height="14" viewBox="0 0 14 14"
       fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
       animate={{ rotate: collapsed ? -90 : 0 }}
-      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+      transition={noMotion ? { duration: 0 } : { duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
     >
       <path d="M2.5 5l4.5 4 4.5-4" />
     </motion.svg>
@@ -184,6 +188,7 @@ function CollapsedSummary({
 }: {
   byStatus: Record<TaskStatus, TaskView[]>;
 }) {
+  const { noMotion } = usePerformanceMode();
   const entries = STATUS_ORDER
     .map((s) => ({ status: s, count: byStatus[s].length, meta: STATUS_META[s] }))
     .filter((e) => e.count > 0);
@@ -192,10 +197,10 @@ function CollapsedSummary({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -4 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4 }}
-      transition={{ duration: 0.2 }}
+      initial={noMotion ? false : { opacity: 0, y: -4 }}
+      animate={noMotion ? undefined : { opacity: 1, y: 0 }}
+      exit={noMotion ? undefined : { opacity: 0, y: -4 }}
+      transition={noMotion ? undefined : { duration: 0.2 }}
       className="flex flex-wrap gap-1.5 px-4 pb-3"
     >
       {entries.map(({ status, count, meta }) => (
@@ -224,6 +229,7 @@ export function EpicColumn({
 }: EpicColumnProps) {
   const { getDragProps, getDropProps, dragState } = useBoardDnD();
   const defaultCollapsed = usePrefsStore((s) => s.prefs.epicColumnsCollapsed);
+  const { lowMotion, noMotion } = usePerformanceMode();
   const [hovered, setHovered] = useState(false);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -255,17 +261,17 @@ export function EpicColumn({
       ref={cardRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      layout
+      layout={!lowMotion}
     >
       <motion.div
-        layout
+        layout={!lowMotion}
         className="flex flex-col rounded-2xl overflow-hidden relative"
         animate={{
-          boxShadow: hovered
+          boxShadow: hovered && !lowMotion
             ? `0 0 0 1px ${epic.color}45, 0 24px 64px rgba(0,0,0,0.55), 0 0 48px ${epic.color}14`
             : `0 0 0 1px var(--section-border), 0 4px 20px rgba(0,0,0,0.3)`,
         }}
-        transition={{ duration: 0.35 }}
+        transition={lowMotion ? { duration: 0 } : { duration: 0.35 }}
         style={{
           background: "var(--bg-elevated)",
           borderLeft: `3px solid ${epic.color}`,
@@ -279,8 +285,8 @@ export function EpicColumn({
               radial-gradient(ellipse 75% 45% at 8% 0%, ${epic.color}12 0%, transparent 55%),
               radial-gradient(ellipse 45% 55% at 92% 100%, ${epic.color}08 0%, transparent 52%)
             `,
-            opacity: hovered ? 1 : 0.65,
-            transition: "opacity 0.4s ease",
+            opacity: hovered && !lowMotion ? 1 : 0.65,
+            transition: lowMotion ? "none" : "opacity 0.4s ease",
           }}
         />
 
@@ -323,8 +329,8 @@ export function EpicColumn({
                         backgroundColor: epic.color,
                         boxShadow: `0 0 8px ${epic.color}, 0 0 16px ${epic.color}60`,
                       }}
-                      animate={hovered ? { scale: [1, 1.25, 1] } : {}}
-                      transition={{ duration: 1.8, repeat: hovered ? Infinity : 0 }}
+                      animate={hovered && !lowMotion ? { scale: [1, 1.25, 1] } : {}}
+                      transition={hovered && !lowMotion ? { duration: 1.8, repeat: Infinity } : undefined}
                     />
                   </div>
 
@@ -355,11 +361,11 @@ export function EpicColumn({
                   onClick={toggleCollapsed}
                   className="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center transition-colors"
                   style={{ color: "var(--text-muted)" }}
-                  whileHover={{
+                  whileHover={lowMotion ? undefined : {
                     background: `${epic.color}18`,
                     color: epic.color,
                   }}
-                  whileTap={{ scale: 0.88 }}
+                  whileTap={lowMotion ? undefined : { scale: 0.88 }}
                   title={collapsed ? "Развернуть" : "Свернуть"}
                 >
                   <ChevronIcon collapsed={collapsed} />
@@ -376,7 +382,7 @@ export function EpicColumn({
                 <motion.div
                   className="h-full rounded-full relative overflow-hidden"
                   animate={{ width: `${pct}%` }}
-                  transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
+                  transition={noMotion ? { duration: 0 } : { duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
                   style={{
                     backgroundColor: epic.color,
                     boxShadow: `0 0 6px ${epic.color}80`,
@@ -385,8 +391,8 @@ export function EpicColumn({
                   <motion.div
                     className="absolute inset-0"
                     style={{ background: `linear-gradient(90deg, transparent 25%, var(--shimmer-line) 50%, transparent 75%)` }}
-                    animate={{ x: ["-100%", "200%"] }}
-                    transition={{
+                    animate={lowMotion ? undefined : { x: ["-100%", "200%"] }}
+                    transition={lowMotion ? undefined : {
                       duration: 2.5,
                       repeat: Infinity,
                       ease: "easeInOut",
@@ -405,7 +411,7 @@ export function EpicColumn({
                   <span style={{ opacity: 0.4 }}>/{epic.progress.total}</span>
                 </span>
                 {pct === 100 && (
-                  <motion.span
+                <motion.span
                     initial={{ opacity: 0, x: -4 }}
                     animate={{ opacity: 1, x: 0 }}
                     className="text-[10px] font-semibold"
@@ -421,9 +427,9 @@ export function EpicColumn({
             <div className="flex flex-col items-end gap-1.5 shrink-0">
               <motion.span
                 key={visibleTasks.length}
-                initial={{ scale: 1.3, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.2 }}
+                initial={noMotion ? false : { scale: 1.3, opacity: 0 }}
+                animate={noMotion ? undefined : { scale: 1, opacity: 1 }}
+                transition={noMotion ? undefined : { duration: 0.2 }}
                 className="text-xs font-mono px-1.5 py-0.5 rounded-md"
                 style={{
                   background: `${epic.color}18`,
@@ -450,10 +456,10 @@ export function EpicColumn({
           {!collapsed && (
             <motion.div
               key="body"
-              initial={{ opacity: 0, height: 0 }}
+              initial={noMotion ? false : { opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              exit={noMotion ? undefined : { opacity: 0, height: 0 }}
+              transition={noMotion ? { duration: 0 } : { duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
               style={{ overflow: "hidden" }}
             >
               <div
@@ -470,9 +476,9 @@ export function EpicColumn({
                   return (
                     <motion.div
                       key={status}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3, delay: sIdx * 0.05 }}
+                      initial={noMotion ? false : { opacity: 0, y: 10 }}
+                      animate={noMotion ? undefined : { opacity: 1, y: 0 }}
+                      transition={noMotion ? undefined : { duration: 0.3, delay: sIdx * 0.05 }}
                     >
                       <StatusLabel status={status} count={tasks.length} meta={meta} />
 
@@ -490,11 +496,11 @@ export function EpicColumn({
                                   onDragEnd={dProps.onDragEnd}
                                 >
                                   <motion.div
-                                    layout
-                                    initial={{ opacity: 0, y: 6, scale: 0.97 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.94, y: -4 }}
-                                    transition={{ duration: 0.22, delay: tIdx * 0.03 }}
+                                    layout={!lowMotion}
+                                    initial={noMotion ? false : { opacity: 0, y: 6, scale: 0.97 }}
+                                    animate={noMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+                                    exit={noMotion ? undefined : { opacity: 0, scale: 0.94, y: -4 }}
+                                    transition={noMotion ? undefined : { duration: 0.22, delay: lowMotion ? 0 : tIdx * 0.03 }}
                                     style={
                                       focusedTaskId === task.id
                                         ? {
@@ -518,9 +524,9 @@ export function EpicColumn({
 
                           {!tasks.length && (
                             <motion.div
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              transition={{ delay: 0.1 }}
+                              initial={noMotion ? false : { opacity: 0 }}
+                              animate={noMotion ? undefined : { opacity: 1 }}
+                              transition={noMotion ? undefined : { delay: 0.1 }}
                               className="flex flex-col items-center py-4 gap-1.5"
                             >
                               <div

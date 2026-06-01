@@ -74,9 +74,9 @@ export default async function OperativeRoute({ searchParams }: OperativeRoutePro
   const activeGroupKey = activeGroup?.key ?? "permanent";
   const session = await auth.api.getSession({ headers: await headers() });
   const isAdmin = session?.user?.role === "admin";
-  const data = (await getAllUsersWithOperativeTasks()).filter((block) => (
-    !scope.isVariableRestricted || getUserPersonnelGroupKey(block.user) === "variable"
-  ));
+  const data = await getAllUsersWithOperativeTasks({
+    personnelGroupKey: scope.isVariableRestricted ? "variable" : activeGroupKey,
+  });
 
   const visibleData = data.filter((block) => getUserPersonnelGroupKey(block.user) === activeGroupKey);
   const allTasks = visibleData.flatMap((b) => b.tasks);

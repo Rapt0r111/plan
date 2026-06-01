@@ -25,6 +25,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useMemo } from "react";
+import { usePerformanceMode } from "@/shared/lib/usePerformanceMode";
 
 export interface Particle {
   id: number;
@@ -77,11 +78,15 @@ interface DissolveParticlesProps {
  * одновременно запускают exit-анимации с уникальными траекториями.
  */
 export function DissolveParticles({ visible, count = 32, colors }: DissolveParticlesProps) {
+  const { animationLevel, noMotion } = usePerformanceMode();
+  const particleCount = animationLevel === "full" ? count : Math.min(count, 8);
   const particles = useMemo(
-    () => generateParticles(count, colors),
+    () => generateParticles(particleCount, colors),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [] // генерируем один раз при монтировании
+    [particleCount] // regenerate when performance mode changes
   );
+
+  if (noMotion) return null;
 
   return (
     <AnimatePresence>
@@ -136,6 +141,8 @@ export function DissolveParticles({ visible, count = 32, colors }: DissolveParti
  * минимальное потребление энергии на OLED-экранах — важно для ночной работы.
  */
 export function AuroraBackground({ children }: { children?: React.ReactNode }) {
+  const { lowMotion, showGrainTexture } = usePerformanceMode();
+
   return (
     <div
       className="fixed inset-0 overflow-hidden"
@@ -149,12 +156,12 @@ export function AuroraBackground({ children }: { children?: React.ReactNode }) {
           background: "radial-gradient(ellipse 60% 40% at 30% 40%, rgba(139,92,246,0.12) 0%, transparent 70%)",
           willChange: "transform",
         }}
-        animate={{
+        animate={lowMotion ? undefined : {
           scale: [1, 1.08, 1],
           x: [0, 20, 0],
           y: [0, -15, 0],
         }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+        transition={lowMotion ? undefined : { duration: 8, repeat: Infinity, ease: "easeInOut" }}
       />
 
       {/* Aurora layer 2 — cyan whisper */}
@@ -165,12 +172,12 @@ export function AuroraBackground({ children }: { children?: React.ReactNode }) {
           background: "radial-gradient(ellipse 50% 35% at 70% 60%, rgba(56,189,248,0.07) 0%, transparent 65%)",
           willChange: "transform",
         }}
-        animate={{
+        animate={lowMotion ? undefined : {
           scale: [1, 1.12, 1],
           x: [0, -25, 0],
           y: [0, 20, 0],
         }}
-        transition={{ duration: 11, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+        transition={lowMotion ? undefined : { duration: 11, repeat: Infinity, ease: "easeInOut", delay: 2 }}
       />
 
       {/* Aurora layer 3 — emerald trace */}
@@ -181,22 +188,22 @@ export function AuroraBackground({ children }: { children?: React.ReactNode }) {
           background: "radial-gradient(ellipse 45% 30% at 50% 80%, rgba(52,211,153,0.05) 0%, transparent 60%)",
           willChange: "transform",
         }}
-        animate={{
+        animate={lowMotion ? undefined : {
           scale: [1, 1.06, 1],
           x: [0, 15, -10, 0],
           y: [0, 10, -20, 0],
         }}
-        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut", delay: 4 }}
+        transition={lowMotion ? undefined : { duration: 14, repeat: Infinity, ease: "easeInOut", delay: 4 }}
       />
 
       {/* Noise grain overlay */}
-      <div
+      {showGrainTexture && <div
         className="absolute inset-0 pointer-events-none opacity-[0.03]"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E")`,
           backgroundSize: "256px 256px",
         }}
-      />
+      />}
 
       {children}
     </div>

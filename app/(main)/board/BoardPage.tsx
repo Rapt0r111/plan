@@ -10,7 +10,6 @@ import {
   useTransition,
   useSyncExternalStore,
   memo,
-  useRef,
 } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
@@ -21,6 +20,7 @@ import { useBoardKeyNav } from "@/features/board/useBoardKeyNav";
 import type { FilterState } from "@/features/filters/SmartFilters";
 import type { TaskView } from "@/shared/types";
 import { usePrefsStore } from "@/shared/store/usePrefsStore";
+import { usePerformanceMode } from "@/shared/lib/usePerformanceMode";
 
 const TaskSlideover = dynamic(
   () => import("@/features/task-details/TaskSlideover").then((m) => ({ default: m.TaskSlideover })),
@@ -54,6 +54,7 @@ const BoardStats = memo(function BoardStats({
 }: {
   total: number; done: number; inProgress: number; epicsCount: number;
 }) {
+  const { noMotion } = usePerformanceMode();
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const stats = [
@@ -65,17 +66,17 @@ const BoardStats = memo(function BoardStats({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.1 }}
+      initial={noMotion ? false : { opacity: 0, y: -8 }}
+      animate={noMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={noMotion ? undefined : { duration: 0.4, delay: 0.1 }}
       className="flex items-center gap-1 flex-wrap"
     >
       {stats.map((s, i) => (
         <motion.div
           key={s.label}
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1 + i * 0.05 }}
+          initial={noMotion ? false : { opacity: 0, scale: 0.9 }}
+          animate={noMotion ? undefined : { opacity: 1, scale: 1 }}
+          transition={noMotion ? undefined : { delay: 0.1 + i * 0.05 }}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
           style={{ background: `${s.color}10`, border: `1px solid ${s.color}20` }}
         >
@@ -87,9 +88,9 @@ const BoardStats = memo(function BoardStats({
 
       {total > 0 && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.35 }}
+          initial={noMotion ? false : { opacity: 0 }}
+          animate={noMotion ? undefined : { opacity: 1 }}
+          transition={noMotion ? undefined : { delay: 0.35 }}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg ml-1"
           style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)" }}
         >
@@ -102,7 +103,7 @@ const BoardStats = memo(function BoardStats({
               style={{
                 width: `${pct}%`,
                 background: "linear-gradient(90deg, #8b5cf6, #34d399)",
-                transition: "width 1.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                transition: noMotion ? "none" : "width 1.2s cubic-bezier(0.16, 1, 0.3, 1)",
               }}
             />
           </div>
@@ -115,12 +116,13 @@ const BoardStats = memo(function BoardStats({
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 const EmptyState = memo(function EmptyState({ onClear }: { onClear: () => void }) {
+  const { lowMotion, noMotion } = usePerformanceMode();
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.97 }}
-      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      initial={noMotion ? false : { opacity: 0, y: 16, scale: 0.97 }}
+      animate={noMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+      exit={noMotion ? undefined : { opacity: 0, scale: 0.97 }}
+      transition={noMotion ? undefined : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       className="flex flex-col items-center justify-center py-28 text-center"
     >
       <div className="relative mb-6">
@@ -141,8 +143,8 @@ const EmptyState = memo(function EmptyState({ onClear }: { onClear: () => void }
         <motion.div
           className="absolute -top-1 -right-1 w-3 h-3 rounded-full"
           style={{ background: "rgba(139,92,246,0.6)", boxShadow: "0 0 8px rgba(139,92,246,0.8)" }}
-          animate={{ scale: [1, 1.4, 1], opacity: [0.7, 1, 0.7] }}
-          transition={{ duration: 2, repeat: Infinity }}
+          animate={lowMotion ? undefined : { scale: [1, 1.4, 1], opacity: [0.7, 1, 0.7] }}
+          transition={lowMotion ? undefined : { duration: 2, repeat: Infinity }}
         />
       </div>
       <p className="text-base font-semibold mb-1" style={{ color: "var(--text-secondary)" }}>
@@ -159,8 +161,8 @@ const EmptyState = memo(function EmptyState({ onClear }: { onClear: () => void }
           border: "1px solid rgba(139,92,246,0.28)",
           color: "#a78bfa",
         }}
-        whileHover={{ scale: 1.04 }}
-        whileTap={{ scale: 0.97 }}
+        whileHover={lowMotion ? undefined : { scale: 1.04 }}
+        whileTap={lowMotion ? undefined : { scale: 0.97 }}
       >
         <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor"
           strokeWidth="1.6" strokeLinecap="round">
@@ -208,6 +210,7 @@ function KbdKey({ children }: { children: React.ReactNode }) {
 
 const KeyboardHint = memo(function KeyboardHint() {
   const { visible, dismiss } = useHintVisible();
+  const { noMotion } = usePerformanceMode();
 
   useEffect(() => {
     if (!visible) return;
@@ -226,15 +229,15 @@ const KeyboardHint = memo(function KeyboardHint() {
     <AnimatePresence>
       {visible && (
         <motion.div
-          initial={{ opacity: 0, y: 16, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 10, scale: 0.97 }}
-          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          initial={noMotion ? false : { opacity: 0, y: 16, scale: 0.95 }}
+          animate={noMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+          exit={noMotion ? undefined : { opacity: 0, y: 10, scale: 0.97 }}
+          transition={noMotion ? undefined : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-4 px-5 py-3 rounded-2xl"
           style={{
             background: "var(--modal-bg)",
             border: "1px solid var(--glass-border)",
-            backdropFilter: "blur(20px)",
+            backdropFilter: noMotion ? "none" : "blur(20px)",
             boxShadow: "0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(139,92,246,0.12), 0 0 40px rgba(139,92,246,0.06)",
           }}
         >
@@ -313,6 +316,7 @@ export function BoardPage() {
 
   const showBoardStats   = usePrefsStore((s) => s.prefs.showBoardStats);
   const boardColumnWidth = usePrefsStore((s) => s.prefs.boardColumnWidth) as ColWidthKey;
+  const { lowMotion, noMotion } = usePerformanceMode();
 
   const hasFilters = useMemo(
     () =>
@@ -375,11 +379,11 @@ export function BoardPage() {
         className="shrink-0 border-b animate-fade-up"
         style={{
           background: "var(--filter-bar-bg)",
-          backdropFilter: "blur(20px)",
+          backdropFilter: lowMotion ? "none" : "blur(20px)",
           borderColor: "var(--glass-border)",
 
-          willChange: "transform",
-          transform: "translateZ(0)",
+          willChange: lowMotion ? "auto" : "transform",
+          transform: lowMotion ? "none" : "translateZ(0)",
         }}
       >
         <div className="px-6 py-2.5 flex items-center gap-4">
@@ -424,11 +428,11 @@ export function BoardPage() {
                     return (
                       <motion.div
                         key={epic.id}
-                        variants={exitVariant}
-                        exit="exit"
+                        variants={noMotion ? undefined : exitVariant}
+                        exit={noMotion ? undefined : "exit"}
                         // CSS handles mount animation — no initial/animate on motion.div
                         style={{
-                          animationDelay: `${delay}ms`,
+                          animationDelay: lowMotion ? "0ms" : `${delay}ms`,
                         }}
                         className="animate-fade-up"
                       >

@@ -20,6 +20,7 @@ import { cn } from "@/shared/lib/utils";
 import { formatDate } from "@/shared/lib/utils";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
+import { usePerformanceMode } from "@/shared/lib/usePerformanceMode";
 import type { TaskView, TaskStatus } from "@/shared/types";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ function SubtaskRing({
 }: {
   done: number; total: number; color: string; expanded: boolean; onToggle: (e: React.MouseEvent) => void;
 }) {
+  const { lowMotion, noMotion } = usePerformanceMode();
   const R = 13;
   const C = 2 * Math.PI * R;
   const pct = total > 0 ? done / total : 0;
@@ -83,8 +85,8 @@ function SubtaskRing({
       onClick={onToggle}
       title={expanded ? "Скрыть подзадачи" : "Показать подзадачи"}
       className="relative shrink-0 rounded-full"
-      whileHover={{ scale: 1.1 }}
-      whileTap={{ scale: 0.92 }}
+      whileHover={lowMotion ? undefined : { scale: 1.1 }}
+      whileTap={lowMotion ? undefined : { scale: 0.92 }}
       style={{ outline: "none" }}
     >
       <svg
@@ -98,9 +100,9 @@ function SubtaskRing({
           fill="none" stroke={color}
           strokeWidth="2.5" strokeLinecap="round"
           strokeDasharray={C}
-          initial={{ strokeDashoffset: C }}
+          initial={noMotion ? false : { strokeDashoffset: C }}
           animate={{ strokeDashoffset: C * (1 - pct) }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          transition={noMotion ? { duration: 0 } : { duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
         />
         <text
           x="17" y="17" textAnchor="middle" dominantBaseline="central"
@@ -115,9 +117,9 @@ function SubtaskRing({
       <AnimatePresence>
         {expanded && (
           <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
+            initial={noMotion ? false : { scale: 0, opacity: 0 }}
+            animate={noMotion ? undefined : { scale: 1, opacity: 1 }}
+            exit={noMotion ? undefined : { scale: 0, opacity: 0 }}
             className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full"
             style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }}
           />
@@ -137,11 +139,12 @@ function SubtaskRow({
   onToggle: (e: React.MouseEvent) => void;
   disabled: boolean;
 }) {
+  const { lowMotion } = usePerformanceMode();
   return (
-    <motion.div layout className="flex items-start gap-2">
+    <motion.div layout={!lowMotion} className="flex items-start gap-2">
       <motion.button
         onClick={disabled ? undefined : onToggle}
-        whileTap={disabled ? {} : { scale: 0.85 }}
+        whileTap={disabled || lowMotion ? undefined : { scale: 0.85 }}
         className="shrink-0 mt-0.5 w-3.5 h-3.5 rounded flex items-center justify-center"
         style={{
           background: subtask.isCompleted ? color : "transparent",
@@ -155,10 +158,10 @@ function SubtaskRow({
         <AnimatePresence>
           {subtask.isCompleted && (
             <motion.svg
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ duration: 0.15, type: "spring", stiffness: 500 }}
+              initial={lowMotion ? false : { scale: 0, opacity: 0 }}
+              animate={lowMotion ? undefined : { scale: 1, opacity: 1 }}
+              exit={lowMotion ? undefined : { scale: 0, opacity: 0 }}
+              transition={lowMotion ? undefined : { duration: 0.15, type: "spring", stiffness: 500 }}
               width="8" height="8" viewBox="0 0 8 8"
               fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
             >
@@ -194,15 +197,16 @@ function SubtaskList({
   onToggleSubtask: (subtaskId: number, current: boolean, e: React.MouseEvent) => void;
   disabled: boolean;
 }) {
+  const { noMotion } = usePerformanceMode();
   const allDone = task.subtasks.length > 0 && task.subtasks.every((s) => s.isCompleted);
 
   return (
     <motion.div
       key="subtask-list"
-      initial={{ opacity: 0, height: 0 }}
+      initial={noMotion ? false : { opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: "auto" }}
-      exit={{ opacity: 0, height: 0 }}
-      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+      exit={noMotion ? undefined : { opacity: 0, height: 0 }}
+      transition={noMotion ? { duration: 0 } : { duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
       style={{ overflow: "hidden" }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -308,11 +312,12 @@ function StatusPill({
   onCycle: (e: React.MouseEvent) => void;
   disabled: boolean;
 }) {
+  const { lowMotion } = usePerformanceMode();
   const cfg = STATUS_CFG[status];
   return (
     <motion.button
       onClick={disabled ? undefined : onCycle}
-      whileTap={disabled ? {} : { scale: 0.88 }}
+      whileTap={disabled || lowMotion ? undefined : { scale: 0.88 }}
       className="relative overflow-hidden flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium select-none"
       style={{
         backgroundColor: cfg.bg,
@@ -328,16 +333,16 @@ function StatusPill({
         <motion.span
           className="absolute inset-0 rounded-full pointer-events-none"
           initial={{ scale: 0, opacity: 0.5 }}
-          whileTap={{ scale: 3, opacity: 0 }}
-          transition={{ duration: 0.4 }}
+          whileTap={lowMotion ? undefined : { scale: 3, opacity: 0 }}
+          transition={lowMotion ? undefined : { duration: 0.4 }}
           style={{ backgroundColor: cfg.solid, originX: "50%", originY: "50%" }}
         />
       )}
       <motion.span
         className="w-1.5 h-1.5 rounded-full shrink-0 relative z-10"
         style={{ backgroundColor: cfg.solid }}
-        animate={!disabled && status === "in_progress" ? { scale: [1, 1.6, 1], opacity: [1, 0.4, 1] } : {}}
-        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        animate={!disabled && !lowMotion && status === "in_progress" ? { scale: [1, 1.6, 1], opacity: [1, 0.4, 1] } : {}}
+        transition={!disabled && !lowMotion && status === "in_progress" ? { duration: 1.8, repeat: Infinity, ease: "easeInOut" } : undefined}
       />
       <span className="relative z-10">{cfg.label}</span>
     </motion.button>
@@ -347,12 +352,13 @@ function StatusPill({
 // ── Done crystal overlay ──────────────────────────────────────────────────────
 
 function DoneOverlay() {
+  const { lowMotion, noMotion } = usePerformanceMode();
   return (
     <motion.div
       className="absolute inset-0 pointer-events-none rounded-xl overflow-hidden"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      initial={noMotion ? false : { opacity: 0 }}
+      animate={noMotion ? undefined : { opacity: 1 }}
+      exit={noMotion ? undefined : { opacity: 0 }}
     >
       <div
         className="absolute inset-0"
@@ -363,8 +369,8 @@ function DoneOverlay() {
         style={{
           background: "linear-gradient(105deg, transparent 30%, rgba(52,211,153,0.10) 50%, transparent 70%)",
         }}
-        animate={{ x: ["-100%", "200%"] }}
-        transition={{ duration: 2.2, repeat: Infinity, repeatDelay: 4, ease: "easeInOut" }}
+        animate={lowMotion ? undefined : { x: ["-100%", "200%"] }}
+        transition={lowMotion ? undefined : { duration: 2.2, repeat: Infinity, repeatDelay: 4, ease: "easeInOut" }}
       />
     </motion.div>
   );
@@ -385,6 +391,7 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
   const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
   const liveTask = useTaskStore((s) => s.getTask(task.id)) ?? task;
   const [subtasksOpen, setSubtasksOpen] = useState(false);
+  const { lowMotion, noMotion } = usePerformanceMode();
 
   const mouseX = useMotionValue(0.5);
   const mouseY = useMotionValue(0.5);
@@ -393,16 +400,18 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
   const glareBg = useMotionTemplate`radial-gradient(130px circle at ${glareX} ${glareY}, var(--specular-spot) 0%, transparent 70%)`;
 
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (lowMotion) return;
     const r = cardRef.current?.getBoundingClientRect();
     if (!r) return;
     mouseX.set((e.clientX - r.left) / r.width);
     mouseY.set((e.clientY - r.top) / r.height);
-  }, [mouseX, mouseY]);
+  }, [lowMotion, mouseX, mouseY]);
 
   const onMouseLeave = useCallback(() => {
+    if (lowMotion) return;
     mouseX.set(0.5);
     mouseY.set(0.5);
-  }, [mouseX, mouseY]);
+  }, [lowMotion, mouseX, mouseY]);
 
   function cycleStatus(e: React.MouseEvent) {
     // ✅ OFFLINE GUARD: status cycling blocked when offline (store also guards)
@@ -452,13 +461,13 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
             ? `inset 0 1px 0 rgba(255,255,255,0.04), 0 4px 20px ${pCfg.glow}`
             : "inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 10px rgba(0,0,0,0.3)",
       }}
-      whileHover={{
+      whileHover={lowMotion ? undefined : {
         y: -2,
         boxShadow: isFocused
           ? `0 0 0 2px var(--accent-400), 0 0 20px rgba(139,92,246,0.2)`
           : `0 0 0 1px ${pCfg.color}28, 0 8px 28px ${pCfg.glow}, inset 0 1px 0 rgba(255,255,255,0.07)`,
       }}
-      transition={{ type: "spring", stiffness: 340, damping: 34 }}
+      transition={lowMotion ? { duration: 0 } : { type: "spring", stiffness: 340, damping: 34 }}
     >
       {/* Priority left accent */}
       <div
@@ -469,10 +478,10 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
       <AnimatePresence>{isDone && <DoneOverlay />}</AnimatePresence>
 
       {/* Cursor specular highlight */}
-      <motion.div
+      {!lowMotion && <motion.div
         className="absolute inset-0 pointer-events-none rounded-xl"
         style={{ background: glareBg }}
-      />
+      />}
 
       <div className="pl-4 pr-3.5 py-3 flex flex-col gap-2.5">
         {/* Row 1: status pill + due date */}
@@ -525,9 +534,9 @@ export function TaskCard({ task, onOpen, isFocused }: Props) {
             <motion.div
               className="h-full rounded-full"
               style={{ backgroundColor: isDone ? "#34d399" : pCfg.color }}
-              initial={{ width: 0 }}
+              initial={noMotion ? false : { width: 0 }}
               animate={{ width: `${(liveTask.progress.done / liveTask.progress.total) * 100}%` }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
+              transition={noMotion ? { duration: 0 } : { duration: 0.6, ease: "easeOut" }}
             />
           </div>
         )}

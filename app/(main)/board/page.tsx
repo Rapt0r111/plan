@@ -85,9 +85,6 @@ async function BoardContent({ scopePromise }: { scopePromise: ReturnType<typeof 
   // ИСПРАВЛЕНО: вычисляем один раз, не передаём inline-функцию в проп Header.
   // Раньше: subtitle={`... ${epics.reduce(...)}`} — новая строка при каждом
   // серверном рендере, Next не может это закешировать.
-  const taskCount = epics.reduce((s, e) => s + e.tasks.length, 0);
-  const subtitle = `${epics.length} эпиков · ${taskCount} задач`;
-
   return (
     <>
       {/*

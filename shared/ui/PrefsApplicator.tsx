@@ -19,6 +19,11 @@ export function PrefsApplicator() {
     for (const [k, v] of Object.entries(vars)) {
       root.style.setProperty(k, v);
     }
+
+    root.dataset.animationLevel = prefs.animationLevel;
+    root.dataset.glassIntensity = prefs.glassIntensity;
+    root.dataset.showAmbientGlow = String(prefs.showAmbientGlow);
+    root.dataset.showGrainTexture = String(prefs.showGrainTexture);
   }, [prefs]);
 
   return null;

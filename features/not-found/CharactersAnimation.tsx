@@ -15,6 +15,7 @@ export default function CharactersAnimation() {
   const charactersRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const container = charactersRef.current;
     const stickFigures: StickFigure[] = [
       {
         top: '0%',
@@ -53,8 +54,8 @@ export default function CharactersAnimation() {
       },
     ];
 
-    if (charactersRef.current) {
-      charactersRef.current.innerHTML = '';
+    if (container) {
+      container.innerHTML = '';
     }
 
     stickFigures.forEach((figure, index) => {
@@ -71,7 +72,7 @@ export default function CharactersAnimation() {
       
       if (figure.transform) stick.style.transform = figure.transform;
 
-      charactersRef.current?.appendChild(stick);
+      container?.appendChild(stick);
 
       if (index === 5) return;
 
@@ -91,8 +92,8 @@ export default function CharactersAnimation() {
     });
 
     return () => {
-      if (charactersRef.current) {
-        charactersRef.current.innerHTML = '';
+      if (container) {
+        container.innerHTML = '';
       }
     };
   }, []);

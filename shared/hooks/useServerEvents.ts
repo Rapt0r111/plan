@@ -43,6 +43,7 @@ const REALTIME_URL         = "/api/realtime";
 const RECONNECT_BASE_MS    = 1_000;
 const RECONNECT_MAX_MS     = 30_000;
 const RECONNECT_JITTER_MS  = 500;
+const VISIBLE_REFRESH_DEBOUNCE_MS = 750;
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
@@ -51,10 +52,27 @@ export function useServerEvents(): void {
   const esRef       = useRef<EventSource | null>(null);
   const attemptsRef = useRef(0);
   const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef  = useRef(false);
 
   // Stable selector — never triggers re-render on status change
-  const refreshFn         = useCallback(() => router.refresh(), [router]);
+  const refreshFn = useCallback(() => {
+    pendingRef.current = false;
+    router.refresh();
+  }, [router]);
+
+  const scheduleRefresh = useCallback(() => {
+    pendingRef.current = true;
+    if (document.visibilityState !== "visible") return;
+    if (refreshTimerRef.current) return;
+
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null;
+      if (document.visibilityState === "visible" && pendingRef.current) {
+        refreshFn();
+      }
+    }, VISIBLE_REFRESH_DEBOUNCE_MS);
+  }, [refreshFn]);
 
   // ── Event dispatcher ──────────────────────────────────────────────────────
   const handleEvent = useCallback((event: RealtimeEvent) => {
@@ -71,11 +89,7 @@ export function useServerEvents(): void {
       case "epic:deleted": {
         // If page is visible — refresh server data immediately
         // If hidden — mark pending, refresh on visibilitychange
-        if (document.visibilityState === "visible") {
-          refreshFn();
-        } else {
-          pendingRef.current = true;
-        }
+        scheduleRefresh();
         break;
       }
 
@@ -86,20 +100,19 @@ export function useServerEvents(): void {
       default:
         break;
     }
-  }, [refreshFn]);
+  }, [scheduleRefresh]);
 
   // ── Visibility handler ────────────────────────────────────────────────────
   useEffect(() => {
     const onVisible = () => {
       if (pendingRef.current) {
-        pendingRef.current = false;
-        refreshFn();
+        scheduleRefresh();
       }
     };
 
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [refreshFn]);
+  }, [scheduleRefresh]);
 
   // ── SSE connection ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -152,6 +165,7 @@ export function useServerEvents(): void {
       esRef.current?.close();
       esRef.current = null;
       if (timerRef.current) clearTimeout(timerRef.current);
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     };
   }, [handleEvent]);
 

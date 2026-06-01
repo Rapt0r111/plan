@@ -77,9 +77,11 @@ export interface UserWithOperativeTasks {
  * которое обновляется через PATCH /api/operative-blocks.
  * Задачи внутри блока сортируются по полю `order` (DnD внутри блока).
  */
-export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperativeTasks[]> {
+export async function getAllUsersWithOperativeTasks(options: {
+  personnelGroupKey?: string | null;
+} = {}): Promise<UserWithOperativeTasks[]> {
   // 1. Все пользователи с ролями, отсортированные по blockOrder (DnD-порядок блоков)
-  const userRows = await db
+  const userQuery = db
     .select({
       id: users.id,
       name: users.name,
@@ -110,6 +112,13 @@ export async function getAllUsersWithOperativeTasks(): Promise<UserWithOperative
     .from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
     .leftJoin(personnelGroups, eq(roles.personnelGroupId, personnelGroups.id))
+    .$dynamic();
+
+  const filteredUserQuery = options.personnelGroupKey
+    ? userQuery.where(eq(personnelGroups.key, options.personnelGroupKey))
+    : userQuery;
+
+  const userRows = await filteredUserQuery
     // ИСПРАВЛЕНО: сначала по blockOrder (DnD), затем fallback
     .orderBy(users.blockOrder, roles.sortOrder, users.name);
 

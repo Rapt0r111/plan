@@ -26,9 +26,19 @@
  * Place once in your root layout: <AmbientCursor />
  */
 import { useEffect } from "react";
+import { usePerformanceMode } from "@/shared/lib/usePerformanceMode";
 
 export function AmbientCursor() {
+  const { animationLevel, showAmbientGlow, prefersReducedMotion } = usePerformanceMode();
+
   useEffect(() => {
+    const canHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    if (!showAmbientGlow || prefersReducedMotion || animationLevel !== "full" || !canHover) {
+      document.body.style.removeProperty("--cursor-x");
+      document.body.style.removeProperty("--cursor-y");
+      return;
+    }
+
     let rafId: number | null = null;
     let lastX = 0, lastY = 0;
 
@@ -48,7 +58,7 @@ export function AmbientCursor() {
       document.removeEventListener("mousemove", onMouseMove);
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
-  }, []);
+  }, [animationLevel, prefersReducedMotion, showAmbientGlow]);
 
   return null;
 }

@@ -49,4 +49,6 @@ local.*
 
 /.agents
 /.omx
-sw.*
+/sw.js
+/sw.js.map
+sw.js

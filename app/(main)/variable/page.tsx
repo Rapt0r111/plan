@@ -27,9 +27,10 @@ export default async function VariablePage({ searchParams }: VariablePageProps) 
   if (!canAccessVariableSection(scope)) redirect("/today");
 
   const params = searchParams ? await searchParams : {};
+  const todayDate = toDateKey(new Date());
   const selectedDate = normalizeDate(params.date, toDateKey(addDays(new Date(), -7)));
   const tomorrowDate = getTomorrowKey();
-  const data = await getVariableSectionData({ scope, selectedDate, tomorrowDate });
+  const data = await getVariableSectionData({ scope, todayDate, selectedDate, tomorrowDate });
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

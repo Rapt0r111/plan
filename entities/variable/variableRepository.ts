@@ -38,6 +38,7 @@ export interface VariableSectionData {
   dailyTasks: VariableDailyTaskView[];
   leaveRequests: VariableLeaveRequestView[];
   dutyAssignments: VariableDutyAssignmentView[];
+  todayDate: string;
   selectedDate: string;
   tomorrowDate: string;
 }
@@ -59,6 +60,7 @@ export async function getVariableUsers(): Promise<UserWithMeta[]> {
 
 export async function getVariableSectionData(input: {
   scope: WorkspaceAccessScope;
+  todayDate: string;
   selectedDate: string;
   tomorrowDate: string;
 }): Promise<VariableSectionData> {
@@ -67,8 +69,11 @@ export async function getVariableSectionData(input: {
     ? variableUsers.map((user) => user.id)
     : input.scope.profile ? [input.scope.profile.id] : [];
 
+  const taskDateFrom = [input.todayDate, input.selectedDate, input.tomorrowDate].sort()[0];
+  const taskDateTo = [input.todayDate, input.selectedDate, input.tomorrowDate].sort().at(-1) ?? input.tomorrowDate;
+
   const [dailyTasks, leaveRequests, dutyAssignments] = await Promise.all([
-    listVariableDailyTasks({ scope: input.scope, dateFrom: input.selectedDate, dateTo: input.tomorrowDate }),
+    listVariableDailyTasks({ scope: input.scope, dateFrom: taskDateFrom, dateTo: taskDateTo }),
     listVariableLeaveRequests({ scope: input.scope, dateFrom: input.selectedDate, dateTo: input.tomorrowDate }),
     listVariableDutyAssignments({ userIds: profileIds, dateFrom: input.selectedDate, dateTo: input.tomorrowDate }),
   ]);
@@ -78,6 +83,7 @@ export async function getVariableSectionData(input: {
     dailyTasks,
     leaveRequests,
     dutyAssignments,
+    todayDate: input.todayDate,
     selectedDate: input.selectedDate,
     tomorrowDate: input.tomorrowDate,
   };

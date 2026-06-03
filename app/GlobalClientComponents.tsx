@@ -11,7 +11,6 @@ import { AmbientCursor } from "@/shared/ui/AmbientCursor";
  *  вынесены сюда, в отдельный "use client" модуль.
  *
  * Этот компонент не рендерит никакой разметки — только монтирует
- * ?????????? ????: CommandPalette, ZenMode, GlobalFAB.
  */
 import dynamic from "next/dynamic";
 

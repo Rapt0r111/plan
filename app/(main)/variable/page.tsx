@@ -36,7 +36,7 @@ export default async function VariablePage({ searchParams }: VariablePageProps) 
     <div className="flex h-full flex-col overflow-hidden">
       <Header
         title="Переменный состав"
-        subtitle={`${data.variableUsers.length} человек · задачи, увал, наряды`}
+        subtitle={`${data.variableUsers.length} человек · задачи, увольнения, наряды`}
         actions={
           <div className="rounded-xl px-2.5 py-1.5 text-xs font-semibold" style={{ background: "rgba(56,189,248,0.10)", border: "1px solid rgba(56,189,248,0.25)", color: "#38bdf8" }}>
             {scope.isAdmin ? "Режим администратора" : "Мой раздел"}

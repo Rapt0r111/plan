@@ -12,8 +12,8 @@ const DUTY_SLOTS: Array<{ key: VariableDutySlot; label: string; short: string }>
 ];
 
 const LEAVE_LABELS: Record<VariableLeaveType, string> = {
-  day: "Дневной увал",
-  daily: "Суточный увал",
+  day: "Дневное увольнение",
+  daily: "Суточное увольнение",
   vacation: "Отпуск",
 };
 
@@ -150,7 +150,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
 
   const tabs = useMemo<Array<{ key: Tab; label: string; hint: string; count: number; icon: (props: IconProps) => ReactNode }>>(() => [
     { key: "tasks", label: "Задачи", hint: "сегодня, завтра и дата", count: data.dailyTasks.length, icon: TaskIcon },
-    { key: "leave", label: "Увал", hint: "заявки и решения", count: data.leaveRequests.length, icon: LeaveIcon },
+    { key: "leave", label: "Увольнение", hint: "заявки и решения", count: data.leaveRequests.length, icon: LeaveIcon },
     { key: "duty", label: "Наряды", hint: "2 дневальных + дежурный", count: groupedDuty.length, icon: DutyIcon },
   ], [data.dailyTasks.length, data.leaveRequests.length, groupedDuty.length]);
 
@@ -168,7 +168,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
               </div>
               <h2 className="text-xl font-semibold tracking-tight text-(--text-primary) lg:text-2xl">Контур переменного состава</h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-(--text-secondary)">
-                Единое место для задач на следующий день, заявок в увал и расписания суточных нарядов. История открывается фильтром периода, изменения синхронизируются через серверные события.
+                Единое место для задач на следующий день, заявок в увольнение и расписания суточных нарядов. История открывается фильтром периода, изменения синхронизируются через серверные события.
               </p>
             </div>
 
@@ -288,10 +288,10 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
 
         {tab === "leave" && (
           <section className="grid gap-4 xl:grid-cols-[minmax(340px,0.76fr)_minmax(0,1.24fr)]">
-            <Panel title="Заявка в увал" subtitle="Дневной, суточный или отпуск с выбором периода." icon={<LeaveIcon className="h-4 w-4" />} accent="#fbbf24">
+            <Panel title="Заявка в увольнение" subtitle="Дневной, суточный или отпуск с выбором периода." icon={<LeaveIcon className="h-4 w-4" />} accent="#fbbf24">
               <form onSubmit={handleLeave} className="space-y-3 p-4">
                 <UserSelect users={data.variableUsers} isAdmin={isAdmin} currentProfileId={defaultProfileId} />
-              <Field label="Тип увала">
+              <Field label="Тип увольнения">
                   <div className="relative">
                     <select name="leaveType" defaultValue="day" className={`${inputClassName} pr-10`} style={selectStyle}>
                       {Object.entries(LEAVE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}

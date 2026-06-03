@@ -180,11 +180,6 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
               Task<span className="text-teal-300">Flow</span>
             </span>
           </div>
-          {!isCollapsed && (
-            <span className="rounded-full border border-[var(--glass-border)] bg-[var(--glass-01)] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-[var(--text-muted)]">
-              menu
-            </span>
-          )}
         </div>
 
         <nav className={cn("shrink-0 space-y-2 pt-4 transition-all duration-300", isCollapsed ? "px-2" : "px-3")} aria-label="Основная навигация">

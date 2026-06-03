@@ -97,6 +97,7 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
   const sessionProfileId = (session?.user as { profileId?: number | null } | undefined)?.profileId;
   const isLimitedAccount = !!session?.user && session.user.role !== "admin" && typeof sessionProfileId !== "number";
   const isRestrictedToPasswordChange = isPasswordChangeRequired;
+  const canUseVariableSection = session?.user?.role === "admin" || isVariableRestricted;
 
   const groups = useMemo<NavGroup[]>(() => ([
     {
@@ -105,10 +106,10 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
       caption: "основные разделы",
       items: isRestrictedToPasswordChange || isLimitedAccount ? [] : [
         { href: "/today", label: "Сегодня", icon: TodayIcon },
-        { href: "/dashboard", label: "Доска", icon: DashboardIcon },
+        { href: "/dashboard", label: "Обзор", icon: DashboardIcon },
         { href: "/management", label: "Контроль", icon: ManagementIcon },
-        { href: "/board", label: "Доска", icon: BoardIcon },
         { href: "/operative", label: "Оперативные", icon: OperativeIcon },
+        ...(canUseVariableSection ? [{ href: "/variable", label: "Переменный состав", icon: OperativeIcon }] : []),
         ...(!isVariableRestricted ? [{ href: "/personal-plan", label: "Недельный план", icon: PersonalPlanIcon }] : []),
       ],
     },
@@ -122,7 +123,7 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
           : !isLimitedAccount ? [{ href: "/settings", label: "Настройки", icon: SettingsIcon }] : []),
       ],
     },
-  ]).filter((group) => group.items.length > 0), [isLimitedAccount, isRestrictedToPasswordChange, isVariableRestricted]);
+  ]).filter((group) => group.items.length > 0), [canUseVariableSection, isLimitedAccount, isRestrictedToPasswordChange, isVariableRestricted]);
 
   const sidebarTransitionStyle = mounted
     ? "width 320ms cubic-bezier(0.16, 1, 0.3, 1)"
@@ -440,26 +441,6 @@ function DashboardIcon({ active }: { active: boolean }) {
   );
 }
 
-function TodayIcon({ active }: { active: boolean }) {
-  return (
-    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="2.5" width="12" height="11" rx="2" />
-      <path d="M5 1.5v2M11 1.5v2M2.5 6h11" />
-      <path d="M5 9.2l1.6 1.6L11 7.5" />
-    </svg>
-  );
-}
-
-function BoardIcon({ active }: { active: boolean }) {
-  return (
-    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="currentColor">
-      <rect x="1" y="1" width="4" height="14" rx="1.5" fillOpacity={active ? 1 : 0.6} />
-      <rect x="6" y="1" width="4" height="9"  rx="1.5" fillOpacity={active ? 0.8 : 0.4} />
-      <rect x="11" y="1" width="4" height="11" rx="1.5" fillOpacity={active ? 0.6 : 0.3} />
-    </svg>
-  );
-}
-
 function ManagementIcon({ active }: { active: boolean }) {
   return (
     <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
@@ -468,6 +449,16 @@ function ManagementIcon({ active }: { active: boolean }) {
       <path d="M8 11V3" />
       <path d="M12.5 11V5.5" />
       <path d="M3 5.5l3 1.5 3-3 4 1.5" />
+    </svg>
+  );
+}
+
+function TodayIcon({ active }: { active: boolean }) {
+  return (
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2.5" width="12" height="11" rx="2" />
+      <path d="M5 1.5v2M11 1.5v2M2.5 6h11" />
+      <path d="M5 9.2l1.6 1.6L11 7.5" />
     </svg>
   );
 }

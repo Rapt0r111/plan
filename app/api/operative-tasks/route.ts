@@ -5,7 +5,7 @@
  *   POST — admins can create for anyone; members can create only for themselves.
  */
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import * as z from "zod";
 import { createOperativeTask } from "@/entities/operative/operativeRepository";
 import { getUserWithMetaById } from "@/entities/user/userRepository";
 import { broadcast } from "@/shared/server/eventBus";

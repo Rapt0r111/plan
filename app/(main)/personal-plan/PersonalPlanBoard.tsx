@@ -13,6 +13,21 @@ import {
   useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
 import { SelectField } from "@/shared/ui/SelectField";
 import type {
@@ -114,13 +129,18 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
   const [selectedUserId, setSelectedUserId] = useState<number | "all">("all");
   const [selectedTask, setSelectedTask] = useState<SelectedTask | null>(null);
   const [collapsedUserIds, setCollapsedUserIds] = useState<Set<number>>(() => new Set());
+  const [localBlocks, setLocalBlocks] = useState(data.users);
+
+  useEffect(() => {
+    setLocalBlocks(data.users);
+  }, [data.users]);
 
   const visibleBlocks = useMemo(
     () =>
       selectedUserId === "all"
-        ? data.users
-        : data.users.filter((block) => block.user.id === selectedUserId),
-    [data.users, selectedUserId],
+        ? localBlocks
+        : localBlocks.filter((block) => block.user.id === selectedUserId),
+    [localBlocks, selectedUserId],
   );
 
   const summary = useMemo(() => {
@@ -189,6 +209,29 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
     [mutate],
   );
 
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const reorderUserBlocks = useCallback(async (userIds: number[]) => {
+    if (userIds.length <= 1) return;
+    await mutate("/api/personal-plan/user-order", {
+      method: "PATCH",
+      body: JSON.stringify({ userIds }),
+    });
+  }, [mutate]);
+
+  const handleUserDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = localBlocks.findIndex((block) => block.user.id === active.id);
+    const newIndex = localBlocks.findIndex((block) => block.user.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(localBlocks, oldIndex, newIndex);
+    setLocalBlocks(reordered);
+    void reorderUserBlocks(reordered.map((block) => block.user.id)).catch(() => {
+      setLocalBlocks(localBlocks);
+    });
+  }, [localBlocks, reorderUserBlocks]);
+
   const deleteItem = useCallback(async (itemId: number) => {
     if (!window.confirm("Удалить задачу из повторяющегося личного плана?")) return;
     const ok = await mutate(`/api/personal-plan/${itemId}`, { method: "DELETE" }, itemId);
@@ -223,6 +266,33 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
     setEditingTaskId(null);
     setSelectedTask(null);
   }, []);
+
+  const canReorderUsers = isAdmin && selectedUserId === "all" && visibleBlocks.length > 1;
+
+  const userBlockList = visibleBlocks.map((block, idx) => {
+    const section = (
+      <UserPlanSection
+        key={block.user.id}
+        block={block}
+        idx={idx}
+        data={data}
+        isAdmin={isAdmin}
+        busyId={busyId}
+        isCollapsed={collapsedUserIds.has(block.user.id)}
+        onToggleCollapse={toggleUserPlan}
+        onDetails={handleOpenDetails}
+        onEditStart={handleEditStart}
+        onDelete={deleteItem}
+        onToggle={toggleCompletion}
+      />
+    );
+
+    return canReorderUsers ? (
+      <SortablePersonalPlanUserBlock key={block.user.id} userId={block.user.id}>
+        {section}
+      </SortablePersonalPlanUserBlock>
+    ) : section;
+  });
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -332,25 +402,14 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
         {/* User blocks */}
         {visibleBlocks.length === 0 ? (
           <EmptyState />
+        ) : canReorderUsers ? (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleUserDragEnd}>
+            <SortableContext items={visibleBlocks.map((block) => block.user.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3">{userBlockList}</div>
+            </SortableContext>
+          </DndContext>
         ) : (
-          <div className="space-y-3">
-            {visibleBlocks.map((block, idx) => (
-              <UserPlanSection
-                key={block.user.id}
-                block={block}
-                idx={idx}
-                data={data}
-                isAdmin={isAdmin}
-                busyId={busyId}
-                isCollapsed={collapsedUserIds.has(block.user.id)}
-                onToggleCollapse={toggleUserPlan}
-                onDetails={handleOpenDetails}
-                onEditStart={handleEditStart}
-                onDelete={deleteItem}
-                onToggle={toggleCompletion}
-              />
-            ))}
-          </div>
+          <div className="space-y-3">{userBlockList}</div>
         )}
 
         <TaskDetailsDialog
@@ -952,6 +1011,30 @@ const DayColumn = memo(function DayColumn({
 });
 
 // ─── PersonalPlanItemRow ──────────────────────────────────────────────────────
+
+const SortablePersonalPlanUserBlock = memo(function SortablePersonalPlanUserBlock({
+  userId,
+  children,
+}: {
+  userId: number;
+  children: ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: userId });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.65 : 1,
+    zIndex: isDragging ? 30 : undefined,
+    willChange: isDragging ? "transform" : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
+      {children}
+    </div>
+  );
+});
 
 const PersonalPlanItemRow = memo(function PersonalPlanItemRow({
   block,

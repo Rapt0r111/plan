@@ -8,7 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import * as z from "zod";
 import { db } from "@/shared/db/client";
 import { operativeTasks } from "@/shared/db/schema";
 import { eq } from "drizzle-orm";

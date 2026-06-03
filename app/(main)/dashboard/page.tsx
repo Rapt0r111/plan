@@ -32,7 +32,6 @@ import { getAllEpicsWithTasks } from "@/entities/epic/epicRepository";
 import { Header } from "@/widgets/header/Header";
 import { StoreHydrator } from "@/shared/store/StoreHydrator";
 import { DashboardClientWidgets } from "./DashboardClientWidgets";
-import Link from "next/link";
 import { EpicInteractionLayer } from "./EpicInteractionLayer";
 import type { EpicSummary } from "@/shared/types";
 import { requireWorkspacePage } from "@/shared/lib/page-auth";
@@ -145,25 +144,6 @@ export default async function DashboardPage() {
       <Header
         title="Обзор"
         subtitle={`${epics.length} эпиков · ${totalTasks} задач · ${overallPct}% выполнено`}
-        actions={
-          <Link
-            href="/board"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
-            style={{
-              background: "var(--accent-glow)",
-              color: "var(--accent-400)",
-              border: "1px solid rgba(139,92,246,0.3)",
-            }}
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-              <rect x="1" y="1" width="6" height="6" rx="1.5" />
-              <rect x="9" y="1" width="6" height="6" rx="1.5" fillOpacity="0.5" />
-              <rect x="1" y="9" width="6" height="6" rx="1.5" fillOpacity="0.5" />
-              <rect x="9" y="9" width="6" height="6" rx="1.5" />
-            </svg>
-            Доска
-          </Link>
-        }
       />
 
       <div className="p-6 space-y-8">

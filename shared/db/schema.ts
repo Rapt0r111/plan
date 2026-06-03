@@ -96,6 +96,18 @@ export const epics = sqliteTable("epics", {
 });
 
 // ─── TABLE: tasks ─────────────────────────────────────────────────────────────
+export const VARIABLE_DAILY_TASK_STATUSES = ["todo", "done"] as const;
+export type VariableDailyTaskStatus = (typeof VARIABLE_DAILY_TASK_STATUSES)[number];
+
+export const VARIABLE_LEAVE_TYPES = ["day", "daily", "vacation"] as const;
+export type VariableLeaveType = (typeof VARIABLE_LEAVE_TYPES)[number];
+
+export const VARIABLE_LEAVE_STATUSES = ["pending", "approved", "rejected"] as const;
+export type VariableLeaveStatus = (typeof VARIABLE_LEAVE_STATUSES)[number];
+
+export const VARIABLE_DUTY_SLOTS = ["day_orderly_1", "day_orderly_2", "duty_officer"] as const;
+export type VariableDutySlot = (typeof VARIABLE_DUTY_SLOTS)[number];
+
 export const TASK_STATUSES = ["todo", "in_progress", "done", "blocked"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
@@ -426,6 +438,66 @@ export const personalPlanCompletions = sqliteTable(
     uniqItemDate: uniqueIndex("uq_personal_plan_item_date").on(t.itemId, t.date),
     itemIdIdx: index("personal_plan_completions_item_id_idx").on(t.itemId),
     dateIdx: index("personal_plan_completions_date_idx").on(t.date),
+  })
+);
+
+export const variableDailyTasks = sqliteTable(
+  "variable_daily_tasks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    authorUserId: text("author_user_id").references(() => authUsers.id, { onDelete: "set null" }),
+    profileUserId: integer("profile_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    taskDate: text("task_date").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    status: text("status").$type<VariableDailyTaskStatus>().notNull().default("todo"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    profileDateIdx: index("variable_daily_tasks_profile_date_idx").on(t.profileUserId, t.taskDate),
+    dateIdx: index("variable_daily_tasks_date_idx").on(t.taskDate),
+    statusIdx: index("variable_daily_tasks_status_idx").on(t.status),
+  })
+);
+
+export const variableLeaveRequests = sqliteTable(
+  "variable_leave_requests",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    requesterUserId: text("requester_user_id").references(() => authUsers.id, { onDelete: "set null" }),
+    profileUserId: integer("profile_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    leaveType: text("leave_type").$type<VariableLeaveType>().notNull(),
+    dateFrom: text("date_from").notNull(),
+    dateTo: text("date_to").notNull(),
+    status: text("status").$type<VariableLeaveStatus>().notNull().default("pending"),
+    comment: text("comment"),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => authUsers.id, { onDelete: "set null" }),
+    reviewedAt: text("reviewed_at"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    profileDateIdx: index("variable_leave_requests_profile_date_idx").on(t.profileUserId, t.dateFrom),
+    statusIdx: index("variable_leave_requests_status_idx").on(t.status),
+    dateIdx: index("variable_leave_requests_date_idx").on(t.dateFrom, t.dateTo),
+  })
+);
+
+export const variableDutyAssignments = sqliteTable(
+  "variable_duty_assignments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    dutyDate: text("duty_date").notNull(),
+    slot: text("slot").$type<VariableDutySlot>().notNull(),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    uniqDutySlot: uniqueIndex("uq_variable_duty_date_slot").on(t.dutyDate, t.slot),
+    dateIdx: index("variable_duty_assignments_date_idx").on(t.dutyDate),
+    userDateIdx: index("variable_duty_assignments_user_date_idx").on(t.userId, t.dutyDate),
   })
 );
 

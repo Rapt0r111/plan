@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const PROTECTED_PAGE_PREFIXES = [
-  "/board",
   "/dashboard",
   "/epics",
   "/management",
@@ -12,6 +11,7 @@ const PROTECTED_PAGE_PREFIXES = [
   "/settings",
   "/tasks",
   "/today",
+  "/variable",
 ] as const;
 
 function hasSessionCookie(request: NextRequest) {

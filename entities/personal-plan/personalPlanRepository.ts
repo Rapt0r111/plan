@@ -212,6 +212,31 @@ export async function setPersonalPlanCompletion(input: {
   return completion;
 }
 
+export async function reorderPersonalPlanUsers(userIds: number[]): Promise<UserWithMeta[]> {
+  const permanentUsers = await getPermanentUsers();
+  const permanentIds = permanentUsers.map((user) => user.id);
+
+  if (userIds.length !== permanentIds.length) {
+    throw new Error("PERSONAL_PLAN_USER_ORDER_SCOPE_MISMATCH");
+  }
+
+  const expected = new Set(permanentIds);
+  if (userIds.some((id) => !expected.has(id)) || new Set(userIds).size !== userIds.length) {
+    throw new Error("PERSONAL_PLAN_USER_ORDER_SCOPE_MISMATCH");
+  }
+
+  await db.transaction(async (tx) => {
+    for (const [blockOrder, id] of userIds.entries()) {
+      await tx
+        .update(users)
+        .set({ blockOrder })
+        .where(eq(users.id, id));
+    }
+  });
+
+  return getPermanentUsers();
+}
+
 async function getNextSortOrder(userId: number, weekday: number): Promise<number> {
   const items = await db
     .select({ sortOrder: personalPlanItems.sortOrder })

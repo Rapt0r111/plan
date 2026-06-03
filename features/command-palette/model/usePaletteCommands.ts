@@ -32,13 +32,6 @@ export function usePaletteCommands(): CommandItem[] {
         icon: "📊", keywords: ["dashboard", "главная", "обзор", "home"],
         onSelect: () => { router.push("/dashboard"); close(); },
       },
-      {
-        id: "nav-board", category: "navigation",
-        label: "Открыть доску",
-        description: "Spatial Canvas — все задачи по эпикам",
-        icon: "🗂️", keywords: ["board", "доска", "задачи", "kanban"],
-        onSelect: () => { router.push("/board"); close(); },
-      },
     ];
 
     const epicCmds: CommandItem[] = epics.map((epic) => ({
@@ -61,7 +54,7 @@ export function usePaletteCommands(): CommandItem[] {
       icon: role.short,
       color: role.hex,
       keywords: [role.key, "роль", "фильтр", "команда"],
-      onSelect: () => { router.push("/board"); close(); },
+      onSelect: () => { router.push("/dashboard"); close(); },
     }));
 
     const zenCmds = buildZenCommands(
@@ -78,7 +71,7 @@ export function usePaletteCommands(): CommandItem[] {
         description: "Открыть доску с фильтром статуса",
         icon: "⏳", color: "#64748b",
         keywords: ["todo", "к работе", "фильтр", "статус"],
-        onSelect: () => { router.push("/board"); close(); },
+        onSelect: () => { router.push("/dashboard"); close(); },
       },
       {
         id: "action-filter-blocked", category: "action",
@@ -86,7 +79,7 @@ export function usePaletteCommands(): CommandItem[] {
         description: "Найти все заблокированные задачи",
         icon: "🚫", color: "#f87171",
         keywords: ["blocked", "заблокировано", "проблема"],
-        onSelect: () => { router.push("/board"); close(); },
+        onSelect: () => { router.push("/dashboard"); close(); },
       },
       {
         id: "action-my-overdue", category: "action",
@@ -102,7 +95,7 @@ export function usePaletteCommands(): CommandItem[] {
         description: "Только выполненные задачи",
         icon: "✅", color: "#34d399",
         keywords: ["done", "готово", "завершено", "выполнено"],
-        onSelect: () => { router.push("/board"); close(); },
+        onSelect: () => { router.push("/dashboard"); close(); },
       },
     ];
 

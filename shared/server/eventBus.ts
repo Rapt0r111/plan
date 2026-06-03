@@ -45,6 +45,7 @@ export type RealtimeEventType =
   | "task:commented"
   | "notification:created"
   | "personal_plan:updated"
+  | "variable:updated"
   | "epic:created"
   | "epic:updated"
   | "epic:deleted"

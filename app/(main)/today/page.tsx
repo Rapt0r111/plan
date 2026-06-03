@@ -214,31 +214,39 @@ function StatCard({ label, value, color }: { label: string; value: number | stri
 
 function Panel({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}>
-      <div className="px-5 py-4 border-b" style={{ borderColor: "var(--glass-border)" }}>
-        <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h2>
-        {subtitle && <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{subtitle}</p>}
-      </div>
+    <details className="group rounded-2xl overflow-hidden" style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)" }}>
+      <summary className="cursor-pointer list-none px-5 py-4 border-b flex items-start justify-between gap-4" style={{ borderColor: "var(--glass-border)" }}>
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</span>
+          {subtitle && <span className="block text-xs mt-1" style={{ color: "var(--text-muted)" }}>{subtitle}</span>}
+        </span>
+        <span className="rounded-lg px-2 py-1 text-[11px] font-mono text-(--text-muted)" style={{ border: "1px solid var(--glass-border)", background: "var(--glass-01)" }}>
+          <span className="group-open:hidden">показать</span><span className="hidden group-open:inline">скрыть</span>
+        </span>
+      </summary>
       {children}
-    </section>
+    </details>
   );
 }
 
 function WorkSection({ title, subtitle, color, items, todayKey }: { title: string; subtitle: string; color: string; items: MyDayAttentionItem[]; todayKey: string }) {
   return (
-    <section className="rounded-2xl overflow-hidden" style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>
-      <div className="px-4 py-3 border-b flex items-start gap-3" style={{ borderColor: "var(--glass-border)" }}>
+    <details className="group rounded-2xl overflow-hidden" style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>
+      <summary className="cursor-pointer list-none px-4 py-3 border-b flex items-start gap-3" style={{ borderColor: "var(--glass-border)" }}>
         <span className="mt-1.5 h-2.5 w-2.5 rounded-full shrink-0" style={{ background: color }} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</h3>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</span>
             <span className="text-xs font-mono" style={{ color }}>{items.length}</span>
-          </div>
-          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{subtitle}</p>
-        </div>
-      </div>
+          </span>
+          <span className="block text-xs mt-1" style={{ color: "var(--text-muted)" }}>{subtitle}</span>
+        </span>
+        <span className="rounded-lg px-2 py-1 text-[10px] font-mono text-(--text-muted)" style={{ border: "1px solid var(--glass-border)" }}>
+          <span className="group-open:hidden">показать</span><span className="hidden group-open:inline">скрыть</span>
+        </span>
+      </summary>
       <AttentionList items={items} empty={`В разделе «${title}» сейчас пусто.`} todayKey={todayKey} showActions />
-    </section>
+    </details>
   );
 }
 

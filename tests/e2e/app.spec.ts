@@ -20,12 +20,6 @@ test.describe("Smoke: app loads without errors", () => {
     await expect(page.locator("header")).toBeVisible();
   });
 
-  test("/board returns 200", async ({ page }) => {
-    const response = await page.goto("/board");
-    expect(response?.status()).toBe(200);
-    await expect(page.locator("header")).toBeVisible();
-  });
-
   test("no unhandled console errors on dashboard", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));

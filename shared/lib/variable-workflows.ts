@@ -3,7 +3,9 @@ import type { UserWithMeta } from "@/shared/types";
 import { getUserPersonnelGroupKey } from "@/shared/lib/personnel-composition";
 import type { VariableDutySlot, VariableLeaveStatus } from "@/shared/db/schema";
 
-export const VARIABLE_DUTY_SLOTS: VariableDutySlot[] = ["day_orderly_1", "day_orderly_2", "duty_officer"];
+export const VARIABLE_DAILY_DUTY_SLOTS: VariableDutySlot[] = ["day_orderly_1", "day_orderly_2", "duty_officer"];
+export const VARIABLE_WORK_GROUP_SLOTS: VariableDutySlot[] = ["day_rg", "night_rg", "info_rg"];
+export const VARIABLE_DUTY_SLOTS: VariableDutySlot[] = [...VARIABLE_DAILY_DUTY_SLOTS, ...VARIABLE_WORK_GROUP_SLOTS];
 
 export function canAccessVariableSection(scope: WorkspaceAccessScope): boolean {
   return scope.isAdmin || scope.groupKey === "variable";
@@ -43,10 +45,45 @@ export function assertDateRange(dateFrom: string, dateTo: string): void {
 }
 
 export function assertDutySlotsComplete(slots: Partial<Record<VariableDutySlot, number | null>>): void {
-  const missing = VARIABLE_DUTY_SLOTS.filter((slot) => !slots[slot]);
+  const missing = VARIABLE_DAILY_DUTY_SLOTS.filter((slot) => !slots[slot]);
   if (missing.length > 0) throw new Error("DUTY_SLOTS_INCOMPLETE");
+}
+
+export function assertWorkGroupSlotsComplete(slots: Partial<Record<VariableDutySlot, number | null>>): void {
+  const missing = VARIABLE_WORK_GROUP_SLOTS.filter((slot) => !slots[slot]);
+  if (missing.length > 0) throw new Error("WORK_GROUP_SLOTS_INCOMPLETE");
 }
 
 export function isReviewStatus(status: VariableLeaveStatus): boolean {
   return status === "approved" || status === "rejected";
+}
+
+export function isRevokedStatus(status: VariableLeaveStatus): boolean {
+  return status === "revoked";
+}
+
+export function assertEditableVariableTaskDate(taskDate: string, todayDate = toDateKey(new Date())): void {
+  if (taskDate < todayDate) throw new Error("TASK_DATE_PAST_LOCKED");
+}
+
+export function addDateDays(dateKey: string, days: number): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  return toDateKey(date);
+}
+
+export function getVariableDutyEndDate(dateFrom: string): string {
+  return addDateDays(dateFrom, 1);
+}
+
+export function getLeaveBucket(request: { dateFrom: string; dateTo: string }, todayDate = toDateKey(new Date())): "future" | "past" | "active" {
+  if (request.dateTo < todayDate) return "past";
+  if (request.dateFrom > todayDate) return "future";
+  return "active";
+}
+
+export function isWithinNextThirtyDays(dateFrom: string, todayDate = toDateKey(new Date())): boolean {
+  const end = addDateDays(todayDate, 29);
+  return dateFrom >= todayDate && dateFrom <= end;
 }

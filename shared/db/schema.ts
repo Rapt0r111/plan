@@ -102,10 +102,10 @@ export type VariableDailyTaskStatus = (typeof VARIABLE_DAILY_TASK_STATUSES)[numb
 export const VARIABLE_LEAVE_TYPES = ["day", "daily", "vacation"] as const;
 export type VariableLeaveType = (typeof VARIABLE_LEAVE_TYPES)[number];
 
-export const VARIABLE_LEAVE_STATUSES = ["pending", "approved", "rejected"] as const;
+export const VARIABLE_LEAVE_STATUSES = ["pending", "approved", "rejected", "revoked"] as const;
 export type VariableLeaveStatus = (typeof VARIABLE_LEAVE_STATUSES)[number];
 
-export const VARIABLE_DUTY_SLOTS = ["day_orderly_1", "day_orderly_2", "duty_officer"] as const;
+export const VARIABLE_DUTY_SLOTS = ["day_orderly_1", "day_orderly_2", "duty_officer", "day_rg", "night_rg", "info_rg"] as const;
 export type VariableDutySlot = (typeof VARIABLE_DUTY_SLOTS)[number];
 
 export const TASK_STATUSES = ["todo", "in_progress", "done", "blocked"] as const;
@@ -470,6 +470,8 @@ export const variableLeaveRequests = sqliteTable(
     leaveType: text("leave_type").$type<VariableLeaveType>().notNull(),
     dateFrom: text("date_from").notNull(),
     dateTo: text("date_to").notNull(),
+    departureTime: text("departure_time"),
+    arrivalTime: text("arrival_time"),
     status: text("status").$type<VariableLeaveStatus>().notNull().default("pending"),
     comment: text("comment"),
     reviewedByUserId: text("reviewed_by_user_id").references(() => authUsers.id, { onDelete: "set null" }),
@@ -489,6 +491,8 @@ export const variableDutyAssignments = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     dutyDate: text("duty_date").notNull(),
+    dateFrom: text("date_from"),
+    dateTo: text("date_to"),
     slot: text("slot").$type<VariableDutySlot>().notNull(),
     userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
@@ -497,6 +501,7 @@ export const variableDutyAssignments = sqliteTable(
   (t) => ({
     uniqDutySlot: uniqueIndex("uq_variable_duty_date_slot").on(t.dutyDate, t.slot),
     dateIdx: index("variable_duty_assignments_date_idx").on(t.dutyDate),
+    rangeIdx: index("variable_duty_assignments_range_idx").on(t.dateFrom, t.dateTo),
     userDateIdx: index("variable_duty_assignments_user_date_idx").on(t.userId, t.dutyDate),
   })
 );

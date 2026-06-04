@@ -1,13 +1,13 @@
 ﻿import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import * as z from "zod";
-import { reviewVariableLeaveRequest } from "@/entities/variable/variableRepository";
+import { reviewVariableLeaveRequest, revokeVariableLeaveRequest } from "@/entities/variable/variableRepository";
 import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
 import { writeAuditLog } from "@/shared/lib/audit";
 import { broadcast } from "@/shared/server/eventBus";
 
 const ReviewSchema = z.object({
-  status: z.enum(["approved", "rejected"]),
+  status: z.enum(["approved", "rejected", "revoked"]),
   comment: z.string().max(2000).nullable().optional(),
 });
 
@@ -26,7 +26,9 @@ export async function PATCH(req: Request, { params }: Params) {
     const parsed = ReviewSchema.safeParse(await req.json());
     if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.flatten() }, { status: 422 });
 
-    const request = await reviewVariableLeaveRequest({ scope, id, ...parsed.data });
+    const request = parsed.data.status === "revoked"
+      ? await revokeVariableLeaveRequest({ scope, id, comment: parsed.data.comment })
+      : await reviewVariableLeaveRequest({ scope, id, ...parsed.data });
     revalidatePath("/variable");
     broadcast("variable:updated", { action: "variable_leave_review", requestId: request.id, status: request.status });
     await writeAuditLog({

@@ -16,22 +16,28 @@ import {
 import type { UserWithMeta } from "@/shared/types";
 import type { WorkspaceAccessScope } from "@/shared/lib/access-scope";
 import {
+  addDateDays,
+  assertEditableVariableTaskDate,
   assertDateRange,
   assertDutySlotsComplete,
+  assertWorkGroupSlotsComplete,
   canManageVariableSection,
   canWriteVariableProfile,
+  getVariableDutyEndDate,
   isReviewStatus,
   isVariableUser,
-  VARIABLE_DUTY_SLOTS,
+  VARIABLE_DAILY_DUTY_SLOTS,
+  VARIABLE_WORK_GROUP_SLOTS,
 } from "@/shared/lib/variable-workflows";
 
 export type DbVariableDailyTask = InferSelectModel<typeof variableDailyTasks>;
 export type DbVariableLeaveRequest = InferSelectModel<typeof variableLeaveRequests>;
 export type DbVariableDutyAssignment = InferSelectModel<typeof variableDutyAssignments>;
+type DbVariableDutyAssignmentWithRange = Omit<DbVariableDutyAssignment, "dateFrom" | "dateTo"> & { dateFrom: string; dateTo: string };
 
 export type VariableDailyTaskView = DbVariableDailyTask & { profile: Pick<UserWithMeta, "id" | "name" | "initials"> };
 export type VariableLeaveRequestView = DbVariableLeaveRequest & { profile: Pick<UserWithMeta, "id" | "name" | "initials"> };
-export type VariableDutyAssignmentView = DbVariableDutyAssignment & { user: Pick<UserWithMeta, "id" | "name" | "initials"> };
+export type VariableDutyAssignmentView = DbVariableDutyAssignmentWithRange & { user: Pick<UserWithMeta, "id" | "name" | "initials"> };
 
 export interface VariableSectionData {
   variableUsers: UserWithMeta[];
@@ -71,11 +77,13 @@ export async function getVariableSectionData(input: {
 
   const taskDateFrom = [input.todayDate, input.selectedDate, input.tomorrowDate].sort()[0];
   const taskDateTo = [input.todayDate, input.selectedDate, input.tomorrowDate].sort().at(-1) ?? input.tomorrowDate;
+  const wideDateFrom = [addDateDays(input.todayDate, -365), input.selectedDate].sort()[0];
+  const wideDateTo = [addDateDays(input.todayDate, 365), input.selectedDate, input.tomorrowDate].sort().at(-1) ?? input.tomorrowDate;
 
   const [dailyTasks, leaveRequests, dutyAssignments] = await Promise.all([
     listVariableDailyTasks({ scope: input.scope, dateFrom: taskDateFrom, dateTo: taskDateTo }),
-    listVariableLeaveRequests({ scope: input.scope, dateFrom: input.selectedDate, dateTo: input.tomorrowDate }),
-    listVariableDutyAssignments({ userIds: profileIds, dateFrom: input.selectedDate, dateTo: input.tomorrowDate }),
+    listVariableLeaveRequests({ scope: input.scope, dateFrom: wideDateFrom, dateTo: wideDateTo }),
+    listVariableDutyAssignments({ userIds: profileIds, dateFrom: wideDateFrom, dateTo: wideDateTo }),
   ]);
 
   return {
@@ -118,6 +126,7 @@ export async function createVariableDailyTask(input: {
   description?: string | null;
 }): Promise<DbVariableDailyTask> {
   if (!canWriteVariableProfile(input.scope, input.profileUserId)) throw new Error("ACCESS_DENIED");
+  assertEditableVariableTaskDate(input.taskDate);
   await assertProfileIsVariable(input.profileUserId);
   const [task] = await db.insert(variableDailyTasks).values({
     authorUserId: input.scope.session.user.id,
@@ -140,6 +149,7 @@ export async function updateVariableDailyTask(input: {
   const before = await getVariableDailyTaskById(input.id);
   if (!before) throw new Error("NOT_FOUND");
   if (!canWriteVariableProfile(input.scope, before.profileUserId)) throw new Error("ACCESS_DENIED");
+  assertEditableVariableTaskDate(before.taskDate);
   const [task] = await db.update(variableDailyTasks).set({
     ...(input.title !== undefined ? { title: input.title.trim() } : {}),
     ...(input.description !== undefined ? { description: input.description?.trim() || null } : {}),
@@ -182,6 +192,8 @@ export async function createVariableLeaveRequest(input: {
   leaveType: VariableLeaveType;
   dateFrom: string;
   dateTo: string;
+  departureTime?: string | null;
+  arrivalTime?: string | null;
   comment?: string | null;
 }): Promise<DbVariableLeaveRequest> {
   if (!canWriteVariableProfile(input.scope, input.profileUserId)) throw new Error("ACCESS_DENIED");
@@ -193,10 +205,38 @@ export async function createVariableLeaveRequest(input: {
     leaveType: input.leaveType,
     dateFrom: input.dateFrom,
     dateTo: input.dateTo,
+    departureTime: input.departureTime?.trim() || null,
+    arrivalTime: input.arrivalTime?.trim() || null,
     comment: input.comment?.trim() || null,
     status: "pending",
   }).returning();
   return request;
+}
+
+export async function revokeVariableLeaveRequest(input: {
+  scope: WorkspaceAccessScope;
+  id: number;
+  comment?: string | null;
+}): Promise<DbVariableLeaveRequest> {
+  const before = await getVariableLeaveRequestById(input.id);
+  if (!before) throw new Error("NOT_FOUND");
+  if (!canManageVariableSection(input.scope) && !canWriteVariableProfile(input.scope, before.profileUserId)) throw new Error("ACCESS_DENIED");
+  if (before.status !== "approved") throw new Error("LEAVE_REVOKE_ONLY_APPROVED");
+  const now = new Date().toISOString();
+  const [request] = await db.update(variableLeaveRequests).set({
+    status: "revoked",
+    comment: input.comment?.trim() || before.comment,
+    reviewedByUserId: input.scope.session.user.id,
+    reviewedAt: now,
+    updatedAt: now,
+  }).where(eq(variableLeaveRequests.id, input.id)).returning();
+  if (!request) throw new Error("NOT_FOUND");
+  return request;
+}
+
+export async function getVariableLeaveRequestById(id: number): Promise<DbVariableLeaveRequest | null> {
+  const [request] = await db.select().from(variableLeaveRequests).where(eq(variableLeaveRequests.id, id));
+  return request ?? null;
 }
 
 export async function reviewVariableLeaveRequest(input: {
@@ -232,44 +272,89 @@ export async function listVariableDutyAssignments(input: {
       lte(variableDutyAssignments.dutyDate, input.dateTo),
       ...(input.userIds?.length ? [inArray(variableDutyAssignments.userId, input.userIds)] : []),
     ))
-    .orderBy(desc(variableDutyAssignments.dutyDate), asc(variableDutyAssignments.slot));
+    .orderBy(asc(variableDutyAssignments.dutyDate), asc(variableDutyAssignments.slot));
 
-  return rows.map((row) => ({ ...row.duty, user: pickUser(row.user) }));
+  return rows.map((row) => normalizeDutyAssignment(row.duty, row.user));
 }
 
 export async function upsertVariableDutySchedule(input: {
   scope: WorkspaceAccessScope;
   dutyDate: string;
-  slots: Record<VariableDutySlot, number>;
+  slots: Partial<Record<VariableDutySlot, number>>;
 }): Promise<DbVariableDutyAssignment[]> {
   if (!canManageVariableSection(input.scope)) throw new Error("ACCESS_DENIED");
   assertDutySlotsComplete(input.slots);
-  const userIds = Object.values(input.slots);
+  return upsertDutySlots({
+    dateFrom: input.dutyDate,
+    dateTo: getVariableDutyEndDate(input.dutyDate),
+    slots: input.slots,
+    slotKeys: VARIABLE_DAILY_DUTY_SLOTS,
+  });
+}
+
+export async function upsertVariableWorkGroupSchedule(input: {
+  scope: WorkspaceAccessScope;
+  dateFrom: string;
+  dateTo: string;
+  slots: Partial<Record<VariableDutySlot, number>>;
+}): Promise<DbVariableDutyAssignment[]> {
+  if (!canManageVariableSection(input.scope)) throw new Error("ACCESS_DENIED");
+  assertDateRange(input.dateFrom, input.dateTo);
+  assertWorkGroupSlotsComplete(input.slots);
+  return upsertDutySlots({
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+    slots: input.slots,
+    slotKeys: VARIABLE_WORK_GROUP_SLOTS,
+  });
+}
+
+function pickUser(user: Pick<UserWithMeta, "id" | "name" | "initials">): Pick<UserWithMeta, "id" | "name" | "initials"> {
+  return { id: user.id, name: user.name, initials: user.initials };
+}
+
+function normalizeDutyAssignment(duty: DbVariableDutyAssignment, user: Pick<UserWithMeta, "id" | "name" | "initials">): VariableDutyAssignmentView {
+  const dateFrom = duty.dateFrom ?? duty.dutyDate;
+  const dateTo = duty.dateTo ?? getVariableDutyEndDate(duty.dutyDate);
+  return { ...duty, dateFrom, dateTo, user: pickUser(user) };
+}
+
+async function upsertDutySlots(input: {
+  dateFrom: string;
+  dateTo: string;
+  slots: Partial<Record<VariableDutySlot, number>>;
+  slotKeys: VariableDutySlot[];
+}): Promise<DbVariableDutyAssignment[]> {
+  const userIds = input.slotKeys.map((slot) => input.slots[slot]).filter((userId): userId is number => Boolean(userId));
   for (const userId of userIds) await assertProfileIsVariable(userId);
 
   const updated: DbVariableDutyAssignment[] = [];
   await db.transaction(async (tx) => {
-    for (const slot of VARIABLE_DUTY_SLOTS) {
+    for (const slot of input.slotKeys) {
       const userId = input.slots[slot];
+      if (!userId) throw new Error("DUTY_SLOTS_INCOMPLETE");
       const existing = await tx
         .select()
         .from(variableDutyAssignments)
-        .where(and(eq(variableDutyAssignments.dutyDate, input.dutyDate), eq(variableDutyAssignments.slot, slot)));
+        .where(and(eq(variableDutyAssignments.dutyDate, input.dateFrom), eq(variableDutyAssignments.slot, slot)));
+      const values = { userId, dateFrom: input.dateFrom, dateTo: input.dateTo, updatedAt: new Date().toISOString() };
       if (existing[0]) {
-        const [row] = await tx.update(variableDutyAssignments).set({ userId, updatedAt: new Date().toISOString() })
+        const [row] = await tx.update(variableDutyAssignments).set(values)
           .where(eq(variableDutyAssignments.id, existing[0].id)).returning();
         updated.push(row);
       } else {
-        const [row] = await tx.insert(variableDutyAssignments).values({ dutyDate: input.dutyDate, slot, userId }).returning();
+        const [row] = await tx.insert(variableDutyAssignments).values({
+          dutyDate: input.dateFrom,
+          dateFrom: input.dateFrom,
+          dateTo: input.dateTo,
+          slot,
+          userId,
+        }).returning();
         updated.push(row);
       }
     }
   });
   return updated;
-}
-
-function pickUser(user: Pick<UserWithMeta, "id" | "name" | "initials">): Pick<UserWithMeta, "id" | "name" | "initials"> {
-  return { id: user.id, name: user.name, initials: user.initials };
 }
 
 async function getVisibleProfileIds(scope: WorkspaceAccessScope): Promise<number[]> {

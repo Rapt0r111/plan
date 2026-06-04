@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useCallback, useMemo, useState, useTransition, type CSSProperties, type FormEvent, type ReactNode, type SelectHTMLAttributes } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { VariableSectionData } from "@/entities/variable/variableRepository";
 import type { VariableDutySlot, VariableLeaveStatus, VariableLeaveType } from "@/shared/db/schema";
@@ -9,6 +9,12 @@ const DUTY_SLOTS: Array<{ key: VariableDutySlot; label: string; short: string }>
   { key: "day_orderly_1", label: "Дневальный 1", short: "Д1" },
   { key: "day_orderly_2", label: "Дневальный 2", short: "Д2" },
   { key: "duty_officer", label: "Дежурный", short: "ДЖ" },
+];
+
+const WORK_GROUP_SLOTS: Array<{ key: VariableDutySlot; label: string; short: string }> = [
+  { key: "day_rg", label: "Дневное РГ", short: "ДРГ" },
+  { key: "night_rg", label: "Ночное РГ", short: "НРГ" },
+  { key: "info_rg", label: "Информационное РГ", short: "ИРГ" },
 ];
 
 const LEAVE_LABELS: Record<VariableLeaveType, string> = {
@@ -21,6 +27,7 @@ const STATUS_LABELS: Record<VariableLeaveStatus, string> = {
   pending: "На рассмотрении",
   approved: "Одобрено",
   rejected: "Отклонено",
+  revoked: "Отозвано",
 };
 
 interface Props {
@@ -30,6 +37,9 @@ interface Props {
 }
 
 type Tab = "tasks" | "leave" | "duty";
+type LeaveTab = "thirty" | "future" | "past";
+type DutyTab = "planned" | "past";
+type DutyPeriod = "week" | "month" | "nextMonth" | "year";
 type DutyAssignments = VariableSectionData["dutyAssignments"];
 type IconProps = { className?: string };
 
@@ -37,6 +47,12 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("tasks");
+  const [leaveTab, setLeaveTab] = useState<LeaveTab>("thirty");
+  const [dutyTab, setDutyTab] = useState<DutyTab>("planned");
+  const [dutyPeriod, setDutyPeriod] = useState<DutyPeriod>("week");
+  const [leavePersonFilter, setLeavePersonFilter] = useState("all");
+  const [leaveDateFilter, setLeaveDateFilter] = useState("");
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const defaultProfileId = currentProfileId ?? data.variableUsers[0]?.id ?? 0;
@@ -71,12 +87,22 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
     const form = new FormData(event.currentTarget);
     await postJson("/api/variable/daily-tasks", "POST", {
       profileUserId: Number(form.get("profileUserId") ?? defaultProfileId),
-      taskDate: String(form.get("taskDate") ?? data.tomorrowDate),
+      taskDate: String(form.get("taskDate") ?? data.todayDate),
       title: String(form.get("title") ?? ""),
       description: String(form.get("description") ?? ""),
     });
     event.currentTarget.reset();
-  }, [data.tomorrowDate, defaultProfileId, postJson]);
+  }, [data.todayDate, defaultProfileId, postJson]);
+
+  const handleTaskEdit = useCallback(async (event: FormEvent<HTMLFormElement>, id: number) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    await postJson(`/api/variable/daily-tasks/${id}`, "PATCH", {
+      title: String(form.get("title") ?? ""),
+      description: String(form.get("description") ?? ""),
+    });
+    setEditingTaskId(null);
+  }, [postJson]);
 
   const handleLeave = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -86,6 +112,8 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
       leaveType: String(form.get("leaveType") ?? "day"),
       dateFrom: String(form.get("dateFrom") ?? data.tomorrowDate),
       dateTo: String(form.get("dateTo") ?? data.tomorrowDate),
+      departureTime: emptyToNull(form.get("departureTime")),
+      arrivalTime: emptyToNull(form.get("arrivalTime")),
       comment: String(form.get("comment") ?? ""),
     });
     event.currentTarget.reset();
@@ -95,6 +123,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     await postJson("/api/variable/duty-schedule", "PUT", {
+      scheduleType: "daily",
       dutyDate: String(form.get("dutyDate") ?? data.tomorrowDate),
       slots: {
         day_orderly_1: Number(form.get("day_orderly_1")),
@@ -104,7 +133,22 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
     });
   }, [data.tomorrowDate, postJson]);
 
-  const reviewLeave = useCallback((id: number, status: "approved" | "rejected") => {
+  const handleWorkGroupDuty = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    await postJson("/api/variable/duty-schedule", "PUT", {
+      scheduleType: "work_group",
+      dateFrom: String(form.get("dateFrom") ?? data.todayDate),
+      dateTo: String(form.get("dateTo") ?? data.todayDate),
+      slots: {
+        day_rg: Number(form.get("day_rg")),
+        night_rg: Number(form.get("night_rg")),
+        info_rg: Number(form.get("info_rg")),
+      },
+    });
+  }, [data.todayDate, postJson]);
+
+  const reviewLeave = useCallback((id: number, status: "approved" | "rejected" | "revoked") => {
     void postJson(`/api/variable/leave-requests/${id}`, "PATCH", { status }).catch(() => undefined);
   }, [postJson]);
 
@@ -112,32 +156,55 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
     void postJson(`/api/variable/daily-tasks/${id}`, "PATCH", { status }).catch(() => undefined);
   }, [postJson]);
 
-  const groupedDuty = useMemo(() => {
-    const byDate = new Map<string, DutyAssignments>();
-    for (const entry of data.dutyAssignments) {
-      const bucket = byDate.get(entry.dutyDate) ?? [];
-      bucket.push(entry);
-      byDate.set(entry.dutyDate, bucket);
-    }
-    return [...byDate.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  }, [data.dutyAssignments]);
+  const normalDuties = useMemo(
+    () => data.dutyAssignments.filter((entry) => DUTY_SLOTS.some((slot) => slot.key === entry.slot)),
+    [data.dutyAssignments],
+  );
+
+  const workGroupDuties = useMemo(
+    () => data.dutyAssignments.filter((entry) => WORK_GROUP_SLOTS.some((slot) => slot.key === entry.slot)),
+    [data.dutyAssignments],
+  );
+
+  const plannedDutyRows = useMemo(() => {
+    const [dateFrom, dateTo] = getDutyPeriodRange(dutyPeriod, data.todayDate);
+    return normalDuties.filter((entry) => entry.dateTo >= dateFrom && entry.dateFrom <= dateTo).sort(sortDuty);
+  }, [data.todayDate, dutyPeriod, normalDuties]);
+
+  const pastDutyRows = useMemo(() => normalDuties.filter((entry) => entry.dateTo < data.todayDate).sort(sortDuty), [data.todayDate, normalDuties]);
+  const visibleDutyRows = dutyTab === "past" ? pastDutyRows : plannedDutyRows;
+  const groupedDuty = useMemo(() => groupDutyByDate(visibleDutyRows), [visibleDutyRows]);
+  const groupedWorkDuty = useMemo(() => groupDutyByDate(workGroupDuties.sort(sortDuty)), [workGroupDuties]);
+
+  const leaveRows = useMemo(() => {
+    const thirtyEnd = addDateDays(data.todayDate, 29);
+    return data.leaveRequests
+      .filter((request) => {
+        if (leavePersonFilter !== "all" && request.profileUserId !== Number(leavePersonFilter)) return false;
+        if (leaveDateFilter && !(request.dateFrom <= leaveDateFilter && request.dateTo >= leaveDateFilter)) return false;
+        if (leaveTab === "thirty") return request.dateTo >= data.todayDate && request.dateFrom <= thirtyEnd;
+        if (leaveTab === "future") return request.dateFrom > thirtyEnd;
+        return request.dateTo < data.todayDate;
+      })
+      .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom) || a.profile.name.localeCompare(b.profile.name));
+  }, [data.leaveRequests, data.todayDate, leaveDateFilter, leavePersonFilter, leaveTab]);
 
   const stats = useMemo(() => {
     const todayTasks = data.dailyTasks.filter((task) => task.taskDate === data.todayDate).length;
     const tomorrowTasks = data.dailyTasks.filter((task) => task.taskDate === data.tomorrowDate).length;
     const doneTasks = data.dailyTasks.filter((task) => task.status === "done").length;
     const pendingLeaves = data.leaveRequests.filter((request) => request.status === "pending").length;
-    const tomorrowDuty = data.dutyAssignments.filter((entry) => entry.dutyDate === data.tomorrowDate).length;
+    const plannedDuties = plannedDutyRows.length;
 
     return {
       todayTasks,
       tomorrowTasks,
       doneTasks,
       pendingLeaves,
-      tomorrowDuty,
+      plannedDuties,
       completion: data.dailyTasks.length ? Math.round((doneTasks / data.dailyTasks.length) * 100) : 0,
     };
-  }, [data.dailyTasks, data.dutyAssignments, data.leaveRequests, data.todayDate, data.tomorrowDate]);
+  }, [data.dailyTasks, data.leaveRequests, data.todayDate, data.tomorrowDate, plannedDutyRows.length]);
 
   const taskBuckets = useMemo(() => ({
     today: data.dailyTasks.filter((task) => task.taskDate === data.todayDate),
@@ -151,8 +218,8 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
   const tabs = useMemo<Array<{ key: Tab; label: string; hint: string; count: number; icon: (props: IconProps) => ReactNode }>>(() => [
     { key: "tasks", label: "Задачи", hint: "сегодня, завтра и дата", count: data.dailyTasks.length, icon: TaskIcon },
     { key: "leave", label: "Увольнение", hint: "заявки и решения", count: data.leaveRequests.length, icon: LeaveIcon },
-    { key: "duty", label: "Наряды", hint: "2 дневальных + дежурный", count: groupedDuty.length, icon: DutyIcon },
-  ], [data.dailyTasks.length, data.leaveRequests.length, groupedDuty.length]);
+    { key: "duty", label: "Наряды", hint: "суточные + рабочая группа", count: groupedDuty.length + groupedWorkDuty.length, icon: DutyIcon },
+  ], [data.dailyTasks.length, data.leaveRequests.length, groupedDuty.length, groupedWorkDuty.length]);
 
   return (
     <main className="flex-1 overflow-y-auto p-3 lg:p-5" style={{ opacity: isPending ? 0.72 : 1, transition: "opacity 180ms ease-out" }}>
@@ -183,10 +250,10 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
             </form>
 
             <div className="xl:col-span-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard label="Задач на завтра" value={stats.tomorrowTasks} accent="#38bdf8" icon={<TaskIcon className="h-4 w-4" />} />
+              <MetricCard label="Задач сегодня" value={stats.todayTasks} accent="#38bdf8" icon={<TaskIcon className="h-4 w-4" />} />
               <MetricCard label="Выполнено в периоде" value={`${stats.completion}%`} accent="#34d399" icon={<CheckIcon className="h-4 w-4" />} />
               <MetricCard label="Заявок ждут решения" value={stats.pendingLeaves} accent="#fbbf24" icon={<LeaveIcon className="h-4 w-4" />} />
-              <MetricCard label="Нарядов на завтра" value={`${stats.tomorrowDuty}/3`} accent="#a78bfa" icon={<DutyIcon className="h-4 w-4" />} />
+              <MetricCard label="Плановых нарядов" value={stats.plannedDuties} accent="#a78bfa" icon={<DutyIcon className="h-4 w-4" />} />
             </div>
           </div>
         </section>
@@ -235,7 +302,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
             <Panel title="Постановка задачи" subtitle="Можно поставить задачу на сегодня, завтра или на любую выбранную дату." icon={<TaskIcon className="h-4 w-4" />} accent="#38bdf8">
               <form onSubmit={handleDailyTask} className="space-y-3 p-4">
                 <UserSelect users={data.variableUsers} isAdmin={isAdmin} currentProfileId={defaultProfileId} />
-                <Field label="Дата задачи"><input name="taskDate" type="date" defaultValue={data.todayDate} className={inputClassName} style={inputStyle} /></Field>
+                <Field label="Дата задачи"><input name="taskDate" type="date" min={data.todayDate} defaultValue={data.todayDate} className={inputClassName} style={inputStyle} /></Field>
                 <Field label="Задача"><input name="title" required maxLength={200} placeholder="Что нужно сделать" className={inputClassName} style={inputStyle} /></Field>
                 <Field label="Комментарий"><textarea name="description" rows={4} placeholder="Детали, место, ограничение по времени" className={inputClassName} style={inputStyle} /></Field>
                 <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Добавить задачу</button>
@@ -251,7 +318,13 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                   tasks={taskBuckets.today}
                   emptyText="На сегодня задач нет."
                   isPending={isPending}
+                  isAdmin={isAdmin}
+                  currentProfileId={currentProfileId}
+                  todayDate={data.todayDate}
+                  editingTaskId={editingTaskId}
                   onToggle={toggleDailyTask}
+                  onEdit={setEditingTaskId}
+                  onSubmitEdit={handleTaskEdit}
                 />
                 <TaskDateSection
                   title="Завтра"
@@ -260,7 +333,13 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                   tasks={taskBuckets.tomorrow}
                   emptyText="На завтра задач нет."
                   isPending={isPending}
+                  isAdmin={isAdmin}
+                  currentProfileId={currentProfileId}
+                  todayDate={data.todayDate}
+                  editingTaskId={editingTaskId}
                   onToggle={toggleDailyTask}
+                  onEdit={setEditingTaskId}
+                  onSubmitEdit={handleTaskEdit}
                 />
                 <div className="rounded-2xl p-3" style={subPanelStyle}>
                   <form onSubmit={handleDateFilter} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
@@ -278,7 +357,13 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                     tasks={taskBuckets.selected}
                     emptyText="На выбранную дату задач нет."
                     isPending={isPending}
+                    isAdmin={isAdmin}
+                    currentProfileId={currentProfileId}
+                    todayDate={data.todayDate}
+                    editingTaskId={editingTaskId}
                     onToggle={toggleDailyTask}
+                    onEdit={setEditingTaskId}
+                    onSubmitEdit={handleTaskEdit}
                   />
                 )}
               </div>
@@ -302,15 +387,34 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <Field label="С даты"><input name="dateFrom" type="date" defaultValue={data.tomorrowDate} className={inputClassName} style={inputStyle} /></Field>
                   <Field label="По дату"><input name="dateTo" type="date" defaultValue={data.tomorrowDate} className={inputClassName} style={inputStyle} /></Field>
+                  <Field label="Время убытия"><input name="departureTime" type="time" className={inputClassName} style={inputStyle} /></Field>
+                  <Field label="Время прибытия"><input name="arrivalTime" type="time" className={inputClassName} style={inputStyle} /></Field>
                 </div>
                 <Field label="Комментарий"><textarea name="comment" rows={4} placeholder="Причина, маршрут, дополнительные условия" className={inputClassName} style={inputStyle} /></Field>
                 <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Отправить заявку</button>
               </form>
             </Panel>
 
-            <Panel title="Заявки" subtitle="Статусы видны сразу; администратор может принять решение." icon={<ShieldIcon className="h-4 w-4" />} accent="#a78bfa">
-              <div className="grid gap-2 p-3">
-                {data.leaveRequests.length === 0 ? <Empty text="Заявок за выбранный период нет." /> : data.leaveRequests.map((request) => (
+            <Panel title="Заявки" subtitle="30 дней, будущие и прошедшие увольнения с фильтрами по человеку и дате." icon={<ShieldIcon className="h-4 w-4" />} accent="#a78bfa">
+              <div className="grid gap-3 p-3">
+                <SegmentedTabs
+                  value={leaveTab}
+                  items={[{ key: "thirty", label: "30 дней" }, { key: "future", label: "Будущие" }, { key: "past", label: "Прошедшие" }]}
+                  onChange={(value) => setLeaveTab(value as LeaveTab)}
+                />
+                <div className="grid gap-2 md:grid-cols-2">
+                  {isAdmin && (
+                    <Field label="Фильтр по человеку">
+                      <Select
+                        value={leavePersonFilter}
+                        onChange={(event) => setLeavePersonFilter(event.currentTarget.value)}
+                        options={[{ value: "all", label: "Все" }, ...data.variableUsers.map((user) => ({ value: String(user.id), label: user.name }))]}
+                      />
+                    </Field>
+                  )}
+                  <Field label="Фильтр по дате"><input type="date" value={leaveDateFilter} onChange={(event) => setLeaveDateFilter(event.currentTarget.value)} className={inputClassName} style={inputStyle} /></Field>
+                </div>
+                {leaveRows.length === 0 ? <Empty text="Заявок под выбранные фильтры нет." /> : leaveRows.map((request) => (
                   <article key={request.id} className="rounded-2xl p-3" style={rowCardStyle}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -319,14 +423,20 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                           <span className="rounded-lg px-2 py-1 text-xs font-semibold" style={leaveBadgeStyle(request.status)}>{STATUS_LABELS[request.status]}</span>
                         </div>
                         <p className="mt-1 text-xs text-(--text-muted)">{request.profile.name} · {request.dateFrom} — {request.dateTo}</p>
+                        <p className="mt-1 text-xs text-(--text-secondary)">Убытие: {request.departureTime || "—"} · Прибытие: {request.arrivalTime || "—"}</p>
                         {request.comment && <p className="mt-2 text-xs leading-5 text-(--text-secondary)">{request.comment}</p>}
                       </div>
-                      {isAdmin && request.status === "pending" && (
-                        <div className="flex shrink-0 gap-2">
-                          <button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "approved")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={successButtonStyle}>Одобрить</button>
-                          <button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "rejected")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={dangerButtonStyle}>Отклонить</button>
-                        </div>
-                      )}
+                      <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                        {isAdmin && request.status === "pending" && (
+                          <>
+                            <button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "approved")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={successButtonStyle}>Одобрить</button>
+                            <button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "rejected")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={dangerButtonStyle}>Отклонить</button>
+                          </>
+                        )}
+                        {request.status === "approved" && (isAdmin || request.profileUserId === currentProfileId) && (
+                          <button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "revoked")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={warningButtonStyle}>Отозвать</button>
+                        )}
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -338,49 +448,44 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
         {tab === "duty" && (
           <section className={isAdmin ? "grid gap-4 xl:grid-cols-[minmax(340px,0.76fr)_minmax(0,1.24fr)]" : "grid gap-4"}>
             {isAdmin && (
-              <Panel title="Назначить наряд" subtitle="На дату нужно выбрать двух дневальных и одного дежурного." icon={<DutyIcon className="h-4 w-4" />} accent="#a78bfa">
-                <form onSubmit={handleDuty} className="space-y-3 p-4">
-                  <Field label="Дата наряда"><input name="dutyDate" type="date" defaultValue={data.tomorrowDate} className={inputClassName} style={inputStyle} /></Field>
-                  {DUTY_SLOTS.map((slot) => (
-                    <Field key={slot.key} label={slot.label}>
-                      <div className="relative">
-                        <select name={slot.key} required defaultValue="" className={`${inputClassName} pr-10`} style={selectStyle}>
-                          <option value="" disabled>Выберите человека</option>
-                          {data.variableUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
-                        </select>
-                        <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--text-muted)" />
-                      </div>
-                    </Field>
-                  ))}
-                  <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Сохранить наряд</button>
-                </form>
-              </Panel>
+              <div className="grid gap-4">
+                <Panel title="Назначить суточный наряд" subtitle="Период показывается с выбранного дня по следующий день; первый день — заступающий наряд." icon={<DutyIcon className="h-4 w-4" />} accent="#a78bfa">
+                  <form onSubmit={handleDuty} className="space-y-3 p-4">
+                    <Field label="Дата заступления"><input name="dutyDate" type="date" defaultValue={data.tomorrowDate} className={inputClassName} style={inputStyle} /></Field>
+                    {DUTY_SLOTS.map((slot) => (
+                      <Field key={slot.key} label={slot.label}><UserOptionSelect name={slot.key} users={data.variableUsers} /></Field>
+                    ))}
+                    <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Сохранить наряд</button>
+                  </form>
+                </Panel>
+
+                <Panel title="Рабочая группа" subtitle="Дневное РГ, Ночное РГ и Информационное РГ назначаются диапазоном дат." icon={<ShieldIcon className="h-4 w-4" />} accent="#38bdf8">
+                  <form onSubmit={handleWorkGroupDuty} className="space-y-3 p-4">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Field label="С какого числа"><input name="dateFrom" type="date" defaultValue={data.todayDate} className={inputClassName} style={inputStyle} /></Field>
+                      <Field label="По какое число"><input name="dateTo" type="date" defaultValue={addDateDays(data.todayDate, 30)} className={inputClassName} style={inputStyle} /></Field>
+                    </div>
+                    {WORK_GROUP_SLOTS.map((slot) => (
+                      <Field key={slot.key} label={slot.label}><UserOptionSelect name={slot.key} users={data.variableUsers} /></Field>
+                    ))}
+                    <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Сохранить РГ</button>
+                  </form>
+                </Panel>
+              </div>
             )}
 
-            <Panel title="Расписание нарядов" subtitle="2 дневальных и 1 дежурный на каждые сутки." icon={<CalendarIcon className="h-4 w-4" />} accent="#34d399">
-              <div className="grid gap-2 p-3">
-                {groupedDuty.length === 0 ? <Empty text="Нарядов за выбранный период нет." /> : groupedDuty.map(([date, entries]) => (
-                  <article key={date} className="rounded-2xl p-3" style={rowCardStyle}>
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-(--text-primary)">{date}</p>
-                      <span className="rounded-lg px-2 py-1 text-xs font-mono" style={entries.length === 3 ? successBadgeStyle : mutedBadgeStyle}>{entries.length}/3</span>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      {DUTY_SLOTS.map((slot) => {
-                        const entry = entries.find((item) => item.slot === slot.key);
-                        return (
-                          <div key={slot.key} className="rounded-xl px-3 py-2" style={dutySlotStyle}>
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                              <p className="text-[11px] font-semibold text-(--text-muted)">{slot.label}</p>
-                              <span className="rounded-md px-1.5 py-0.5 text-[10px] font-mono" style={mutedBadgeStyle}>{slot.short}</span>
-                            </div>
-                            <p className="text-sm font-semibold text-(--text-primary)">{entry?.user.name ?? "Не назначен"}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </article>
-                ))}
+            <Panel title="Расписание нарядов" subtitle="Планируемые периоды, прошедшие наряды и отдельная подвкладка рабочей группы." icon={<CalendarIcon className="h-4 w-4" />} accent="#34d399">
+              <div className="grid gap-3 p-3">
+                <SegmentedTabs value={dutyTab} items={[{ key: "planned", label: "Планируемые" }, { key: "past", label: "Прошедшие" }]} onChange={(value) => setDutyTab(value as DutyTab)} />
+                {dutyTab === "planned" && <SegmentedTabs value={dutyPeriod} items={[{ key: "week", label: "Неделя" }, { key: "month", label: "Месяц" }, { key: "nextMonth", label: "След. месяц" }, { key: "year", label: "Год" }]} onChange={(value) => setDutyPeriod(value as DutyPeriod)} />}
+                <DutyGroups groups={groupedDuty} slots={DUTY_SLOTS} todayDate={data.todayDate} emptyText="Нарядов за выбранный период нет." />
+                <div className="rounded-2xl p-3" style={subPanelStyle}>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div><p className="text-sm font-semibold text-(--text-primary)">Рабочая группа</p><p className="mt-1 text-xs text-(--text-muted)">Дневное, ночное и информационное РГ.</p></div>
+                    <span className="rounded-lg px-2 py-1 text-xs font-mono" style={mutedBadgeStyle}>{groupedWorkDuty.length}</span>
+                  </div>
+                  <DutyGroups groups={groupedWorkDuty} slots={WORK_GROUP_SLOTS} todayDate={data.todayDate} emptyText="Назначений рабочей группы нет." />
+                </div>
               </div>
             </Panel>
           </section>
@@ -392,15 +497,40 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
 
 function UserSelect({ users, isAdmin, currentProfileId }: { users: VariableSectionData["variableUsers"]; isAdmin: boolean; currentProfileId: number }) {
   if (!isAdmin) return <input type="hidden" name="profileUserId" value={currentProfileId} />;
+  return <Field label="Военнослужащий"><UserOptionSelect name="profileUserId" users={users} defaultValue={currentProfileId} /></Field>;
+}
+
+function UserOptionSelect({ name, users, defaultValue }: { name: string; users: VariableSectionData["variableUsers"]; defaultValue?: number }) {
   return (
-    <Field label="Военнослужащий">
-      <div className="relative">
-        <select name="profileUserId" defaultValue={currentProfileId} className={`${inputClassName} pr-10`} style={selectStyle}>
-          {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
-        </select>
-        <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--text-muted)" />
-      </div>
-    </Field>
+    <Select
+      name={name}
+      required
+      defaultValue={defaultValue ? String(defaultValue) : ""}
+      options={[{ value: "", label: "Выберите человека", disabled: true }, ...users.map((user) => ({ value: String(user.id), label: user.name }))]}
+    />
+  );
+}
+
+function Select({ options, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { options: Array<{ value: string; label: string; disabled?: boolean }> }) {
+  return (
+    <div className="relative">
+      <select {...props} className={`${inputClassName} pr-10 ${props.className ?? ""}`} style={{ ...selectStyle, ...props.style }}>
+        {options.map((option) => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)}
+      </select>
+      <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--text-muted)" />
+    </div>
+  );
+}
+
+function SegmentedTabs({ value, items, onChange }: { value: string; items: Array<{ key: string; label: string }>; onChange: (value: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2 rounded-2xl p-1" style={filterStyle}>
+      {items.map((item) => (
+        <button key={item.key} type="button" onClick={() => onChange(item.key)} className="cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors" style={value === item.key ? activeCountStyle : mutedButtonStyle}>
+          {item.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -468,7 +598,13 @@ function TaskDateSection({
   tasks,
   emptyText,
   isPending,
+  isAdmin,
+  currentProfileId,
+  todayDate,
+  editingTaskId,
   onToggle,
+  onEdit,
+  onSubmitEdit,
 }: {
   title: string;
   subtitle: string;
@@ -476,7 +612,13 @@ function TaskDateSection({
   tasks: VariableSectionData["dailyTasks"];
   emptyText: string;
   isPending: boolean;
+  isAdmin: boolean;
+  currentProfileId: number | null;
+  todayDate: string;
+  editingTaskId: number | null;
   onToggle: (id: number, status: "todo" | "done") => void;
+  onEdit: (id: number | null) => void;
+  onSubmitEdit: (event: FormEvent<HTMLFormElement>, id: number) => void;
 }) {
   return (
     <section className="rounded-2xl p-3" style={subPanelStyle}>
@@ -489,7 +631,16 @@ function TaskDateSection({
       </div>
       <div className="grid gap-2">
         {tasks.length === 0 ? <Empty text={emptyText} /> : tasks.map((task) => (
-          <TaskRow key={task.id} task={task} isPending={isPending} onToggle={onToggle} />
+          <TaskRow
+            key={task.id}
+            task={task}
+            isPending={isPending}
+            canEdit={task.taskDate >= todayDate && (isAdmin || task.profileUserId === currentProfileId)}
+            isEditing={editingTaskId === task.id}
+            onToggle={onToggle}
+            onEdit={onEdit}
+            onSubmitEdit={onSubmitEdit}
+          />
         ))}
       </div>
     </section>
@@ -499,12 +650,35 @@ function TaskDateSection({
 function TaskRow({
   task,
   isPending,
+  canEdit,
+  isEditing,
   onToggle,
+  onEdit,
+  onSubmitEdit,
 }: {
   task: VariableSectionData["dailyTasks"][number];
   isPending: boolean;
+  canEdit: boolean;
+  isEditing: boolean;
   onToggle: (id: number, status: "todo" | "done") => void;
+  onEdit: (id: number | null) => void;
+  onSubmitEdit: (event: FormEvent<HTMLFormElement>, id: number) => void;
 }) {
+  if (isEditing) {
+    return (
+      <article className="rounded-2xl p-3 transition-colors hover:bg-white/[0.025]" style={rowCardStyle}>
+        <form onSubmit={(event) => onSubmitEdit(event, task.id)} className="space-y-2">
+          <Field label="Задача"><input name="title" required maxLength={200} defaultValue={task.title} className={inputClassName} style={inputStyle} /></Field>
+          <Field label="Комментарий"><textarea name="description" rows={3} defaultValue={task.description ?? ""} className={inputClassName} style={inputStyle} /></Field>
+          <div className="flex gap-2">
+            <button disabled={isPending} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold disabled:cursor-wait disabled:opacity-60" style={successButtonStyle}>Сохранить</button>
+            <button type="button" onClick={() => onEdit(null)} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold" style={mutedButtonStyle}>Отмена</button>
+          </div>
+        </form>
+      </article>
+    );
+  }
+
   return (
     <article className="rounded-2xl p-3 transition-colors hover:bg-white/[0.025]" style={rowCardStyle}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -515,21 +689,108 @@ function TaskRow({
           </div>
           <p className="mt-1 text-xs text-(--text-muted)">{task.profile.name}</p>
           {task.description && <p className="mt-2 text-xs leading-5 text-(--text-secondary)">{task.description}</p>}
+          {!canEdit && <p className="mt-2 text-[11px] text-(--text-muted)">Прошедший день заблокирован для изменений.</p>}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <span className="rounded-lg px-2 py-1 text-xs font-mono" style={task.status === "done" ? successBadgeStyle : mutedBadgeStyle }>{task.status === "done" ? "готово" : "план"}</span>
-          <button type="button" disabled={isPending} onClick={() => onToggle(task.id, task.status === "done" ? "todo" : "done")} className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={task.status === "done" ? mutedButtonStyle : successButtonStyle}>
+          <button type="button" disabled={isPending || !canEdit} onClick={() => onToggle(task.id, task.status === "done" ? "todo" : "done")} className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50" style={task.status === "done" ? mutedButtonStyle : successButtonStyle}>
             {task.status === "done" ? "Вернуть" : "Готово"}
           </button>
+          {canEdit && <button type="button" disabled={isPending} onClick={() => onEdit(task.id)} className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Изменить</button>}
         </div>
       </div>
     </article>
   );
 }
 
+function DutyGroups({ groups, slots, todayDate, emptyText }: { groups: Array<[string, DutyAssignments]>; slots: Array<{ key: VariableDutySlot; label: string; short: string }>; todayDate: string; emptyText: string }) {
+  return (
+    <div className="grid gap-2">
+      {groups.length === 0 ? <Empty text={emptyText} /> : groups.map(([date, entries]) => <DutyGroup key={`${date}-${slots[0]?.key}`} date={date} entries={entries} slots={slots} todayDate={todayDate} />)}
+    </div>
+  );
+}
+
+function DutyGroup({ date, entries, slots, todayDate }: { date: string; entries: DutyAssignments; slots: Array<{ key: VariableDutySlot; label: string; short: string }>; todayDate: string }) {
+  const first = entries[0];
+  const isStarting = first?.dateFrom === todayDate;
+  return (
+    <article className="rounded-2xl p-3" style={rowCardStyle}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-(--text-primary)">с {first?.dateFrom ?? date} по {first?.dateTo ?? date}</p>
+          <p className="mt-1 text-xs text-(--text-muted)">{isStarting ? "Заступающий наряд" : "Период наряда"}</p>
+        </div>
+        <span className="rounded-lg px-2 py-1 text-xs font-mono" style={entries.length === slots.length ? successBadgeStyle : mutedBadgeStyle}>{entries.length}/{slots.length}</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {slots.map((slot) => {
+          const entry = entries.find((item) => item.slot === slot.key);
+          return (
+            <div key={slot.key} className="rounded-xl px-3 py-2" style={dutySlotStyle}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold text-(--text-muted)">{slot.label}</p>
+                <span className="rounded-md px-1.5 py-0.5 text-[10px] font-mono" style={mutedBadgeStyle}>{slot.short}</span>
+              </div>
+              <p className="text-sm font-semibold text-(--text-primary)">{entry?.user.name ?? "Не назначен"}</p>
+            </div>
+          );
+        })}
+      </div>
+    </article>
+  );
+}
+
+function groupDutyByDate(rows: DutyAssignments): Array<[string, DutyAssignments]> {
+  const byDate = new Map<string, DutyAssignments>();
+  for (const entry of rows) {
+    const bucket = byDate.get(entry.dateFrom) ?? [];
+    bucket.push(entry);
+    byDate.set(entry.dateFrom, bucket);
+  }
+  return [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+function sortDuty(a: DutyAssignments[number], b: DutyAssignments[number]): number {
+  return a.dateFrom.localeCompare(b.dateFrom) || a.slot.localeCompare(b.slot);
+}
+
+function getDutyPeriodRange(period: DutyPeriod, todayDate: string): [string, string] {
+  if (period === "week") return [todayDate, addDateDays(todayDate, 6)];
+  if (period === "year") return [todayDate, addDateDays(todayDate, 365)];
+  const today = parseDateKey(todayDate);
+  if (period === "nextMonth") {
+    const start = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const end = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+    return [toDateKey(start), toDateKey(end)];
+  }
+  return [todayDate, toDateKey(new Date(today.getFullYear(), today.getMonth() + 1, 0))];
+}
+
+function addDateDays(dateKey: string, days: number): string {
+  const date = parseDateKey(dateKey);
+  date.setDate(date.getDate() + days);
+  return toDateKey(date);
+}
+
+function parseDateKey(dateKey: string): Date {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function toDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function emptyToNull(value: FormDataEntryValue | null): string | null {
+  const text = String(value ?? "").trim();
+  return text || null;
+}
+
 function leaveBadgeStyle(status: VariableLeaveStatus): CSSProperties {
   if (status === "approved") return successBadgeStyle;
   if (status === "rejected") return dangerBadgeStyle;
+  if (status === "revoked") return mutedBadgeStyle;
   return warningBadgeStyle;
 }
 
@@ -583,6 +844,7 @@ const primaryButtonStyle: CSSProperties = { background: "rgba(34,197,94,0.16)", 
 const mutedButtonStyle: CSSProperties = { background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)" };
 const successButtonStyle: CSSProperties = { background: "rgba(52,211,153,0.13)", border: "1px solid rgba(52,211,153,0.30)", color: "#34d399" };
 const dangerButtonStyle: CSSProperties = { background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.28)", color: "#f87171" };
+const warningButtonStyle: CSSProperties = { background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)", color: "#fbbf24" };
 const tabCardStyle: CSSProperties = { background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", boxShadow: "var(--shadow-card)" };
 const activeTabCardStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(34,197,94,0.15), rgba(56,189,248,0.08))", border: "1px solid rgba(52,211,153,0.34)", boxShadow: "0 18px 42px rgba(34,197,94,0.08)" };
 const iconBoxStyle: CSSProperties = { background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)" };

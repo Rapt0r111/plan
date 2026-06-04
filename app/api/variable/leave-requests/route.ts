@@ -12,6 +12,8 @@ const LeaveRequestSchema = z.object({
   leaveType: z.enum(["day", "daily", "vacation"]),
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  departureTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  arrivalTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
   comment: z.string().max(2000).nullable().optional(),
 }).refine((data) => data.dateFrom <= data.dateTo, { message: "dateFrom must be before dateTo", path: ["dateTo"] });
 

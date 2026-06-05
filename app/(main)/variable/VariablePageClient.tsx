@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition, type CSSProperties, type FormEvent, type ReactNode, type SelectHTMLAttributes } from "react";
+import { memo, useCallback, useMemo, useState, useTransition, type CSSProperties, type FormEvent, type ReactNode, type SelectHTMLAttributes } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { VariableSectionData } from "@/entities/variable/variableRepository";
 import type { VariableDutySlot, VariableLeaveStatus, VariableLeaveType } from "@/shared/db/schema";
@@ -156,6 +156,18 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
     void postJson(`/api/variable/daily-tasks/${id}`, "PATCH", { status }).catch(() => undefined);
   }, [postJson]);
 
+  const deleteDailyTask = useCallback((id: number) => {
+    void postJson(`/api/variable/daily-tasks/${id}`, "DELETE", null).catch(() => undefined);
+  }, [postJson]);
+
+  const handleMonthChange = useCallback((month: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("month", month);
+    router.push(`/variable?${params.toString()}`);
+  }, [router, searchParams]);
+
+  const monthDays = useMemo(() => getMonthCalendarDays(data.selectedMonth), [data.selectedMonth]);
+
   const normalDuties = useMemo(
     () => data.dutyAssignments.filter((entry) => DUTY_SLOTS.some((slot) => slot.key === entry.slot)),
     [data.dutyAssignments],
@@ -175,6 +187,30 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
   const visibleDutyRows = dutyTab === "past" ? pastDutyRows : plannedDutyRows;
   const groupedDuty = useMemo(() => groupDutyByDate(visibleDutyRows), [visibleDutyRows]);
   const groupedWorkDuty = useMemo(() => groupDutyByDate(workGroupDuties.sort(sortDuty)), [workGroupDuties]);
+
+  const leaveCalendarRows = useMemo(() => {
+    const [monthFrom, monthTo] = getMonthRange(data.selectedMonth);
+    return data.leaveRequests
+      .filter((request) => request.dateFrom <= monthTo && request.dateTo >= monthFrom)
+      .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom) || a.profile.name.localeCompare(b.profile.name));
+  }, [data.leaveRequests, data.selectedMonth]);
+
+  const dutyCalendarRows = useMemo(() => {
+    const [monthFrom, monthTo] = getMonthRange(data.selectedMonth);
+    return data.dutyAssignments
+      .filter((entry) => entry.dateFrom <= monthTo && entry.dateTo >= monthFrom)
+      .sort(sortDuty);
+  }, [data.dutyAssignments, data.selectedMonth]);
+
+  const leaveCalendarByDay = useMemo(
+    () => buildLeaveCalendarByDay(monthDays, leaveCalendarRows),
+    [leaveCalendarRows, monthDays],
+  );
+
+  const dutyCalendarByDay = useMemo(
+    () => buildDutyCalendarByDay(monthDays, dutyCalendarRows),
+    [dutyCalendarRows, monthDays],
+  );
 
   const leaveRows = useMemo(() => {
     const thirtyEnd = addDateDays(data.todayDate, 29);
@@ -222,11 +258,11 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
   ], [data.dailyTasks.length, data.leaveRequests.length, groupedDuty.length, groupedWorkDuty.length]);
 
   return (
-    <main className="flex-1 overflow-y-auto p-3 lg:p-5" style={{ opacity: isPending ? 0.72 : 1, transition: "opacity 180ms ease-out" }}>
+    <main className="flex-1 overflow-y-auto p-3 lg:p-5" style={pageShellStyle} aria-busy={isPending}>
       <div className="mx-auto max-w-[1600px] space-y-4">
         <section className="relative overflow-hidden rounded-[28px] p-4 lg:p-5" style={heroStyle}>
-          <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-emerald-400/10 blur-3xl" />
-          <div className="pointer-events-none absolute -left-24 bottom-0 h-64 w-64 rounded-full bg-sky-400/10 blur-3xl" />
+          <div className="pointer-events-none absolute -right-24 -top-28 hidden h-72 w-72 rounded-full bg-emerald-400/10 blur-3xl lg:block" />
+          <div className="pointer-events-none absolute -left-24 bottom-0 hidden h-64 w-64 rounded-full bg-sky-400/10 blur-3xl lg:block" />
           <div className="relative grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
             <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -323,6 +359,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                   todayDate={data.todayDate}
                   editingTaskId={editingTaskId}
                   onToggle={toggleDailyTask}
+                  onDelete={deleteDailyTask}
                   onEdit={setEditingTaskId}
                   onSubmitEdit={handleTaskEdit}
                 />
@@ -338,6 +375,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                   todayDate={data.todayDate}
                   editingTaskId={editingTaskId}
                   onToggle={toggleDailyTask}
+                  onDelete={deleteDailyTask}
                   onEdit={setEditingTaskId}
                   onSubmitEdit={handleTaskEdit}
                 />
@@ -362,10 +400,28 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                     todayDate={data.todayDate}
                     editingTaskId={editingTaskId}
                     onToggle={toggleDailyTask}
+                    onDelete={deleteDailyTask}
                     onEdit={setEditingTaskId}
                     onSubmitEdit={handleTaskEdit}
                   />
                 )}
+              </div>
+            </Panel>
+
+            <Panel title="Корзина задач" subtitle="Удалённые задачи видны всем в разделе переменного состава." icon={<TrashIcon className="h-4 w-4" />} accent="#fb7185">
+              <div className="grid gap-2 p-3">
+                {data.deletedDailyTasks.length === 0 ? <Empty text="Корзина задач пуста." /> : data.deletedDailyTasks.map((task) => (
+                  <article key={task.id} className="rounded-2xl p-3" style={rowCardStyle}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-(--text-primary)">{task.title}</p>
+                        <p className="mt-1 text-xs text-(--text-muted)">{task.profile.name} - {task.taskDate}</p>
+                        {task.description && <p className="mt-2 text-xs leading-5 text-(--text-secondary)">{task.description}</p>}
+                      </div>
+                      <span className="rounded-lg px-2 py-1 text-xs font-mono" style={mutedBadgeStyle}>{formatDateTime(task.deletedAt)}</span>
+                    </div>
+                  </article>
+                ))}
               </div>
             </Panel>
           </section>
@@ -397,6 +453,8 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
 
             <Panel title="Заявки" subtitle="30 дней, будущие и прошедшие увольнения с фильтрами по человеку и дате." icon={<ShieldIcon className="h-4 w-4" />} accent="#a78bfa">
               <div className="grid gap-3 p-3">
+                <MonthNavigator month={data.selectedMonth} onChange={handleMonthChange} />
+                <LeaveMonthCalendar days={monthDays} requestsByDay={leaveCalendarByDay} totalCount={leaveCalendarRows.length} todayDate={data.todayDate} />
                 <SegmentedTabs
                   value={leaveTab}
                   items={[{ key: "thirty", label: "30 дней" }, { key: "future", label: "Будущие" }, { key: "past", label: "Прошедшие" }]}
@@ -476,6 +534,8 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
 
             <Panel title="Расписание нарядов" subtitle="Планируемые периоды, прошедшие наряды и отдельная подвкладка рабочей группы." icon={<CalendarIcon className="h-4 w-4" />} accent="#34d399">
               <div className="grid gap-3 p-3">
+                <MonthNavigator month={data.selectedMonth} onChange={handleMonthChange} />
+                <DutyMonthCalendar days={monthDays} entriesByDay={dutyCalendarByDay} totalCount={dutyCalendarRows.length} todayDate={data.todayDate} />
                 <SegmentedTabs value={dutyTab} items={[{ key: "planned", label: "Планируемые" }, { key: "past", label: "Прошедшие" }]} onChange={(value) => setDutyTab(value as DutyTab)} />
                 {dutyTab === "planned" && <SegmentedTabs value={dutyPeriod} items={[{ key: "week", label: "Неделя" }, { key: "month", label: "Месяц" }, { key: "nextMonth", label: "След. месяц" }, { key: "year", label: "Год" }]} onChange={(value) => setDutyPeriod(value as DutyPeriod)} />}
                 <DutyGroups groups={groupedDuty} slots={DUTY_SLOTS} todayDate={data.todayDate} emptyText="Нарядов за выбранный период нет." />
@@ -603,6 +663,7 @@ function TaskDateSection({
   todayDate,
   editingTaskId,
   onToggle,
+  onDelete,
   onEdit,
   onSubmitEdit,
 }: {
@@ -617,6 +678,7 @@ function TaskDateSection({
   todayDate: string;
   editingTaskId: number | null;
   onToggle: (id: number, status: "todo" | "done") => void;
+  onDelete: (id: number) => void;
   onEdit: (id: number | null) => void;
   onSubmitEdit: (event: FormEvent<HTMLFormElement>, id: number) => void;
 }) {
@@ -638,6 +700,7 @@ function TaskDateSection({
             canEdit={task.taskDate >= todayDate && (isAdmin || task.profileUserId === currentProfileId)}
             isEditing={editingTaskId === task.id}
             onToggle={onToggle}
+            onDelete={onDelete}
             onEdit={onEdit}
             onSubmitEdit={onSubmitEdit}
           />
@@ -653,6 +716,7 @@ function TaskRow({
   canEdit,
   isEditing,
   onToggle,
+  onDelete,
   onEdit,
   onSubmitEdit,
 }: {
@@ -661,6 +725,7 @@ function TaskRow({
   canEdit: boolean;
   isEditing: boolean;
   onToggle: (id: number, status: "todo" | "done") => void;
+  onDelete: (id: number) => void;
   onEdit: (id: number | null) => void;
   onSubmitEdit: (event: FormEvent<HTMLFormElement>, id: number) => void;
 }) {
@@ -697,10 +762,133 @@ function TaskRow({
             {task.status === "done" ? "Вернуть" : "Готово"}
           </button>
           {canEdit && <button type="button" disabled={isPending} onClick={() => onEdit(task.id)} className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Изменить</button>}
+          {canEdit && <button type="button" disabled={isPending} onClick={() => onDelete(task.id)} className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={dangerButtonStyle}>В корзину</button>}
         </div>
       </div>
     </article>
   );
+}
+
+
+
+function MonthNavigator({ month, onChange }: { month: string; onChange: (month: string) => void }) {
+  const prev = shiftMonth(month, -1);
+  const next = shiftMonth(month, 1);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl p-2" style={calendarToolbarStyle}>
+      <button type="button" onClick={() => onChange(prev)} className="cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={mutedButtonStyle}>????. ?????</button>
+      <div className="flex min-w-0 items-center gap-2 rounded-xl px-3 py-1.5" style={monthTitleStyle}>
+        <CalendarIcon className="h-4 w-4 shrink-0" />
+        <span className="truncate text-sm font-semibold capitalize text-(--text-primary)">{formatMonthLabel(month)}</span>
+      </div>
+      <button type="button" onClick={() => onChange(next)} className="cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={mutedButtonStyle}>????. ?????</button>
+    </div>
+  );
+}
+
+const LeaveMonthCalendar = memo(function LeaveMonthCalendar({ days, requestsByDay, totalCount, todayDate }: { days: string[]; requestsByDay: LeaveCalendarByDay; totalCount: number; todayDate: string }) {
+  return (
+    <CalendarFrame title="????????? ??????????" subtitle="??? ???????????, ????? ????, ????? ???????? ? ?? ????? ???????." totalCount={totalCount} tone="#fbbf24">
+      <MonthGrid days={days} todayDate={todayDate} renderDay={(day) => <LeaveDayEvents rows={requestsByDay.get(day) ?? []} day={day} />} />
+    </CalendarFrame>
+  );
+});
+
+const DutyMonthCalendar = memo(function DutyMonthCalendar({ days, entriesByDay, totalCount, todayDate }: { days: string[]; entriesByDay: DutyCalendarByDay; totalCount: number; todayDate: string }) {
+  return (
+    <CalendarFrame title="????????? ???????" subtitle="???????? ????? ? ??????? ?????? ????????? ?? ???? ??????." totalCount={totalCount} tone="#34d399">
+      <MonthGrid days={days} todayDate={todayDate} renderDay={(day) => <DutyDayEvents rows={entriesByDay.get(day) ?? []} day={day} />} />
+    </CalendarFrame>
+  );
+});
+
+function CalendarFrame({ title, subtitle, totalCount, tone, children }: { title: string; subtitle: string; totalCount: number; tone: string; children: ReactNode }) {
+  return (
+    <section className="overflow-hidden rounded-2xl" style={calendarFrameStyle}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5" style={{ borderBottom: "1px solid var(--glass-border)", background: `linear-gradient(90deg, ${tone}14, transparent 70%)` }}>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-(--text-primary)">{title}</p>
+          <p className="mt-0.5 text-xs text-(--text-muted)">{subtitle}</p>
+        </div>
+        <span className="rounded-lg px-2 py-1 text-xs font-mono" style={{ ...mutedBadgeStyle, color: tone, borderColor: `${tone}55` }}>{totalCount}</span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const MonthGrid = memo(function MonthGrid({ days, todayDate, renderDay }: { days: string[]; todayDate: string; renderDay: (day: string) => ReactNode }) {
+  const activeMonth = days[10]?.slice(0, 7) ?? todayDate.slice(0, 7);
+  return (
+    <div className="overflow-x-auto p-2 [scrollbar-width:thin]" style={calendarScrollerStyle}>
+      <div className="grid min-w-[920px] grid-cols-7 gap-1.5 lg:min-w-0">
+        {["??", "??", "??", "??", "??", "??", "??"].map((day) => (
+          <div key={day} className="sticky top-0 z-10 rounded-lg px-2 py-1.5 text-center text-[11px] font-semibold backdrop-blur-sm" style={calendarWeekdayStyle}>{day}</div>
+        ))}
+        {days.map((day) => {
+          const inMonth = day.slice(0, 7) === activeMonth;
+          return (
+            <div key={day} className="min-h-32 rounded-xl p-2 transition-colors duration-200" style={day === todayDate ? calendarTodayStyle : inMonth ? calendarDayStyle : calendarMutedDayStyle}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold" style={{ color: inMonth ? "var(--text-primary)" : "var(--text-muted)" }}>{Number(day.slice(8, 10))}</span>
+                {day === todayDate && <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={infoPillStyle}>???????</span>}
+              </div>
+              <div className="grid gap-1.5">{renderDay(day)}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+function LeaveDayEvents({ rows, day }: { rows: VariableSectionData["leaveRequests"]; day: string }) {
+  if (rows.length === 0) return <p className="rounded-lg px-2 py-1.5 text-[11px] text-(--text-muted)" style={calendarEmptyDayStyle}>??? ??????????</p>;
+  const visible = rows.slice(0, 3);
+  return (
+    <>
+      {visible.map((request) => (
+        <div key={`${request.id}-${day}`} className="rounded-lg p-2" style={{ ...calendarItemStyle, borderLeft: `3px solid ${leaveTone(request.status)}` }}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-[11px] font-semibold text-(--text-primary)">{request.profile.name}</p>
+            <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={leaveBadgeStyle(request.status)}>{STATUS_LABELS[request.status]}</span>
+          </div>
+          <p className="mt-1 truncate text-[10px] text-(--text-secondary)">{LEAVE_LABELS[request.leaveType]}</p>
+          <p className="mt-0.5 text-[10px] text-(--text-muted)">{request.departureTime || "-"} / {request.arrivalTime || "-"}</p>
+          {request.comment && <p className="mt-1 max-h-8 overflow-hidden text-[10px] leading-4 text-(--text-secondary)">{request.comment}</p>}
+        </div>
+      ))}
+      {rows.length > visible.length && <MoreEventsBadge count={rows.length - visible.length} />}
+    </>
+  );
+}
+
+function DutyDayEvents({ rows, day }: { rows: DutyAssignments; day: string }) {
+  if (rows.length === 0) return <p className="rounded-lg px-2 py-1.5 text-[11px] text-(--text-muted)" style={calendarEmptyDayStyle}>??? ???????</p>;
+  const visible = rows.slice(0, 4);
+  return (
+    <>
+      {visible.map((entry) => {
+        const slot = [...DUTY_SLOTS, ...WORK_GROUP_SLOTS].find((item) => item.key === entry.slot);
+        const isWorkGroup = WORK_GROUP_SLOTS.some((item) => item.key === entry.slot);
+        return (
+          <div key={`${entry.id}-${day}`} className="rounded-lg p-2" style={{ ...calendarItemStyle, borderLeft: `3px solid ${isWorkGroup ? "#38bdf8" : "#34d399"}` }}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-[11px] font-semibold text-(--text-primary)">{entry.user.name}</p>
+              <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={isWorkGroup ? infoPillStyle : mutedBadgeStyle}>{slot?.short ?? entry.slot}</span>
+            </div>
+            <p className="mt-1 truncate text-[10px] text-(--text-secondary)">{slot?.label ?? entry.slot}</p>
+            <p className="mt-0.5 text-[10px] text-(--text-muted)">{entry.dateFrom} - {entry.dateTo}</p>
+          </div>
+        );
+      })}
+      {rows.length > visible.length && <MoreEventsBadge count={rows.length - visible.length} />}
+    </>
+  );
+}
+
+function MoreEventsBadge({ count }: { count: number }) {
+  return <span className="rounded-lg px-2 py-1 text-[10px] font-semibold" style={calendarMoreStyle}>+{count} ???</span>;
 }
 
 function DutyGroups({ groups, slots, todayDate, emptyText }: { groups: Array<[string, DutyAssignments]>; slots: Array<{ key: VariableDutySlot; label: string; short: string }>; todayDate: string; emptyText: string }) {
@@ -755,6 +943,37 @@ function sortDuty(a: DutyAssignments[number], b: DutyAssignments[number]): numbe
   return a.dateFrom.localeCompare(b.dateFrom) || a.slot.localeCompare(b.slot);
 }
 
+
+type LeaveCalendarByDay = Map<string, VariableSectionData["leaveRequests"]>;
+type DutyCalendarByDay = Map<string, DutyAssignments>;
+
+function buildLeaveCalendarByDay(days: string[], rows: VariableSectionData["leaveRequests"]): LeaveCalendarByDay {
+  const byDay: LeaveCalendarByDay = new Map(days.map((day) => [day, []]));
+  for (const row of rows) {
+    for (const day of days) {
+      if (row.dateFrom <= day && row.dateTo >= day) byDay.get(day)?.push(row);
+    }
+  }
+  return byDay;
+}
+
+function buildDutyCalendarByDay(days: string[], rows: DutyAssignments): DutyCalendarByDay {
+  const byDay: DutyCalendarByDay = new Map(days.map((day) => [day, []]));
+  for (const row of rows) {
+    for (const day of days) {
+      if (row.dateFrom <= day && row.dateTo >= day) byDay.get(day)?.push(row);
+    }
+  }
+  return byDay;
+}
+
+function leaveTone(status: VariableLeaveStatus): string {
+  if (status === "approved") return "#34d399";
+  if (status === "rejected") return "#f87171";
+  if (status === "revoked") return "#94a3b8";
+  return "#fbbf24";
+}
+
 function getDutyPeriodRange(period: DutyPeriod, todayDate: string): [string, string] {
   if (period === "week") return [todayDate, addDateDays(todayDate, 6)];
   if (period === "year") return [todayDate, addDateDays(todayDate, 365)];
@@ -765,6 +984,46 @@ function getDutyPeriodRange(period: DutyPeriod, todayDate: string): [string, str
     return [toDateKey(start), toDateKey(end)];
   }
   return [todayDate, toDateKey(new Date(today.getFullYear(), today.getMonth() + 1, 0))];
+}
+
+
+function getMonthRange(month: string): [string, string] {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const start = new Date(year, monthIndex - 1, 1);
+  const end = new Date(year, monthIndex, 0);
+  return [toDateKey(start), toDateKey(end)];
+}
+
+function getMonthCalendarDays(month: string): string[] {
+  const [start, end] = getMonthRange(month);
+  const first = parseDateKey(start);
+  const last = parseDateKey(end);
+  const gridStart = new Date(first);
+  const mondayOffset = (gridStart.getDay() + 6) % 7;
+  gridStart.setDate(gridStart.getDate() - mondayOffset);
+  const gridEnd = new Date(last);
+  const sundayOffset = (7 - ((gridEnd.getDay() + 6) % 7) - 1) % 7;
+  gridEnd.setDate(gridEnd.getDate() + sundayOffset);
+  const days: string[] = [];
+  for (const day = new Date(gridStart); day <= gridEnd; day.setDate(day.getDate() + 1)) {
+    days.push(toDateKey(day));
+  }
+  return days;
+}
+
+function shiftMonth(month: string, offset: number): string {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const date = new Date(year, monthIndex - 1 + offset, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthLabel(month: string): string {
+  return parseDateKey(`${month}-01`).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+}
+
+function formatDateTime(value: string | null): string {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
 }
 
 function addDateDays(dateKey: string, days: number): string {
@@ -822,18 +1081,24 @@ function AlertIcon({ className }: IconProps) {
   return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3 18 17H2L10 3Z" /><path d="M10 8v4" /><path d="M10 15h.01" /></svg>;
 }
 
+
+function TrashIcon({ className }: IconProps) {
+  return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5.5h14" /><path d="M8 5.5V3.5h4v2" /><path d="M6 8v8" /><path d="M10 8v8" /><path d="M14 8v8" /><path d="M5 5.5 6 17h8l1-11.5" /></svg>;
+}
+
 function ChevronDownIcon({ className }: IconProps) {
   return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m5.5 7.5 4.5 5 4.5-5" /></svg>;
 }
 
 const inputClassName = "w-full rounded-xl border px-3 py-2 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 [color-scheme:dark]";
 
+const pageShellStyle: CSSProperties = { scrollBehavior: "auto" };
 const heroStyle: CSSProperties = {
-  background: "radial-gradient(circle at 8% 10%, rgba(56,189,248,0.16), transparent 30%), radial-gradient(circle at 92% 8%, rgba(34,197,94,0.14), transparent 28%), linear-gradient(135deg, rgba(15,23,42,0.92), rgba(2,6,23,0.34))",
+  background: "linear-gradient(135deg, rgba(15,23,42,0.94), rgba(2,6,23,0.58))",
   border: "1px solid var(--glass-border)",
-  boxShadow: "var(--shadow-card)",
+  boxShadow: "0 14px 34px rgba(2,6,23,0.24)",
 };
-const panelStyle: CSSProperties = { background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", boxShadow: "var(--shadow-card)" };
+const panelStyle: CSSProperties = { background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", boxShadow: "0 12px 30px rgba(2,6,23,0.18)", contentVisibility: "auto", containIntrinsicSize: "520px" };
 const subPanelStyle: CSSProperties = { background: "rgba(15,23,42,0.32)", border: "1px solid var(--glass-border)" };
 const rowCardStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.008))", border: "1px solid var(--glass-border)", contentVisibility: "auto", containIntrinsicSize: "180px" };
 const filterStyle: CSSProperties = { background: "rgba(15,23,42,0.48)", border: "1px solid var(--glass-border)" };
@@ -845,8 +1110,8 @@ const mutedButtonStyle: CSSProperties = { background: "var(--glass-01)", border:
 const successButtonStyle: CSSProperties = { background: "rgba(52,211,153,0.13)", border: "1px solid rgba(52,211,153,0.30)", color: "#34d399" };
 const dangerButtonStyle: CSSProperties = { background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.28)", color: "#f87171" };
 const warningButtonStyle: CSSProperties = { background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)", color: "#fbbf24" };
-const tabCardStyle: CSSProperties = { background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", boxShadow: "var(--shadow-card)" };
-const activeTabCardStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(34,197,94,0.15), rgba(56,189,248,0.08))", border: "1px solid rgba(52,211,153,0.34)", boxShadow: "0 18px 42px rgba(34,197,94,0.08)" };
+const tabCardStyle: CSSProperties = { background: "rgba(15,23,42,0.58)", border: "1px solid var(--glass-border)", boxShadow: "0 10px 24px rgba(2,6,23,0.16)" };
+const activeTabCardStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(34,197,94,0.18), rgba(56,189,248,0.09))", border: "1px solid rgba(52,211,153,0.38)", boxShadow: "0 12px 30px rgba(34,197,94,0.10)" };
 const iconBoxStyle: CSSProperties = { background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)" };
 const activeIconBoxStyle: CSSProperties = { background: "rgba(34,197,94,0.14)", border: "1px solid rgba(52,211,153,0.34)", color: "#34d399" };
 const activeCountStyle: CSSProperties = { background: "rgba(34,197,94,0.14)", border: "1px solid rgba(52,211,153,0.34)", color: "#34d399" };
@@ -857,4 +1122,15 @@ const warningBadgeStyle: CSSProperties = { background: "rgba(245,158,11,0.12)", 
 const infoPillStyle: CSSProperties = { background: "rgba(56,189,248,0.11)", border: "1px solid rgba(56,189,248,0.26)", color: "#38bdf8" };
 const dutySlotStyle: CSSProperties = { background: "var(--glass-01)", border: "1px solid var(--glass-border)" };
 const emptyStyle: CSSProperties = { background: "rgba(148,163,184,0.07)", border: "1px dashed rgba(148,163,184,0.24)" };
+const calendarToolbarStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(15,23,42,0.78), rgba(2,6,23,0.44))", border: "1px solid var(--glass-border)" };
+const monthTitleStyle: CSSProperties = { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(52,211,153,0.30)", color: "#34d399" };
+const calendarFrameStyle: CSSProperties = { background: "rgba(2,6,23,0.34)", border: "1px solid var(--glass-border)", contentVisibility: "auto", containIntrinsicSize: "720px" };
+const calendarScrollerStyle: CSSProperties = { overscrollBehaviorX: "contain" };
+const calendarWeekdayStyle: CSSProperties = { background: "rgba(15,23,42,0.86)", border: "1px solid rgba(148,163,184,0.14)", color: "#94a3b8" };
+const calendarDayStyle: CSSProperties = { background: "rgba(15,23,42,0.44)", border: "1px solid rgba(148,163,184,0.16)", contain: "layout paint" };
+const calendarMutedDayStyle: CSSProperties = { background: "rgba(15,23,42,0.20)", border: "1px solid rgba(148,163,184,0.10)", opacity: 0.74, contain: "layout paint" };
+const calendarTodayStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(56,189,248,0.14), rgba(34,197,94,0.08))", border: "1px solid rgba(56,189,248,0.40)", contain: "layout paint" };
+const calendarItemStyle: CSSProperties = { background: "rgba(255,255,255,0.045)", border: "1px solid rgba(255,255,255,0.08)" };
+const calendarEmptyDayStyle: CSSProperties = { background: "rgba(148,163,184,0.055)", border: "1px dashed rgba(148,163,184,0.14)" };
+const calendarMoreStyle: CSSProperties = { background: "rgba(56,189,248,0.10)", border: "1px solid rgba(56,189,248,0.22)", color: "#38bdf8" };
 const errorBannerStyle: CSSProperties = { background: "rgba(239,68,68,0.11)", border: "1px solid rgba(239,68,68,0.28)", color: "#fca5a5" };

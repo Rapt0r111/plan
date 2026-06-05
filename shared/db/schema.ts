@@ -451,6 +451,8 @@ export const variableDailyTasks = sqliteTable(
     title: text("title").notNull(),
     description: text("description"),
     status: text("status").$type<VariableDailyTaskStatus>().notNull().default("todo"),
+    deletedAt: text("deleted_at"),
+    deletedByUserId: text("deleted_by_user_id").references(() => authUsers.id, { onDelete: "set null" }),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
@@ -458,6 +460,7 @@ export const variableDailyTasks = sqliteTable(
     profileDateIdx: index("variable_daily_tasks_profile_date_idx").on(t.profileUserId, t.taskDate),
     dateIdx: index("variable_daily_tasks_date_idx").on(t.taskDate),
     statusIdx: index("variable_daily_tasks_status_idx").on(t.status),
+    deletedAtIdx: index("variable_daily_tasks_deleted_at_idx").on(t.deletedAt),
   })
 );
 

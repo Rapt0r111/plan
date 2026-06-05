@@ -1,4 +1,4 @@
-﻿import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+﻿import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 import { db } from "@/shared/db/client";
 import {
@@ -42,11 +42,13 @@ export type VariableDutyAssignmentView = DbVariableDutyAssignmentWithRange & { u
 export interface VariableSectionData {
   variableUsers: UserWithMeta[];
   dailyTasks: VariableDailyTaskView[];
+  deletedDailyTasks: VariableDailyTaskView[];
   leaveRequests: VariableLeaveRequestView[];
   dutyAssignments: VariableDutyAssignmentView[];
   todayDate: string;
   selectedDate: string;
   tomorrowDate: string;
+  selectedMonth: string;
 }
 
 async function getUsersWithRoles(): Promise<UserWithMeta[]> {
@@ -69,19 +71,21 @@ export async function getVariableSectionData(input: {
   todayDate: string;
   selectedDate: string;
   tomorrowDate: string;
+  selectedMonth: string;
 }): Promise<VariableSectionData> {
   const variableUsers = await getVariableUsers();
-  const profileIds = input.scope.isAdmin
-    ? variableUsers.map((user) => user.id)
-    : input.scope.profile ? [input.scope.profile.id] : [];
+  const profileIds = variableUsers.map((user) => user.id);
 
   const taskDateFrom = [input.todayDate, input.selectedDate, input.tomorrowDate].sort()[0];
   const taskDateTo = [input.todayDate, input.selectedDate, input.tomorrowDate].sort().at(-1) ?? input.tomorrowDate;
-  const wideDateFrom = [addDateDays(input.todayDate, -365), input.selectedDate].sort()[0];
-  const wideDateTo = [addDateDays(input.todayDate, 365), input.selectedDate, input.tomorrowDate].sort().at(-1) ?? input.tomorrowDate;
+  const monthDateFrom = `${input.selectedMonth}-01`;
+  const monthDateTo = getMonthEndDate(input.selectedMonth);
+  const wideDateFrom = [addDateDays(input.todayDate, -365), input.selectedDate, monthDateFrom].sort()[0];
+  const wideDateTo = [addDateDays(input.todayDate, 365), input.selectedDate, input.tomorrowDate, monthDateTo].sort().at(-1) ?? input.tomorrowDate;
 
-  const [dailyTasks, leaveRequests, dutyAssignments] = await Promise.all([
+  const [dailyTasks, deletedDailyTasks, leaveRequests, dutyAssignments] = await Promise.all([
     listVariableDailyTasks({ scope: input.scope, dateFrom: taskDateFrom, dateTo: taskDateTo }),
+    listDeletedVariableDailyTasks({ scope: input.scope, dateFrom: wideDateFrom, dateTo: wideDateTo }),
     listVariableLeaveRequests({ scope: input.scope, dateFrom: wideDateFrom, dateTo: wideDateTo }),
     listVariableDutyAssignments({ userIds: profileIds, dateFrom: wideDateFrom, dateTo: wideDateTo }),
   ]);
@@ -89,11 +93,13 @@ export async function getVariableSectionData(input: {
   return {
     variableUsers,
     dailyTasks,
+    deletedDailyTasks,
     leaveRequests,
     dutyAssignments,
     todayDate: input.todayDate,
     selectedDate: input.selectedDate,
     tomorrowDate: input.tomorrowDate,
+    selectedMonth: input.selectedMonth,
   };
 }
 
@@ -102,7 +108,7 @@ export async function listVariableDailyTasks(input: {
   dateFrom: string;
   dateTo: string;
 }): Promise<VariableDailyTaskView[]> {
-  const profileIds = await getVisibleProfileIds(input.scope);
+  const profileIds = await getVisibleProfileIds(input.scope, { allVariableForVariableUsers: true });
   if (profileIds.length === 0) return [];
   const rows = await db
     .select({ task: variableDailyTasks, user: users })
@@ -112,8 +118,31 @@ export async function listVariableDailyTasks(input: {
       inArray(variableDailyTasks.profileUserId, profileIds),
       gte(variableDailyTasks.taskDate, input.dateFrom),
       lte(variableDailyTasks.taskDate, input.dateTo),
+      isNull(variableDailyTasks.deletedAt),
     ))
     .orderBy(desc(variableDailyTasks.taskDate), asc(users.name), asc(variableDailyTasks.createdAt));
+
+  return rows.map((row) => ({ ...row.task, profile: pickUser(row.user) }));
+}
+
+export async function listDeletedVariableDailyTasks(input: {
+  scope: WorkspaceAccessScope;
+  dateFrom: string;
+  dateTo: string;
+}): Promise<VariableDailyTaskView[]> {
+  const profileIds = await getVisibleProfileIds(input.scope, { allVariableForVariableUsers: true });
+  if (profileIds.length === 0) return [];
+  const rows = await db
+    .select({ task: variableDailyTasks, user: users })
+    .from(variableDailyTasks)
+    .innerJoin(users, eq(variableDailyTasks.profileUserId, users.id))
+    .where(and(
+      inArray(variableDailyTasks.profileUserId, profileIds),
+      gte(variableDailyTasks.taskDate, input.dateFrom),
+      lte(variableDailyTasks.taskDate, input.dateTo),
+      isNotNull(variableDailyTasks.deletedAt),
+    ))
+    .orderBy(desc(variableDailyTasks.deletedAt), desc(variableDailyTasks.taskDate), asc(users.name));
 
   return rows.map((row) => ({ ...row.task, profile: pickUser(row.user) }));
 }
@@ -148,6 +177,7 @@ export async function updateVariableDailyTask(input: {
 }): Promise<DbVariableDailyTask> {
   const before = await getVariableDailyTaskById(input.id);
   if (!before) throw new Error("NOT_FOUND");
+  if (before.deletedAt) throw new Error("TASK_DELETED");
   if (!canWriteVariableProfile(input.scope, before.profileUserId)) throw new Error("ACCESS_DENIED");
   assertEditableVariableTaskDate(before.taskDate);
   const [task] = await db.update(variableDailyTasks).set({
@@ -155,6 +185,25 @@ export async function updateVariableDailyTask(input: {
     ...(input.description !== undefined ? { description: input.description?.trim() || null } : {}),
     ...(input.status !== undefined ? { status: input.status } : {}),
     updatedAt: new Date().toISOString(),
+  }).where(eq(variableDailyTasks.id, input.id)).returning();
+  if (!task) throw new Error("NOT_FOUND");
+  return task;
+}
+
+export async function deleteVariableDailyTask(input: {
+  scope: WorkspaceAccessScope;
+  id: number;
+}): Promise<DbVariableDailyTask> {
+  const before = await getVariableDailyTaskById(input.id);
+  if (!before) throw new Error("NOT_FOUND");
+  if (before.deletedAt) throw new Error("TASK_DELETED");
+  if (!canWriteVariableProfile(input.scope, before.profileUserId)) throw new Error("ACCESS_DENIED");
+  assertEditableVariableTaskDate(before.taskDate);
+  const now = new Date().toISOString();
+  const [task] = await db.update(variableDailyTasks).set({
+    deletedAt: now,
+    deletedByUserId: input.scope.session.user.id,
+    updatedAt: now,
   }).where(eq(variableDailyTasks.id, input.id)).returning();
   if (!task) throw new Error("NOT_FOUND");
   return task;
@@ -268,8 +317,10 @@ export async function listVariableDutyAssignments(input: {
     .from(variableDutyAssignments)
     .innerJoin(users, eq(variableDutyAssignments.userId, users.id))
     .where(and(
-      gte(variableDutyAssignments.dutyDate, input.dateFrom),
-      lte(variableDutyAssignments.dutyDate, input.dateTo),
+      or(
+        and(gte(variableDutyAssignments.dutyDate, input.dateFrom), lte(variableDutyAssignments.dutyDate, input.dateTo)),
+        and(lte(variableDutyAssignments.dateFrom, input.dateTo), gte(variableDutyAssignments.dateTo, input.dateFrom)),
+      ),
       ...(input.userIds?.length ? [inArray(variableDutyAssignments.userId, input.userIds)] : []),
     ))
     .orderBy(asc(variableDutyAssignments.dutyDate), asc(variableDutyAssignments.slot));
@@ -357,9 +408,15 @@ async function upsertDutySlots(input: {
   return updated;
 }
 
-async function getVisibleProfileIds(scope: WorkspaceAccessScope): Promise<number[]> {
-  if (scope.isAdmin) return (await getVariableUsers()).map((user) => user.id);
+async function getVisibleProfileIds(scope: WorkspaceAccessScope, options?: { allVariableForVariableUsers?: boolean }): Promise<number[]> {
+  if (scope.isAdmin || (options?.allVariableForVariableUsers && scope.groupKey === "variable")) return (await getVariableUsers()).map((user) => user.id);
   return scope.profile ? [scope.profile.id] : [];
+}
+
+function getMonthEndDate(month: string): string {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const date = new Date(year, monthIndex, 0);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 async function assertProfileIsVariable(profileUserId: number): Promise<void> {

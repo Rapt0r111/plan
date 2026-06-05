@@ -1,7 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import * as z from "zod";
-import { updateVariableDailyTask } from "@/entities/variable/variableRepository";
+import { deleteVariableDailyTask, updateVariableDailyTask } from "@/entities/variable/variableRepository";
 import { authErrorToResponse, requireWorkspaceAccess } from "@/shared/lib/route-auth";
 import { assertVariableSectionAccess } from "@/shared/lib/variable-workflows";
 import { writeAuditLog } from "@/shared/lib/audit";
@@ -35,6 +35,31 @@ export async function PATCH(req: Request, { params }: Params) {
     await writeAuditLog({
       actor: { userId: scope.session.user.id, role: scope.session.user.role },
       action: "update",
+      entityType: "variable_daily_task",
+      entityId: task.id,
+      after: task,
+    });
+    return NextResponse.json({ ok: true, data: task });
+  } catch (e) {
+    const authErr = authErrorToResponse(e);
+    if (authErr) return NextResponse.json({ ok: false, error: authErr.message }, { status: authErr.status });
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+  }
+}
+
+export async function DELETE(_req: Request, { params }: Params) {
+  try {
+    const scope = await requireWorkspaceAccess();
+    assertVariableSectionAccess(scope);
+    const id = parseId((await params).id);
+    if (!id) return NextResponse.json({ ok: false, error: "Invalid task id" }, { status: 400 });
+
+    const task = await deleteVariableDailyTask({ scope, id });
+    revalidatePath("/variable");
+    broadcast("variable:updated", { action: "variable_daily_task_delete", taskId: task.id });
+    await writeAuditLog({
+      actor: { userId: scope.session.user.id, role: scope.session.user.role },
+      action: "delete",
       entityType: "variable_daily_task",
       entityId: task.id,
       after: task,

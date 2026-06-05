@@ -8,12 +8,17 @@ import { VariablePageClient } from "./VariablePageClient";
 export const dynamic = "force-dynamic";
 
 type VariablePageProps = {
-  searchParams?: Promise<{ date?: string | string[] }>;
+  searchParams?: Promise<{ date?: string | string[]; month?: string | string[] }>;
 };
 
 function normalizeDate(raw: string | string[] | undefined, fallback: string): string {
   const value = Array.isArray(raw) ? raw[0] : raw;
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback;
+}
+
+function normalizeMonth(raw: string | string[] | undefined, fallback: string): string {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value && /^\d{4}-\d{2}$/.test(value) ? value : fallback;
 }
 
 function addDays(date: Date, days: number): Date {
@@ -29,8 +34,9 @@ export default async function VariablePage({ searchParams }: VariablePageProps) 
   const params = searchParams ? await searchParams : {};
   const todayDate = toDateKey(new Date());
   const selectedDate = normalizeDate(params.date, toDateKey(addDays(new Date(), -7)));
+  const selectedMonth = normalizeMonth(params.month, todayDate.slice(0, 7));
   const tomorrowDate = getTomorrowKey();
-  const data = await getVariableSectionData({ scope, todayDate, selectedDate, tomorrowDate });
+  const data = await getVariableSectionData({ scope, todayDate, selectedDate, tomorrowDate, selectedMonth });
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

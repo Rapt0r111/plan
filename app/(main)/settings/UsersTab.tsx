@@ -329,51 +329,67 @@ function UnlinkedAccountCard({
                 </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-end">
-                <SelectField
-                    value={profileId || undefined}
-                    onValueChange={(nextValue) => setProfileId(Number(nextValue))}
-                    disabled={availableProfiles.length === 0}
-                    placeholder="Выбрать существующий профиль"
-                    options={availableProfiles.map((user) => ({
-                        value: user.id,
-                        label: user.name,
-                        description: `${user.login} · ${user.roleMeta.label}`,
-                        color: user.roleMeta.hex,
-                    }))}
-                />
-                <button
-                    onClick={linkExisting}
-                    disabled={loading !== null || !profileId}
-                    className="px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
-                    style={{ background: "var(--glass-02)", color: "var(--text-secondary)", border: "1px solid var(--glass-border)" }}
-                >
-                    {loading === "link" ? "Привязка..." : "Привязать"}
-                </button>
+            <div className="space-y-2 rounded-xl p-3" style={{ background: "var(--glass-01)", border: "1px solid rgba(139,92,246,0.25)" }}>
+                <div>
+                    <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>Одобрить как нового сотрудника</p>
+                    <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                        Выберите состав и роль. Система сама создаст рабочий профиль для этого аккаунта.
+                    </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                    <SelectField
+                        value={selectedGroupKey}
+                        onValueChange={changeGroup}
+                        options={personnelGroups.map((group) => ({ value: group.key, label: group.label, color: group.color }))}
+                    />
+                    <SelectField
+                        value={roleId || undefined}
+                        onValueChange={(nextValue) => setRoleId(Number(nextValue))}
+                        disabled={rolesForGroup.length === 0}
+                        placeholder="Роль"
+                        options={rolesForGroup.map((role) => ({ value: role.id, label: role.label, description: role.short, color: role.hex }))}
+                    />
+                    <button
+                        onClick={createProfile}
+                        disabled={loading !== null || !roleId}
+                        className="px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                        style={{ background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.3)" }}
+                    >
+                        {loading === "create" ? "Одобрение..." : "Одобрить"}
+                    </button>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 items-end pt-2 border-t border-[var(--glass-border)]">
-                <SelectField
-                    value={selectedGroupKey}
-                    onValueChange={changeGroup}
-                    options={personnelGroups.map((group) => ({ value: group.key, label: group.label, color: group.color }))}
-                />
-                <SelectField
-                    value={roleId || undefined}
-                    onValueChange={(nextValue) => setRoleId(Number(nextValue))}
-                    disabled={rolesForGroup.length === 0}
-                    placeholder="Роль"
-                    options={rolesForGroup.map((role) => ({ value: role.id, label: role.label, description: role.short, color: role.hex }))}
-                />
-                <button
-                    onClick={createProfile}
-                    disabled={loading !== null || !roleId}
-                    className="px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
-                    style={{ background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.3)" }}
-                >
-                    {loading === "create" ? "Создание..." : "Создать профиль"}
-                </button>
-            </div>
+            <details className="rounded-xl p-3" style={{ background: "var(--bg-base)", border: "1px solid var(--glass-border)" }}>
+                <summary className="cursor-pointer text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+                    Привязать к уже существующему профилю
+                </summary>
+                <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                    Используйте только если профиль сотрудника уже был создан заранее и к нему привязаны задачи или расписание.
+                </p>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-end">
+                    <SelectField
+                        value={profileId || undefined}
+                        onValueChange={(nextValue) => setProfileId(Number(nextValue))}
+                        disabled={availableProfiles.length === 0}
+                        placeholder="Выбрать существующий профиль"
+                        options={availableProfiles.map((user) => ({
+                            value: user.id,
+                            label: user.name,
+                            description: `${user.login} · ${user.roleMeta.label}`,
+                            color: user.roleMeta.hex,
+                        }))}
+                    />
+                    <button
+                        onClick={linkExisting}
+                        disabled={loading !== null || !profileId}
+                        className="px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                        style={{ background: "var(--glass-02)", color: "var(--text-secondary)", border: "1px solid var(--glass-border)" }}
+                    >
+                        {loading === "link" ? "Привязка..." : "Привязать"}
+                    </button>
+                </div>
+            </details>
         </div>
     );
 }

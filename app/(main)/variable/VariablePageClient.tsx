@@ -428,7 +428,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
         )}
 
         {tab === "leave" && (
-          <section className="grid gap-4 xl:grid-cols-[minmax(340px,0.76fr)_minmax(0,1.24fr)]">
+          <section className="grid gap-4">
             <Panel title="Заявка в увольнение" subtitle="Дневной, суточный или отпуск с выбором периода." icon={<LeaveIcon className="h-4 w-4" />} accent="#fbbf24">
               <form onSubmit={handleLeave} className="space-y-3 p-4">
                 <UserSelect users={data.variableUsers} isAdmin={isAdmin} currentProfileId={defaultProfileId} />
@@ -488,7 +488,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                         {isAdmin && request.status === "pending" && (
                           <>
                             <button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "approved")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={successButtonStyle}>Одобрить</button>
-                            <button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "rejected")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={dangerButtonStyle}>Отклонить</button>
+<button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "rejected")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={dangerButtonStyle}>Отклонить</button>
                           </>
                         )}
                         {request.status === "approved" && (isAdmin || request.profileUserId === currentProfileId) && (
@@ -504,7 +504,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
         )}
 
         {tab === "duty" && (
-          <section className={isAdmin ? "grid gap-4 xl:grid-cols-[minmax(340px,0.76fr)_minmax(0,1.24fr)]" : "grid gap-4"}>
+          <section className={isAdmin ? "grid gap-4" : "grid gap-4"}>
             {isAdmin && (
               <div className="grid gap-4">
                 <Panel title="Назначить суточный наряд" subtitle="Период показывается с выбранного дня по следующий день; первый день — заступающий наряд." icon={<DutyIcon className="h-4 w-4" />} accent="#a78bfa">
@@ -769,26 +769,24 @@ function TaskRow({
   );
 }
 
-
-
 function MonthNavigator({ month, onChange }: { month: string; onChange: (month: string) => void }) {
   const prev = shiftMonth(month, -1);
   const next = shiftMonth(month, 1);
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl p-2" style={calendarToolbarStyle}>
-      <button type="button" onClick={() => onChange(prev)} className="cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={mutedButtonStyle}>????. ?????</button>
+      <button type="button" onClick={() => onChange(prev)} className="cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={mutedButtonStyle}>Пред. месяц</button>
       <div className="flex min-w-0 items-center gap-2 rounded-xl px-3 py-1.5" style={monthTitleStyle}>
         <CalendarIcon className="h-4 w-4 shrink-0" />
         <span className="truncate text-sm font-semibold capitalize text-(--text-primary)">{formatMonthLabel(month)}</span>
       </div>
-      <button type="button" onClick={() => onChange(next)} className="cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={mutedButtonStyle}>????. ?????</button>
+      <button type="button" onClick={() => onChange(next)} className="cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={mutedButtonStyle}>След. месяц</button>
     </div>
   );
 }
 
 const LeaveMonthCalendar = memo(function LeaveMonthCalendar({ days, requestsByDay, totalCount, todayDate }: { days: string[]; requestsByDay: LeaveCalendarByDay; totalCount: number; todayDate: string }) {
   return (
-    <CalendarFrame title="????????? ??????????" subtitle="??? ???????????, ????? ????, ????? ???????? ? ?? ????? ???????." totalCount={totalCount} tone="#fbbf24">
+    <CalendarFrame title="Календарь увольнений" subtitle="Все увольнения, весь срок, можно листать и не надо скроллить." totalCount={totalCount} tone="#fbbf24">
       <MonthGrid days={days} todayDate={todayDate} renderDay={(day) => <LeaveDayEvents rows={requestsByDay.get(day) ?? []} day={day} />} />
     </CalendarFrame>
   );
@@ -796,7 +794,7 @@ const LeaveMonthCalendar = memo(function LeaveMonthCalendar({ days, requestsByDa
 
 const DutyMonthCalendar = memo(function DutyMonthCalendar({ days, entriesByDay, totalCount, todayDate }: { days: string[]; entriesByDay: DutyCalendarByDay; totalCount: number; todayDate: string }) {
   return (
-    <CalendarFrame title="????????? ???????" subtitle="???????? ????? ? ??????? ?????? ????????? ?? ???? ??????." totalCount={totalCount} tone="#34d399">
+    <CalendarFrame title="Календарь нарядов" subtitle="Суточные наряды и РГ разведены по цвету и отдельным блокам внутри дня." totalCount={totalCount} tone="#34d399">
       <MonthGrid days={days} todayDate={todayDate} renderDay={(day) => <DutyDayEvents rows={entriesByDay.get(day) ?? []} day={day} />} />
     </CalendarFrame>
   );
@@ -820,20 +818,20 @@ function CalendarFrame({ title, subtitle, totalCount, tone, children }: { title:
 const MonthGrid = memo(function MonthGrid({ days, todayDate, renderDay }: { days: string[]; todayDate: string; renderDay: (day: string) => ReactNode }) {
   const activeMonth = days[10]?.slice(0, 7) ?? todayDate.slice(0, 7);
   return (
-    <div className="overflow-x-auto p-2 [scrollbar-width:thin]" style={calendarScrollerStyle}>
-      <div className="grid min-w-[920px] grid-cols-7 gap-1.5 lg:min-w-0">
-        {["??", "??", "??", "??", "??", "??", "??"].map((day) => (
-          <div key={day} className="sticky top-0 z-10 rounded-lg px-2 py-1.5 text-center text-[11px] font-semibold backdrop-blur-sm" style={calendarWeekdayStyle}>{day}</div>
+    <div className="overflow-x-auto p-2.5 [scrollbar-width:thin]" style={calendarScrollerStyle}>
+      <div className="grid min-w-[1180px] grid-cols-7 gap-2 xl:min-w-0">
+        {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
+          <div key={day} className="sticky top-0 z-10 rounded-lg px-2 py-2 text-center text-xs font-semibold backdrop-blur-sm" style={calendarWeekdayStyle}>{day}</div>
         ))}
         {days.map((day) => {
           const inMonth = day.slice(0, 7) === activeMonth;
           return (
-            <div key={day} className="min-h-32 rounded-xl p-2 transition-colors duration-200" style={day === todayDate ? calendarTodayStyle : inMonth ? calendarDayStyle : calendarMutedDayStyle}>
+            <div key={day} className="min-h-44 rounded-xl p-2.5 transition-colors duration-200" style={day === todayDate ? calendarTodayStyle : inMonth ? calendarDayStyle : calendarMutedDayStyle}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold" style={{ color: inMonth ? "var(--text-primary)" : "var(--text-muted)" }}>{Number(day.slice(8, 10))}</span>
-                {day === todayDate && <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={infoPillStyle}>???????</span>}
+                {day === todayDate && <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={infoPillStyle}>Сегодня</span>}
               </div>
-              <div className="grid gap-1.5">{renderDay(day)}</div>
+              <div className="grid min-w-0 gap-1.5">{renderDay(day)}</div>
             </div>
           );
         })}
@@ -843,19 +841,19 @@ const MonthGrid = memo(function MonthGrid({ days, todayDate, renderDay }: { days
 });
 
 function LeaveDayEvents({ rows, day }: { rows: VariableSectionData["leaveRequests"]; day: string }) {
-  if (rows.length === 0) return <p className="rounded-lg px-2 py-1.5 text-[11px] text-(--text-muted)" style={calendarEmptyDayStyle}>??? ??????????</p>;
+  if (rows.length === 0) return <p className="rounded-lg px-2 py-1.5 text-[11px] text-(--text-muted)" style={calendarEmptyDayStyle}>Нет увольнений</p>;
   const visible = rows.slice(0, 3);
   return (
     <>
       {visible.map((request) => (
-        <div key={`${request.id}-${day}`} className="rounded-lg p-2" style={{ ...calendarItemStyle, borderLeft: `3px solid ${leaveTone(request.status)}` }}>
-          <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-[11px] font-semibold text-(--text-primary)">{request.profile.name}</p>
-            <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={leaveBadgeStyle(request.status)}>{STATUS_LABELS[request.status]}</span>
+        <div key={`${request.id}-${day}`} className="min-w-0 rounded-lg p-2.5" style={{ ...calendarItemStyle, borderLeft: `3px solid ${leaveTone(request.status)}` }}>
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <PersonNameDisclosure name={request.profile.name} compact />
+            <span className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px]" style={leaveBadgeStyle(request.status)}>{STATUS_LABELS[request.status]}</span>
           </div>
-          <p className="mt-1 truncate text-[10px] text-(--text-secondary)">{LEAVE_LABELS[request.leaveType]}</p>
-          <p className="mt-0.5 text-[10px] text-(--text-muted)">{request.departureTime || "-"} / {request.arrivalTime || "-"}</p>
-          {request.comment && <p className="mt-1 max-h-8 overflow-hidden text-[10px] leading-4 text-(--text-secondary)">{request.comment}</p>}
+          <p className="mt-1 text-[11px] leading-4 text-(--text-secondary)" style={wrapTextStyle}>{LEAVE_LABELS[request.leaveType]}</p>
+          <p className="mt-0.5 text-[11px] leading-4 text-(--text-muted)" style={wrapTextStyle}>{request.departureTime || "-"} / {request.arrivalTime || "-"}</p>
+          {request.comment && <p className="mt-1 max-h-10 overflow-hidden text-[11px] leading-4 text-(--text-secondary)" style={wrapTextStyle}>{request.comment}</p>}
         </div>
       ))}
       {rows.length > visible.length && <MoreEventsBadge count={rows.length - visible.length} />}
@@ -864,31 +862,68 @@ function LeaveDayEvents({ rows, day }: { rows: VariableSectionData["leaveRequest
 }
 
 function DutyDayEvents({ rows, day }: { rows: DutyAssignments; day: string }) {
-  if (rows.length === 0) return <p className="rounded-lg px-2 py-1.5 text-[11px] text-(--text-muted)" style={calendarEmptyDayStyle}>??? ???????</p>;
-  const visible = rows.slice(0, 4);
+  if (rows.length === 0) return <p className="rounded-lg px-2 py-1.5 text-[11px] text-(--text-muted)" style={calendarEmptyDayStyle}>Нет нарядов</p>;
+  const dailyRows = rows.filter((entry) => DUTY_SLOTS.some((slot) => slot.key === entry.slot));
+  const workGroupRows = rows.filter((entry) => WORK_GROUP_SLOTS.some((slot) => slot.key === entry.slot));
   return (
     <>
-      {visible.map((entry) => {
-        const slot = [...DUTY_SLOTS, ...WORK_GROUP_SLOTS].find((item) => item.key === entry.slot);
-        const isWorkGroup = WORK_GROUP_SLOTS.some((item) => item.key === entry.slot);
-        return (
-          <div key={`${entry.id}-${day}`} className="rounded-lg p-2" style={{ ...calendarItemStyle, borderLeft: `3px solid ${isWorkGroup ? "#38bdf8" : "#34d399"}` }}>
-            <div className="flex items-center justify-between gap-2">
-              <p className="truncate text-[11px] font-semibold text-(--text-primary)">{entry.user.name}</p>
-              <span className="rounded-md px-1.5 py-0.5 text-[10px]" style={isWorkGroup ? infoPillStyle : mutedBadgeStyle}>{slot?.short ?? entry.slot}</span>
-            </div>
-            <p className="mt-1 truncate text-[10px] text-(--text-secondary)">{slot?.label ?? entry.slot}</p>
-            <p className="mt-0.5 text-[10px] text-(--text-muted)">{entry.dateFrom} - {entry.dateTo}</p>
-          </div>
-        );
-      })}
-      {rows.length > visible.length && <MoreEventsBadge count={rows.length - visible.length} />}
+      <DutyDaySection label="Суточный" rows={dailyRows} slots={DUTY_SLOTS} day={day} tone="daily" />
+      <DutyDaySection label="РГ" rows={workGroupRows} slots={WORK_GROUP_SLOTS} day={day} tone="workGroup" />
     </>
   );
 }
 
+function DutyDaySection({ label, rows, slots, day, tone }: { label: string; rows: DutyAssignments; slots: Array<{ key: VariableDutySlot; label: string; short: string }>; day: string; tone: "daily" | "workGroup" }) {
+  if (rows.length === 0) return null;
+  const visible = rows.slice(0, 3);
+  const isWorkGroup = tone === "workGroup";
+  return (
+    <div className="grid min-w-0 gap-1.5 rounded-xl p-1.5" style={isWorkGroup ? workGroupSectionStyle : dailySectionStyle}>
+      <div className="flex min-w-0 items-center justify-between gap-2 px-1">
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={isWorkGroup ? workGroupLabelStyle : dailyLabelStyle}>{label}</span>
+        <span className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-mono" style={isWorkGroup ? workGroupBadgeStyle : successBadgeStyle}>{rows.length}</span>
+      </div>
+      {visible.map((entry) => {
+        const slot = slots.find((item) => item.key === entry.slot);
+        return <DutyCalendarCard key={`${entry.id}-${day}`} entry={entry} slot={slot} isWorkGroup={isWorkGroup} />;
+      })}
+      {rows.length > visible.length && <MoreEventsBadge count={rows.length - visible.length} />}
+    </div>
+  );
+}
+
+function DutyCalendarCard({ entry, slot, isWorkGroup }: { entry: DutyAssignments[number]; slot?: { label: string; short: string }; isWorkGroup: boolean }) {
+  return (
+    <div className="min-w-0 rounded-lg p-2.5" style={isWorkGroup ? workGroupCalendarItemStyle : dailyCalendarItemStyle}>
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <PersonNameDisclosure name={entry.user.name} compact />
+        <span className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-mono" style={isWorkGroup ? workGroupBadgeStyle : mutedBadgeStyle}>{slot?.short ?? entry.slot}</span>
+      </div>
+      <p className="mt-1 text-[11px] leading-4 text-(--text-secondary)" style={wrapTextStyle}>{slot?.label ?? entry.slot}</p>
+      <p className="mt-0.5 text-[11px] leading-4 text-(--text-muted)" style={wrapTextStyle}>{entry.dateFrom} - {entry.dateTo}</p>
+    </div>
+  );
+}
+
 function MoreEventsBadge({ count }: { count: number }) {
-  return <span className="rounded-lg px-2 py-1 text-[10px] font-semibold" style={calendarMoreStyle}>+{count} ???</span>;
+  return <span className="rounded-lg px-2 py-1 text-[10px] font-semibold" style={calendarMoreStyle}>+{count} ещё</span>;
+}
+
+function PersonNameDisclosure({ name, compact = false }: { name: string; compact?: boolean }) {
+  return (
+    <details className="min-w-0 flex-1">
+      <summary
+        className={`cursor-pointer list-none font-semibold text-(--text-primary) transition-colors hover:text-emerald-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 ${compact ? "text-[11px] leading-4" : "text-sm leading-5"}`}
+        style={personSummaryStyle}
+        title={`${name} — нажмите, чтобы раскрыть полностью`}
+      >
+        {name}
+      </summary>
+      <div className="mt-1 rounded-lg px-2 py-1.5 text-xs leading-4 text-(--text-secondary)" style={personDetailsStyle}>
+        {name}
+      </div>
+    </details>
+  );
 }
 
 function DutyGroups({ groups, slots, todayDate, emptyText }: { groups: Array<[string, DutyAssignments]>; slots: Array<{ key: VariableDutySlot; label: string; short: string }>; todayDate: string; emptyText: string }) {
@@ -920,7 +955,7 @@ function DutyGroup({ date, entries, slots, todayDate }: { date: string; entries:
                 <p className="text-[11px] font-semibold text-(--text-muted)">{slot.label}</p>
                 <span className="rounded-md px-1.5 py-0.5 text-[10px] font-mono" style={mutedBadgeStyle}>{slot.short}</span>
               </div>
-              <p className="text-sm font-semibold text-(--text-primary)">{entry?.user.name ?? "Не назначен"}</p>
+              {entry ? <PersonNameDisclosure name={entry.user.name} /> : <p className="text-sm font-semibold text-(--text-primary)">Не назначен</p>}
             </div>
           );
         })}
@@ -942,7 +977,6 @@ function groupDutyByDate(rows: DutyAssignments): Array<[string, DutyAssignments]
 function sortDuty(a: DutyAssignments[number], b: DutyAssignments[number]): number {
   return a.dateFrom.localeCompare(b.dateFrom) || a.slot.localeCompare(b.slot);
 }
-
 
 type LeaveCalendarByDay = Map<string, VariableSectionData["leaveRequests"]>;
 type DutyCalendarByDay = Map<string, DutyAssignments>;
@@ -985,7 +1019,6 @@ function getDutyPeriodRange(period: DutyPeriod, todayDate: string): [string, str
   }
   return [todayDate, toDateKey(new Date(today.getFullYear(), today.getMonth() + 1, 0))];
 }
-
 
 function getMonthRange(month: string): [string, string] {
   const [year, monthIndex] = month.split("-").map(Number);
@@ -1081,7 +1114,6 @@ function AlertIcon({ className }: IconProps) {
   return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3 18 17H2L10 3Z" /><path d="M10 8v4" /><path d="M10 15h.01" /></svg>;
 }
 
-
 function TrashIcon({ className }: IconProps) {
   return <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5.5h14" /><path d="M8 5.5V3.5h4v2" /><path d="M6 8v8" /><path d="M10 8v8" /><path d="M14 8v8" /><path d="M5 5.5 6 17h8l1-11.5" /></svg>;
 }
@@ -1124,7 +1156,7 @@ const dutySlotStyle: CSSProperties = { background: "var(--glass-01)", border: "1
 const emptyStyle: CSSProperties = { background: "rgba(148,163,184,0.07)", border: "1px dashed rgba(148,163,184,0.24)" };
 const calendarToolbarStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(15,23,42,0.78), rgba(2,6,23,0.44))", border: "1px solid var(--glass-border)" };
 const monthTitleStyle: CSSProperties = { background: "rgba(34,197,94,0.12)", border: "1px solid rgba(52,211,153,0.30)", color: "#34d399" };
-const calendarFrameStyle: CSSProperties = { background: "rgba(2,6,23,0.34)", border: "1px solid var(--glass-border)", contentVisibility: "auto", containIntrinsicSize: "720px" };
+const calendarFrameStyle: CSSProperties = { background: "rgba(2,6,23,0.34)", border: "1px solid var(--glass-border)", contentVisibility: "auto", containIntrinsicSize: "860px" };
 const calendarScrollerStyle: CSSProperties = { overscrollBehaviorX: "contain" };
 const calendarWeekdayStyle: CSSProperties = { background: "rgba(15,23,42,0.86)", border: "1px solid rgba(148,163,184,0.14)", color: "#94a3b8" };
 const calendarDayStyle: CSSProperties = { background: "rgba(15,23,42,0.44)", border: "1px solid rgba(148,163,184,0.16)", contain: "layout paint" };
@@ -1133,4 +1165,14 @@ const calendarTodayStyle: CSSProperties = { background: "linear-gradient(135deg,
 const calendarItemStyle: CSSProperties = { background: "rgba(255,255,255,0.045)", border: "1px solid rgba(255,255,255,0.08)" };
 const calendarEmptyDayStyle: CSSProperties = { background: "rgba(148,163,184,0.055)", border: "1px dashed rgba(148,163,184,0.14)" };
 const calendarMoreStyle: CSSProperties = { background: "rgba(56,189,248,0.10)", border: "1px solid rgba(56,189,248,0.22)", color: "#38bdf8" };
+const dailySectionStyle: CSSProperties = { background: "rgba(34,197,94,0.045)", border: "1px solid rgba(52,211,153,0.14)" };
+const workGroupSectionStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(124,58,237,0.13), rgba(56,189,248,0.055))", border: "1px solid rgba(167,139,250,0.30)" };
+const dailyCalendarItemStyle: CSSProperties = { ...calendarItemStyle, borderLeft: "3px solid #34d399" };
+const workGroupCalendarItemStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(124,58,237,0.18), rgba(56,189,248,0.08))", border: "1px solid rgba(167,139,250,0.28)", borderLeft: "3px solid #a78bfa", boxShadow: "inset 0 0 0 1px rgba(167,139,250,0.06)" };
+const dailyLabelStyle: CSSProperties = { color: "#34d399" };
+const workGroupLabelStyle: CSSProperties = { color: "#c4b5fd" };
+const workGroupBadgeStyle: CSSProperties = { background: "rgba(124,58,237,0.18)", border: "1px solid rgba(167,139,250,0.34)", color: "#c4b5fd" };
+const wrapTextStyle: CSSProperties = { overflowWrap: "anywhere", wordBreak: "break-word" };
+const personSummaryStyle: CSSProperties = { ...wrapTextStyle, outlineOffset: "3px" };
+const personDetailsStyle: CSSProperties = { ...wrapTextStyle, background: "rgba(15,23,42,0.72)", border: "1px solid rgba(148,163,184,0.18)" };
 const errorBannerStyle: CSSProperties = { background: "rgba(239,68,68,0.11)", border: "1px solid rgba(239,68,68,0.28)", color: "#fca5a5" };

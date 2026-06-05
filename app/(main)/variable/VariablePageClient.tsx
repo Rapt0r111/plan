@@ -41,6 +41,7 @@ type LeaveTab = "thirty" | "future" | "past";
 type DutyTab = "planned" | "past";
 type DutyPeriod = "week" | "month" | "nextMonth" | "year";
 type DutyAssignments = VariableSectionData["dutyAssignments"];
+type DutyModalState = { day: string; tone: "daily" | "workGroup"; label: string };
 type IconProps = { className?: string };
 
 export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
@@ -53,6 +54,9 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
   const [leavePersonFilter, setLeavePersonFilter] = useState("all");
   const [leaveDateFilter, setLeaveDateFilter] = useState("");
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
+  const [showWorkGroupSchedule, setShowWorkGroupSchedule] = useState(false);
+  const [leaveModalDay, setLeaveModalDay] = useState<string | null>(null);
+  const [dutyModal, setDutyModal] = useState<DutyModalState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const defaultProfileId = currentProfileId ?? data.variableUsers[0]?.id ?? 0;
@@ -202,6 +206,16 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
       .sort(sortDuty);
   }, [data.dutyAssignments, data.selectedMonth]);
 
+  const dailyDutyCalendarCount = useMemo(
+    () => dutyCalendarRows.filter((entry) => DUTY_SLOTS.some((slot) => slot.key === entry.slot)).length,
+    [dutyCalendarRows],
+  );
+
+  const workGroupCalendarCount = useMemo(
+    () => dutyCalendarRows.filter((entry) => WORK_GROUP_SLOTS.some((slot) => slot.key === entry.slot)).length,
+    [dutyCalendarRows],
+  );
+
   const leaveCalendarByDay = useMemo(
     () => buildLeaveCalendarByDay(monthDays, leaveCalendarRows),
     [leaveCalendarRows, monthDays],
@@ -211,6 +225,18 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
     () => buildDutyCalendarByDay(monthDays, dutyCalendarRows),
     [dutyCalendarRows, monthDays],
   );
+
+  const leaveModalRows = useMemo(
+    () => (leaveModalDay ? leaveCalendarByDay.get(leaveModalDay) ?? [] : []),
+    [leaveCalendarByDay, leaveModalDay],
+  );
+
+  const dutyModalRows = useMemo(() => {
+    if (!dutyModal) return [];
+    const rows = dutyCalendarByDay.get(dutyModal.day) ?? [];
+    const slots = dutyModal.tone === "workGroup" ? WORK_GROUP_SLOTS : DUTY_SLOTS;
+    return rows.filter((entry) => slots.some((slot) => slot.key === entry.slot));
+  }, [dutyCalendarByDay, dutyModal]);
 
   const leaveRows = useMemo(() => {
     const thirtyEnd = addDateDays(data.todayDate, 29);
@@ -335,7 +361,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
 
         {tab === "tasks" && (
           <section className="grid gap-4 xl:grid-cols-[minmax(340px,0.76fr)_minmax(0,1.24fr)]">
-            <Panel title="Постановка задачи" subtitle="Можно поставить задачу на сегодня, завтра или на любую выбранную дату." icon={<TaskIcon className="h-4 w-4" />} accent="#38bdf8">
+            <CollapsiblePanel title="Постановка задачи" subtitle="Можно поставить задачу на сегодня, завтра или на любую выбранную дату." actionLabel="Открыть форму" icon={<TaskIcon className="h-4 w-4" />} accent="#38bdf8">
               <form onSubmit={handleDailyTask} className="space-y-3 p-4">
                 <UserSelect users={data.variableUsers} isAdmin={isAdmin} currentProfileId={defaultProfileId} />
                 <Field label="Дата задачи"><input name="taskDate" type="date" min={data.todayDate} defaultValue={data.todayDate} className={inputClassName} style={inputStyle} /></Field>
@@ -343,7 +369,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                 <Field label="Комментарий"><textarea name="description" rows={4} placeholder="Детали, место, ограничение по времени" className={inputClassName} style={inputStyle} /></Field>
                 <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Добавить задачу</button>
               </form>
-            </Panel>
+            </CollapsiblePanel>
 
             <Panel title="Задачи по датам" subtitle="Основной блок — на сегодня. Отдельно видны завтра и выбранная дата." icon={<CalendarIcon className="h-4 w-4" />} accent="#34d399">
               <div className="grid gap-3 p-3">
@@ -408,7 +434,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
               </div>
             </Panel>
 
-            <Panel title="Корзина задач" subtitle="Удалённые задачи видны всем в разделе переменного состава." icon={<TrashIcon className="h-4 w-4" />} accent="#fb7185">
+            <CollapsiblePanel title="Корзина задач" subtitle="Удалённые задачи видны всем в разделе переменного состава." actionLabel="Открыть корзину" icon={<TrashIcon className="h-4 w-4" />} accent="#fb7185">
               <div className="grid gap-2 p-3">
                 {data.deletedDailyTasks.length === 0 ? <Empty text="Корзина задач пуста." /> : data.deletedDailyTasks.map((task) => (
                   <article key={task.id} className="rounded-2xl p-3" style={rowCardStyle}>
@@ -423,13 +449,13 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                   </article>
                 ))}
               </div>
-            </Panel>
+            </CollapsiblePanel>
           </section>
         )}
 
         {tab === "leave" && (
           <section className="grid gap-4">
-            <Panel title="Заявка в увольнение" subtitle="Дневной, суточный или отпуск с выбором периода." icon={<LeaveIcon className="h-4 w-4" />} accent="#fbbf24">
+            <CollapsiblePanel title="Заявка в увольнение" subtitle="Дневной, суточный или отпуск с выбором периода." actionLabel="Открыть заявку" icon={<LeaveIcon className="h-4 w-4" />} accent="#fbbf24">
               <form onSubmit={handleLeave} className="space-y-3 p-4">
                 <UserSelect users={data.variableUsers} isAdmin={isAdmin} currentProfileId={defaultProfileId} />
                 <Field label="Тип увольнения">
@@ -449,12 +475,12 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                 <Field label="Комментарий"><textarea name="comment" rows={4} placeholder="Причина, маршрут, дополнительные условия" className={inputClassName} style={inputStyle} /></Field>
                 <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Отправить заявку</button>
               </form>
-            </Panel>
+            </CollapsiblePanel>
 
             <Panel title="Заявки" subtitle="30 дней, будущие и прошедшие увольнения с фильтрами по человеку и дате." icon={<ShieldIcon className="h-4 w-4" />} accent="#a78bfa">
               <div className="grid gap-3 p-3">
                 <MonthNavigator month={data.selectedMonth} onChange={handleMonthChange} />
-                <LeaveMonthCalendar days={monthDays} requestsByDay={leaveCalendarByDay} totalCount={leaveCalendarRows.length} todayDate={data.todayDate} />
+                <LeaveMonthCalendar days={monthDays} requestsByDay={leaveCalendarByDay} totalCount={leaveCalendarRows.length} todayDate={data.todayDate} onOpenDay={setLeaveModalDay} />
                 <SegmentedTabs
                   value={leaveTab}
                   items={[{ key: "thirty", label: "30 дней" }, { key: "future", label: "Будущие" }, { key: "past", label: "Прошедшие" }]}
@@ -507,7 +533,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
           <section className={isAdmin ? "grid gap-4" : "grid gap-4"}>
             {isAdmin && (
               <div className="grid gap-4">
-                <Panel title="Назначить суточный наряд" subtitle="Период показывается с выбранного дня по следующий день; первый день — заступающий наряд." icon={<DutyIcon className="h-4 w-4" />} accent="#a78bfa">
+                <CollapsiblePanel title="Назначить суточный наряд" subtitle="Период показывается с выбранного дня по следующий день; первый день — заступающий наряд." actionLabel="Открыть назначение" icon={<DutyIcon className="h-4 w-4" />} accent="#a78bfa">
                   <form onSubmit={handleDuty} className="space-y-3 p-4">
                     <Field label="Дата заступления"><input name="dutyDate" type="date" defaultValue={data.tomorrowDate} className={inputClassName} style={inputStyle} /></Field>
                     {DUTY_SLOTS.map((slot) => (
@@ -515,9 +541,9 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                     ))}
                     <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Сохранить наряд</button>
                   </form>
-                </Panel>
+                </CollapsiblePanel>
 
-                <Panel title="Рабочая группа" subtitle="Дневное РГ, Ночное РГ и Информационное РГ назначаются диапазоном дат." icon={<ShieldIcon className="h-4 w-4" />} accent="#38bdf8">
+                <CollapsiblePanel title="Рабочая группа" subtitle="Дневное РГ, Ночное РГ и Информационное РГ назначаются диапазоном дат." actionLabel="Открыть РГ" icon={<ShieldIcon className="h-4 w-4" />} accent="#38bdf8">
                   <form onSubmit={handleWorkGroupDuty} className="space-y-3 p-4">
                     <div className="grid gap-2 sm:grid-cols-2">
                       <Field label="С какого числа"><input name="dateFrom" type="date" defaultValue={data.todayDate} className={inputClassName} style={inputStyle} /></Field>
@@ -528,29 +554,44 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                     ))}
                     <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Сохранить РГ</button>
                   </form>
-                </Panel>
+                </CollapsiblePanel>
               </div>
             )}
 
             <Panel title="Расписание нарядов" subtitle="Планируемые периоды, прошедшие наряды и отдельная подвкладка рабочей группы." icon={<CalendarIcon className="h-4 w-4" />} accent="#34d399">
               <div className="grid gap-3 p-3">
                 <MonthNavigator month={data.selectedMonth} onChange={handleMonthChange} />
-                <DutyMonthCalendar days={monthDays} entriesByDay={dutyCalendarByDay} totalCount={dutyCalendarRows.length} todayDate={data.todayDate} />
+                <WorkGroupToggle show={showWorkGroupSchedule} count={workGroupCalendarCount} onToggle={() => setShowWorkGroupSchedule((value) => !value)} />
+                <DutyMonthCalendar
+                  days={monthDays}
+                  entriesByDay={dutyCalendarByDay}
+                  totalCount={showWorkGroupSchedule ? dutyCalendarRows.length : dailyDutyCalendarCount}
+                  workGroupCount={workGroupCalendarCount}
+                  todayDate={data.todayDate}
+                  showWorkGroup={showWorkGroupSchedule}
+                  onOpenDay={setDutyModal}
+                />
                 <SegmentedTabs value={dutyTab} items={[{ key: "planned", label: "Планируемые" }, { key: "past", label: "Прошедшие" }]} onChange={(value) => setDutyTab(value as DutyTab)} />
                 {dutyTab === "planned" && <SegmentedTabs value={dutyPeriod} items={[{ key: "week", label: "Неделя" }, { key: "month", label: "Месяц" }, { key: "nextMonth", label: "След. месяц" }, { key: "year", label: "Год" }]} onChange={(value) => setDutyPeriod(value as DutyPeriod)} />}
                 <DutyGroups groups={groupedDuty} slots={DUTY_SLOTS} todayDate={data.todayDate} emptyText="Нарядов за выбранный период нет." />
-                <div className="rounded-2xl p-3" style={subPanelStyle}>
+                {showWorkGroupSchedule && <div className="rounded-2xl p-3" style={workGroupDetailPanelStyle}>
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div><p className="text-sm font-semibold text-(--text-primary)">Рабочая группа</p><p className="mt-1 text-xs text-(--text-muted)">Дневное, ночное и информационное РГ.</p></div>
-                    <span className="rounded-lg px-2 py-1 text-xs font-mono" style={mutedBadgeStyle}>{groupedWorkDuty.length}</span>
+                    <span className="rounded-lg px-2 py-1 text-xs font-mono" style={workGroupBadgeStyle}>{groupedWorkDuty.length}</span>
                   </div>
                   <DutyGroups groups={groupedWorkDuty} slots={WORK_GROUP_SLOTS} todayDate={data.todayDate} emptyText="Назначений рабочей группы нет." />
-                </div>
+                </div>}
               </div>
             </Panel>
           </section>
         )}
       </div>
+      {leaveModalDay && (
+        <LeaveDayModal day={leaveModalDay} rows={leaveModalRows} onClose={() => setLeaveModalDay(null)} />
+      )}
+      {dutyModal && (
+        <DutyDayModal state={dutyModal} rows={dutyModalRows} onClose={() => setDutyModal(null)} />
+      )}
     </main>
   );
 }
@@ -609,6 +650,31 @@ function Panel({ title, subtitle, children, icon, accent }: { title: string; sub
         </div>
       </div>
       {children}
+    </section>
+  );
+}
+
+function CollapsiblePanel({ title, subtitle, actionLabel, children, icon, accent }: { title: string; subtitle: string; actionLabel: string; children: ReactNode; icon: ReactNode; accent: string }) {
+  return (
+    <section className="overflow-hidden rounded-2xl" style={panelStyle}>
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 border-b px-4 py-3 transition-colors hover:bg-white/[0.025] focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={{ borderColor: "var(--glass-border)", background: `linear-gradient(90deg, ${accent}18, transparent 62%)` }}>
+          <span className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl" style={{ background: `${accent}18`, border: `1px solid ${accent}45`, color: accent }}>
+              {icon}
+            </span>
+            <span className="min-w-0">
+              <h2 className="text-sm font-semibold text-(--text-primary)">{title}</h2>
+              <p className="mt-1 text-xs leading-5 text-(--text-muted)">{subtitle}</p>
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors" style={primaryButtonStyle}>
+            {actionLabel}
+            <ChevronDownIcon className="h-4 w-4 transition-transform group-open:rotate-180" />
+          </span>
+        </summary>
+        {children}
+      </details>
     </section>
   );
 }
@@ -769,6 +835,116 @@ function TaskRow({
   );
 }
 
+function WorkGroupToggle({ show, count, onToggle }: { show: boolean; count: number; onToggle: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl p-3" style={workGroupToggleStyle}>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-(--text-primary)">Рабочая группа скрыта отдельно</p>
+        <p className="mt-1 text-xs leading-5 text-(--text-muted)">РГ не смешивается с суточными нарядами. Покажите её только когда нужно сверить назначения.</p>
+      </div>
+      <button type="button" onClick={onToggle} className="cursor-pointer rounded-xl px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={show ? workGroupButtonActiveStyle : workGroupBadgeStyle}>
+        {show ? "Скрыть РГ" : `Показать РГ (${count})`}
+      </button>
+    </div>
+  );
+}
+
+function LeaveDayModal({ day, rows, onClose }: { day: string; rows: VariableSectionData["leaveRequests"]; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={modalOverlayStyle} role="presentation" onMouseDown={onClose}>
+      <section
+        className="max-h-[82vh] w-full max-w-3xl overflow-hidden rounded-3xl"
+        style={modalPanelStyle}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="leave-day-modal-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3" style={{ borderColor: "var(--glass-border)" }}>
+          <div className="min-w-0">
+            <h2 id="leave-day-modal-title" className="text-base font-semibold text-(--text-primary)">Увольнения на {day}</h2>
+            <p className="mt-1 text-xs text-(--text-muted)">Полный список людей, у которых увольнение попадает на этот день.</p>
+          </div>
+          <button type="button" onClick={onClose} className="cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={mutedButtonStyle}>
+            Закрыть
+          </button>
+        </div>
+        <div className="max-h-[68vh] overflow-y-auto p-3 [scrollbar-width:thin]">
+          {rows.length === 0 ? <Empty text="На этот день увольнений нет." /> : (
+            <div className="grid gap-2">
+              {rows.map((request) => (
+                <article key={request.id} className="rounded-2xl p-3" style={{ ...calendarItemStyle, borderLeft: `3px solid ${leaveTone(request.status)}` }}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-wrap items-start gap-2">
+                        <PersonNameText name={request.profile.name} />
+                        <span className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold" style={leaveBadgeStyle(request.status)}>{STATUS_LABELS[request.status]}</span>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-(--text-secondary)" style={wrapTextStyle}>{LEAVE_LABELS[request.leaveType]} · {request.dateFrom} — {request.dateTo}</p>
+                      <p className="mt-1 text-xs leading-5 text-(--text-muted)" style={wrapTextStyle}>Убытие: {request.departureTime || "—"} · Прибытие: {request.arrivalTime || "—"}</p>
+                      {request.comment && <p className="mt-2 text-xs leading-5 text-(--text-secondary)" style={wrapTextStyle}>{request.comment}</p>}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DutyDayModal({ state, rows, onClose }: { state: DutyModalState; rows: DutyAssignments; onClose: () => void }) {
+  const slots = state.tone === "workGroup" ? WORK_GROUP_SLOTS : DUTY_SLOTS;
+  const isWorkGroup = state.tone === "workGroup";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={modalOverlayStyle} role="presentation" onMouseDown={onClose}>
+      <section
+        className="max-h-[82vh] w-full max-w-3xl overflow-hidden rounded-3xl"
+        style={modalPanelStyle}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="duty-day-modal-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3" style={{ borderColor: "var(--glass-border)" }}>
+          <div className="min-w-0">
+            <h2 id="duty-day-modal-title" className="text-base font-semibold text-(--text-primary)">{state.label} на {state.day}</h2>
+            <p className="mt-1 text-xs text-(--text-muted)">Полный список назначений, которые попадают на этот день.</p>
+          </div>
+          <button type="button" onClick={onClose} className="cursor-pointer rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={mutedButtonStyle}>
+            Закрыть
+          </button>
+        </div>
+        <div className="max-h-[68vh] overflow-y-auto p-3 [scrollbar-width:thin]">
+          {rows.length === 0 ? <Empty text="На этот день назначений нет." /> : (
+            <div className="grid gap-2">
+              {rows.map((entry) => {
+                const slot = slots.find((item) => item.key === entry.slot);
+                return (
+                  <article key={entry.id} className="rounded-2xl p-3" style={isWorkGroup ? workGroupCalendarItemStyle : dailyCalendarItemStyle}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 flex-wrap items-start gap-2">
+                          <PersonNameText name={entry.user.name} />
+                          <span className="shrink-0 rounded-lg px-2 py-1 text-xs font-mono" style={isWorkGroup ? workGroupBadgeStyle : mutedBadgeStyle}>{slot?.short ?? entry.slot}</span>
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-(--text-secondary)" style={wrapTextStyle}>{slot?.label ?? entry.slot}</p>
+                        <p className="mt-1 text-xs leading-5 text-(--text-muted)" style={wrapTextStyle}>{entry.dateFrom} — {entry.dateTo}</p>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function MonthNavigator({ month, onChange }: { month: string; onChange: (month: string) => void }) {
   const prev = shiftMonth(month, -1);
   const next = shiftMonth(month, 1);
@@ -784,18 +960,18 @@ function MonthNavigator({ month, onChange }: { month: string; onChange: (month: 
   );
 }
 
-const LeaveMonthCalendar = memo(function LeaveMonthCalendar({ days, requestsByDay, totalCount, todayDate }: { days: string[]; requestsByDay: LeaveCalendarByDay; totalCount: number; todayDate: string }) {
+const LeaveMonthCalendar = memo(function LeaveMonthCalendar({ days, requestsByDay, totalCount, todayDate, onOpenDay }: { days: string[]; requestsByDay: LeaveCalendarByDay; totalCount: number; todayDate: string; onOpenDay: (day: string) => void }) {
   return (
     <CalendarFrame title="Календарь увольнений" subtitle="Все увольнения, весь срок, можно листать и не надо скроллить." totalCount={totalCount} tone="#fbbf24">
-      <MonthGrid days={days} todayDate={todayDate} renderDay={(day) => <LeaveDayEvents rows={requestsByDay.get(day) ?? []} day={day} />} />
+      <MonthGrid days={days} todayDate={todayDate} renderDay={(day) => <LeaveDayEvents rows={requestsByDay.get(day) ?? []} day={day} onOpenDay={onOpenDay} />} />
     </CalendarFrame>
   );
 });
 
-const DutyMonthCalendar = memo(function DutyMonthCalendar({ days, entriesByDay, totalCount, todayDate }: { days: string[]; entriesByDay: DutyCalendarByDay; totalCount: number; todayDate: string }) {
+const DutyMonthCalendar = memo(function DutyMonthCalendar({ days, entriesByDay, totalCount, workGroupCount, todayDate, showWorkGroup, onOpenDay }: { days: string[]; entriesByDay: DutyCalendarByDay; totalCount: number; workGroupCount: number; todayDate: string; showWorkGroup: boolean; onOpenDay: (state: DutyModalState) => void }) {
   return (
-    <CalendarFrame title="Календарь нарядов" subtitle="Суточные наряды и РГ разведены по цвету и отдельным блокам внутри дня." totalCount={totalCount} tone="#34d399">
-      <MonthGrid days={days} todayDate={todayDate} renderDay={(day) => <DutyDayEvents rows={entriesByDay.get(day) ?? []} day={day} />} />
+    <CalendarFrame title="Календарь нарядов" subtitle={showWorkGroup ? "Показаны суточные наряды и РГ." : `РГ скрыты: ${workGroupCount}. Включите отдельной кнопкой.`} totalCount={totalCount} tone="#34d399">
+      <MonthGrid days={days} todayDate={todayDate} renderDay={(day) => <DutyDayEvents rows={entriesByDay.get(day) ?? []} day={day} showWorkGroup={showWorkGroup} onOpenDay={onOpenDay} />} />
     </CalendarFrame>
   );
 });
@@ -840,7 +1016,7 @@ const MonthGrid = memo(function MonthGrid({ days, todayDate, renderDay }: { days
   );
 });
 
-function LeaveDayEvents({ rows, day }: { rows: VariableSectionData["leaveRequests"]; day: string }) {
+function LeaveDayEvents({ rows, day, onOpenDay }: { rows: VariableSectionData["leaveRequests"]; day: string; onOpenDay: (day: string) => void }) {
   if (rows.length === 0) return <p className="rounded-lg px-2 py-1.5 text-[11px] text-(--text-muted)" style={calendarEmptyDayStyle}>Нет увольнений</p>;
   const visible = rows.slice(0, 3);
   return (
@@ -848,7 +1024,7 @@ function LeaveDayEvents({ rows, day }: { rows: VariableSectionData["leaveRequest
       {visible.map((request) => (
         <div key={`${request.id}-${day}`} className="min-w-0 rounded-lg p-2.5" style={{ ...calendarItemStyle, borderLeft: `3px solid ${leaveTone(request.status)}` }}>
           <div className="flex min-w-0 items-start justify-between gap-2">
-            <PersonNameDisclosure name={request.profile.name} compact />
+            <PersonNameText name={request.profile.name} compact />
             <span className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px]" style={leaveBadgeStyle(request.status)}>{STATUS_LABELS[request.status]}</span>
           </div>
           <p className="mt-1 text-[11px] leading-4 text-(--text-secondary)" style={wrapTextStyle}>{LEAVE_LABELS[request.leaveType]}</p>
@@ -856,24 +1032,30 @@ function LeaveDayEvents({ rows, day }: { rows: VariableSectionData["leaveRequest
           {request.comment && <p className="mt-1 max-h-10 overflow-hidden text-[11px] leading-4 text-(--text-secondary)" style={wrapTextStyle}>{request.comment}</p>}
         </div>
       ))}
-      {rows.length > visible.length && <MoreEventsBadge count={rows.length - visible.length} />}
+      {rows.length > visible.length && (
+        <button type="button" onClick={() => onOpenDay(day)} className="cursor-pointer rounded-lg px-2 py-1 text-[10px] font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={calendarMoreStyle}>
+          Показать всех: {rows.length}
+        </button>
+      )}
     </>
   );
 }
 
-function DutyDayEvents({ rows, day }: { rows: DutyAssignments; day: string }) {
-  if (rows.length === 0) return <p className="rounded-lg px-2 py-1.5 text-[11px] text-(--text-muted)" style={calendarEmptyDayStyle}>Нет нарядов</p>;
+function DutyDayEvents({ rows, day, showWorkGroup, onOpenDay }: { rows: DutyAssignments; day: string; showWorkGroup: boolean; onOpenDay: (state: DutyModalState) => void }) {
   const dailyRows = rows.filter((entry) => DUTY_SLOTS.some((slot) => slot.key === entry.slot));
   const workGroupRows = rows.filter((entry) => WORK_GROUP_SLOTS.some((slot) => slot.key === entry.slot));
+  if (dailyRows.length === 0 && (!showWorkGroup || workGroupRows.length === 0)) {
+    return <p className="rounded-lg px-2 py-1.5 text-[11px] text-(--text-muted)" style={calendarEmptyDayStyle}>Нет суточных нарядов</p>;
+  }
   return (
     <>
-      <DutyDaySection label="Суточный" rows={dailyRows} slots={DUTY_SLOTS} day={day} tone="daily" />
-      <DutyDaySection label="РГ" rows={workGroupRows} slots={WORK_GROUP_SLOTS} day={day} tone="workGroup" />
+      <DutyDaySection label="Суточный" rows={dailyRows} slots={DUTY_SLOTS} day={day} tone="daily" onOpenDay={onOpenDay} />
+      {showWorkGroup && <DutyDaySection label="РГ" rows={workGroupRows} slots={WORK_GROUP_SLOTS} day={day} tone="workGroup" onOpenDay={onOpenDay} />}
     </>
   );
 }
 
-function DutyDaySection({ label, rows, slots, day, tone }: { label: string; rows: DutyAssignments; slots: Array<{ key: VariableDutySlot; label: string; short: string }>; day: string; tone: "daily" | "workGroup" }) {
+function DutyDaySection({ label, rows, slots, day, tone, onOpenDay }: { label: string; rows: DutyAssignments; slots: Array<{ key: VariableDutySlot; label: string; short: string }>; day: string; tone: "daily" | "workGroup"; onOpenDay: (state: DutyModalState) => void }) {
   if (rows.length === 0) return null;
   const visible = rows.slice(0, 3);
   const isWorkGroup = tone === "workGroup";
@@ -887,7 +1069,11 @@ function DutyDaySection({ label, rows, slots, day, tone }: { label: string; rows
         const slot = slots.find((item) => item.key === entry.slot);
         return <DutyCalendarCard key={`${entry.id}-${day}`} entry={entry} slot={slot} isWorkGroup={isWorkGroup} />;
       })}
-      {rows.length > visible.length && <MoreEventsBadge count={rows.length - visible.length} />}
+      {rows.length > visible.length && (
+        <button type="button" onClick={() => onOpenDay({ day, tone, label })} className="cursor-pointer rounded-lg px-2 py-1 text-[10px] font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400" style={calendarMoreStyle}>
+          Показать все: {rows.length}
+        </button>
+      )}
     </div>
   );
 }
@@ -896,7 +1082,7 @@ function DutyCalendarCard({ entry, slot, isWorkGroup }: { entry: DutyAssignments
   return (
     <div className="min-w-0 rounded-lg p-2.5" style={isWorkGroup ? workGroupCalendarItemStyle : dailyCalendarItemStyle}>
       <div className="flex min-w-0 items-start justify-between gap-2">
-        <PersonNameDisclosure name={entry.user.name} compact />
+        <PersonNameText name={entry.user.name} compact />
         <span className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-mono" style={isWorkGroup ? workGroupBadgeStyle : mutedBadgeStyle}>{slot?.short ?? entry.slot}</span>
       </div>
       <p className="mt-1 text-[11px] leading-4 text-(--text-secondary)" style={wrapTextStyle}>{slot?.label ?? entry.slot}</p>
@@ -905,24 +1091,11 @@ function DutyCalendarCard({ entry, slot, isWorkGroup }: { entry: DutyAssignments
   );
 }
 
-function MoreEventsBadge({ count }: { count: number }) {
-  return <span className="rounded-lg px-2 py-1 text-[10px] font-semibold" style={calendarMoreStyle}>+{count} ещё</span>;
-}
-
-function PersonNameDisclosure({ name, compact = false }: { name: string; compact?: boolean }) {
+function PersonNameText({ name, compact = false }: { name: string; compact?: boolean }) {
   return (
-    <details className="min-w-0 flex-1">
-      <summary
-        className={`cursor-pointer list-none font-semibold text-(--text-primary) transition-colors hover:text-emerald-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 ${compact ? "text-[11px] leading-4" : "text-sm leading-5"}`}
-        style={personSummaryStyle}
-        title={`${name} — нажмите, чтобы раскрыть полностью`}
-      >
-        {name}
-      </summary>
-      <div className="mt-1 rounded-lg px-2 py-1.5 text-xs leading-4 text-(--text-secondary)" style={personDetailsStyle}>
-        {name}
-      </div>
-    </details>
+    <p className={`min-w-0 flex-1 font-semibold text-(--text-primary) ${compact ? "text-[11px] leading-4" : "text-sm leading-5"}`} style={personNameStyle} title={name}>
+      {name}
+    </p>
   );
 }
 
@@ -955,7 +1128,7 @@ function DutyGroup({ date, entries, slots, todayDate }: { date: string; entries:
                 <p className="text-[11px] font-semibold text-(--text-muted)">{slot.label}</p>
                 <span className="rounded-md px-1.5 py-0.5 text-[10px] font-mono" style={mutedBadgeStyle}>{slot.short}</span>
               </div>
-              {entry ? <PersonNameDisclosure name={entry.user.name} /> : <p className="text-sm font-semibold text-(--text-primary)">Не назначен</p>}
+              {entry ? <PersonNameText name={entry.user.name} /> : <p className="text-sm font-semibold text-(--text-primary)">Не назначен</p>}
             </div>
           );
         })}
@@ -1132,6 +1305,7 @@ const heroStyle: CSSProperties = {
 };
 const panelStyle: CSSProperties = { background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", boxShadow: "0 12px 30px rgba(2,6,23,0.18)", contentVisibility: "auto", containIntrinsicSize: "520px" };
 const subPanelStyle: CSSProperties = { background: "rgba(15,23,42,0.32)", border: "1px solid var(--glass-border)" };
+const workGroupDetailPanelStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(124,58,237,0.12), rgba(56,189,248,0.04))", border: "1px solid rgba(167,139,250,0.28)" };
 const rowCardStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.008))", border: "1px solid var(--glass-border)", contentVisibility: "auto", containIntrinsicSize: "180px" };
 const filterStyle: CSSProperties = { background: "rgba(15,23,42,0.48)", border: "1px solid var(--glass-border)" };
 const metricStyle: CSSProperties = { background: "rgba(15,23,42,0.42)", border: "1px solid var(--glass-border)", contentVisibility: "auto", containIntrinsicSize: "96px" };
@@ -1172,7 +1346,10 @@ const workGroupCalendarItemStyle: CSSProperties = { background: "linear-gradient
 const dailyLabelStyle: CSSProperties = { color: "#34d399" };
 const workGroupLabelStyle: CSSProperties = { color: "#c4b5fd" };
 const workGroupBadgeStyle: CSSProperties = { background: "rgba(124,58,237,0.18)", border: "1px solid rgba(167,139,250,0.34)", color: "#c4b5fd" };
+const workGroupToggleStyle: CSSProperties = { background: "rgba(15,23,42,0.48)", border: "1px solid rgba(167,139,250,0.20)" };
+const workGroupButtonActiveStyle: CSSProperties = { background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.26)", color: "#fca5a5" };
 const wrapTextStyle: CSSProperties = { overflowWrap: "anywhere", wordBreak: "break-word" };
-const personSummaryStyle: CSSProperties = { ...wrapTextStyle, outlineOffset: "3px" };
-const personDetailsStyle: CSSProperties = { ...wrapTextStyle, background: "rgba(15,23,42,0.72)", border: "1px solid rgba(148,163,184,0.18)" };
+const personNameStyle: CSSProperties = { ...wrapTextStyle };
+const modalOverlayStyle: CSSProperties = { background: "rgba(2,6,23,0.76)", backdropFilter: "blur(10px)" };
+const modalPanelStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(2,6,23,0.92))", border: "1px solid var(--glass-border)", boxShadow: "0 24px 80px rgba(0,0,0,0.42)" };
 const errorBannerStyle: CSSProperties = { background: "rgba(239,68,68,0.11)", border: "1px solid rgba(239,68,68,0.28)", color: "#fca5a5" };

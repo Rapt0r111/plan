@@ -106,6 +106,13 @@
       "when": 1780474899000,
       "tag": "0014_variable_personnel_workflows",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1780565201000,
+      "tag": "0015_variable_personnel_improvements",
+      "breakpoints": true
     }
   ]
 }

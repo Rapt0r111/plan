@@ -376,7 +376,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
             <Panel title="Заявка в увольнение" subtitle="Дневной, суточный или отпуск с выбором периода." icon={<LeaveIcon className="h-4 w-4" />} accent="#fbbf24">
               <form onSubmit={handleLeave} className="space-y-3 p-4">
                 <UserSelect users={data.variableUsers} isAdmin={isAdmin} currentProfileId={defaultProfileId} />
-              <Field label="Тип увольнения">
+                <Field label="Тип увольнения">
                   <div className="relative">
                     <select name="leaveType" defaultValue="day" className={`${inputClassName} pr-10`} style={selectStyle}>
                       {Object.entries(LEAVE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -692,7 +692,7 @@ function TaskRow({
           {!canEdit && <p className="mt-2 text-[11px] text-(--text-muted)">Прошедший день заблокирован для изменений.</p>}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <span className="rounded-lg px-2 py-1 text-xs font-mono" style={task.status === "done" ? successBadgeStyle : mutedBadgeStyle }>{task.status === "done" ? "готово" : "план"}</span>
+          <span className="rounded-lg px-2 py-1 text-xs font-mono" style={task.status === "done" ? successBadgeStyle : mutedBadgeStyle}>{task.status === "done" ? "готово" : "план"}</span>
           <button type="button" disabled={isPending || !canEdit} onClick={() => onToggle(task.id, task.status === "done" ? "todo" : "done")} className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50" style={task.status === "done" ? mutedButtonStyle : successButtonStyle}>
             {task.status === "done" ? "Вернуть" : "Готово"}
           </button>

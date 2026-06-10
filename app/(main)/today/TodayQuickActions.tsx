@@ -96,10 +96,10 @@ export function TodayQuickActions({ item, todayKey }: { item: MyDayAttentionItem
   }
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]" onClick={(event) => event.stopPropagation()}>
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.6875rem]" onClick={(event) => event.stopPropagation()} aria-live="polite">
       <a
         href={item.href}
-        className="rounded-lg px-2.5 py-1 font-semibold transition-colors hover:bg-[var(--glass-02)]"
+        className="inline-flex min-h-11 items-center rounded-lg px-3 font-semibold transition-colors hover:bg-[var(--glass-02)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring-color) sm:min-h-9"
         style={{ border: "1px solid var(--glass-border)", color: "var(--text-secondary)" }}
       >
         Открыть
@@ -108,7 +108,7 @@ export function TodayQuickActions({ item, todayKey }: { item: MyDayAttentionItem
         type="button"
         disabled={!!pending}
         onClick={() => run("complete", complete)}
-        className="rounded-lg px-2.5 py-1 font-semibold transition-colors disabled:opacity-50"
+        className="min-h-11 rounded-lg px-3 font-semibold transition-colors disabled:cursor-wait disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring-color) sm:min-h-9"
         style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.28)", color: "#4ade80" }}
       >
         {pending === "complete" ? "..." : "Завершить"}
@@ -119,7 +119,7 @@ export function TodayQuickActions({ item, todayKey }: { item: MyDayAttentionItem
             type="button"
             disabled={!!pending}
             onClick={() => run("due", changeDueDate)}
-            className="rounded-lg px-2.5 py-1 font-semibold transition-colors disabled:opacity-50"
+            className="min-h-11 rounded-lg px-3 font-semibold transition-colors disabled:cursor-wait disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring-color) sm:min-h-9"
             style={{ border: "1px solid var(--glass-border)", color: "var(--text-secondary)" }}
           >
             Срок
@@ -128,7 +128,7 @@ export function TodayQuickActions({ item, todayKey }: { item: MyDayAttentionItem
             type="button"
             disabled={!!pending}
             onClick={() => run("tomorrow", postponeToTomorrow)}
-            className="rounded-lg px-2.5 py-1 font-semibold transition-colors disabled:opacity-50"
+            className="min-h-11 rounded-lg px-3 font-semibold transition-colors disabled:cursor-wait disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring-color) sm:min-h-9"
             style={{ border: "1px solid var(--glass-border)", color: "var(--text-secondary)" }}
           >
             На завтра
@@ -137,7 +137,7 @@ export function TodayQuickActions({ item, todayKey }: { item: MyDayAttentionItem
             type="button"
             disabled={!!pending}
             onClick={() => run("comment", addComment)}
-            className="rounded-lg px-2.5 py-1 font-semibold transition-colors disabled:opacity-50"
+            className="min-h-11 rounded-lg px-3 font-semibold transition-colors disabled:cursor-wait disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring-color) sm:min-h-9"
             style={{ border: "1px solid var(--glass-border)", color: "var(--text-secondary)" }}
           >
             Комментарий
@@ -148,7 +148,7 @@ export function TodayQuickActions({ item, todayKey }: { item: MyDayAttentionItem
             value={item.status}
             disabled={!!pending}
             onChange={(event) => run("status", () => patchStatus(event.target.value as MyDayActionStatus))}
-            className="rounded-lg px-2.5 py-1 text-[11px] font-semibold outline-none disabled:opacity-50"
+            className="min-h-11 rounded-lg px-3 text-[0.6875rem] font-semibold outline-none disabled:cursor-wait disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-(--focus-ring-color) sm:min-h-9"
             style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)" }}
           >
             {statusOptions.map((status) => (
@@ -157,7 +157,7 @@ export function TodayQuickActions({ item, todayKey }: { item: MyDayAttentionItem
           </select>
         </>
       )}
-      {error && <span className="basis-full" style={{ color: "#f87171" }}>{error}</span>}
+      {error && <span className="basis-full rounded-lg bg-red-400/8 px-3 py-2 text-xs" role="alert" style={{ color: "#f87171" }}>{error}</span>}
     </div>
   );
 }

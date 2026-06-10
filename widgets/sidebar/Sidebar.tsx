@@ -4,7 +4,7 @@
  */
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,24 +18,25 @@ const SidebarContext = createContext<{
   isCollapsed: boolean;
   mounted: boolean;
   toggle: () => void;
-}>({ isCollapsed: false, mounted: false, toggle: () => {} });
+  collapse: () => void;
+}>({ isCollapsed: false, mounted: false, toggle: () => {}, collapse: () => {} });
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  const [isCollapsed, setIsCollapsed] = useState(() => (
-    typeof window !== "undefined" && localStorage.getItem("sidebar-collapsed") === "true"
-  ));
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const mounted = true;
 
-  const toggle = () => {
+  const toggle = useCallback(() => {
     setIsCollapsed((prev) => {
       const next = !prev;
       localStorage.setItem("sidebar-collapsed", String(next));
       return next;
     });
-  };
+  }, []);
+
+  const collapse = useCallback(() => setIsCollapsed(true), []);
 
   return (
-    <SidebarContext.Provider value={{ isCollapsed, mounted, toggle }}>
+    <SidebarContext.Provider value={{ isCollapsed, mounted, toggle, collapse }}>
       {children}
     </SidebarContext.Provider>
   );
@@ -90,13 +91,23 @@ type NavGroup = { id: string; title: string; caption: string; items: NavItem[] }
 
 export function Sidebar({ epics, users: _users, session, isVariableRestricted = false, isPasswordChangeRequired = false }: Props) {
   const pathname = usePathname();
-  const { isCollapsed, mounted, toggle } = useSidebar();
+  const { isCollapsed, mounted, toggle, collapse } = useSidebar();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ work: true, account: true, epics: true });
   void _users;
 
   const sessionProfileId = (session?.user as { profileId?: number | null } | undefined)?.profileId;
   const isLimitedAccount = !!session?.user && session.user.role !== "admin" && typeof sessionProfileId !== "number";
   const isRestrictedToPasswordChange = isPasswordChangeRequired;
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const collapseForNarrowViewport = (event: MediaQueryListEvent) => {
+      if (event.matches) collapse();
+    };
+    if (media.matches || localStorage.getItem("sidebar-collapsed") === "true") collapse();
+    media.addEventListener("change", collapseForNarrowViewport);
+    return () => media.removeEventListener("change", collapseForNarrowViewport);
+  }, [collapse]);
   const canUseVariableSection = session?.user?.role === "admin" || isVariableRestricted;
 
   const groups = useMemo<NavGroup[]>(() => ([

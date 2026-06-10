@@ -9,7 +9,7 @@
  *  • Removed 3D tilt (preserve-3d caused text blur on child TaskCards)
  *  • Hover glow + ambient mesh BG retained
  */
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { applyFilters, type FilterState } from "@/features/filters/SmartFilters";
@@ -30,8 +30,7 @@ export interface EpicColumnProps {
 }
 
 // ── Progress ring ──────────────────────────────────────────────────────────────
-function ProgressRing({ pct, color }: { pct: number; color: string }) {
-  const { noMotion } = usePerformanceMode();
+function ProgressRing({ pct, color, noMotion }: { pct: number; color: string; noMotion: boolean }) {
   const size = 34;
   const R = 13;
   const C = 2 * Math.PI * R;
@@ -75,12 +74,15 @@ function StatusLabel({
   status,
   count,
   meta,
+  lowMotion,
+  noMotion,
 }: {
   status: TaskStatus;
   count: number;
   meta: (typeof STATUS_META)[TaskStatus];
+  lowMotion: boolean;
+  noMotion: boolean;
 }) {
-  const { lowMotion, noMotion } = usePerformanceMode();
   return (
     <div className="flex items-center gap-2 mb-2">
       <div
@@ -168,8 +170,7 @@ function DropZone({
 }
 
 // ── Chevron icon ──────────────────────────────────────────────────────────────
-function ChevronIcon({ collapsed }: { collapsed: boolean }) {
-  const { noMotion } = usePerformanceMode();
+function ChevronIcon({ collapsed, noMotion }: { collapsed: boolean; noMotion: boolean }) {
   return (
     <motion.svg
       width="14" height="14" viewBox="0 0 14 14"
@@ -185,10 +186,11 @@ function ChevronIcon({ collapsed }: { collapsed: boolean }) {
 // ── Collapsed summary pills ────────────────────────────────────────────────────
 function CollapsedSummary({
   byStatus,
+  noMotion,
 }: {
   byStatus: Record<TaskStatus, TaskView[]>;
+  noMotion: boolean;
 }) {
-  const { noMotion } = usePerformanceMode();
   const entries = STATUS_ORDER
     .map((s) => ({ status: s, count: byStatus[s].length, meta: STATUS_META[s] }))
     .filter((e) => e.count > 0);
@@ -230,9 +232,7 @@ export function EpicColumn({
   const { getDragProps, getDropProps, dragState } = useBoardDnD();
   const defaultCollapsed = usePrefsStore((s) => s.prefs.epicColumnsCollapsed);
   const { lowMotion, noMotion } = usePerformanceMode();
-  const [hovered, setHovered] = useState(false);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const cardRef = useRef<HTMLDivElement>(null);
 
   const visibleTasks = useMemo(() => applyFilters(epic.tasks, filters), [epic.tasks, filters]);
   const byStatus = useMemo(() => {
@@ -258,20 +258,13 @@ export function EpicColumn({
 
   return (
     <motion.div
-      ref={cardRef}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className="group/epic-column"
       layout={!lowMotion}
+      style={{ "--epic-color": epic.color } as CSSProperties}
     >
       <motion.div
         layout={!lowMotion}
-        className="flex flex-col rounded-2xl overflow-hidden relative"
-        animate={{
-          boxShadow: hovered && !lowMotion
-            ? `0 0 0 1px ${epic.color}45, 0 24px 64px rgba(0,0,0,0.55), 0 0 48px ${epic.color}14`
-            : `0 0 0 1px var(--section-border), 0 4px 20px rgba(0,0,0,0.3)`,
-        }}
-        transition={lowMotion ? { duration: 0 } : { duration: 0.35 }}
+        className="epic-column-shell flex flex-col rounded-2xl overflow-hidden relative"
         style={{
           background: "var(--bg-elevated)",
           borderLeft: `3px solid ${epic.color}`,
@@ -279,14 +272,12 @@ export function EpicColumn({
       >
         {/* Ambient mesh background */}
         <div
-          className="absolute inset-0 pointer-events-none"
+          className="epic-column-ambient absolute inset-0 pointer-events-none"
           style={{
             background: `
               radial-gradient(ellipse 75% 45% at 8% 0%, ${epic.color}12 0%, transparent 55%),
               radial-gradient(ellipse 45% 55% at 92% 100%, ${epic.color}08 0%, transparent 52%)
             `,
-            opacity: hovered && !lowMotion ? 1 : 0.65,
-            transition: lowMotion ? "none" : "opacity 0.4s ease",
           }}
         />
 
@@ -323,14 +314,12 @@ export function EpicColumn({
                 >
                   {/* Pulsing orb */}
                   <div className="relative shrink-0 mt-0.5">
-                    <motion.div
+                    <div
                       className="w-2.5 h-2.5 rounded-full"
                       style={{
                         backgroundColor: epic.color,
                         boxShadow: `0 0 8px ${epic.color}, 0 0 16px ${epic.color}60`,
                       }}
-                      animate={hovered && !lowMotion ? { scale: [1, 1.25, 1] } : {}}
-                      transition={hovered && !lowMotion ? { duration: 1.8, repeat: Infinity } : undefined}
                     />
                   </div>
 
@@ -368,7 +357,7 @@ export function EpicColumn({
                   whileTap={lowMotion ? undefined : { scale: 0.88 }}
                   title={collapsed ? "Развернуть" : "Свернуть"}
                 >
-                  <ChevronIcon collapsed={collapsed} />
+                  <ChevronIcon collapsed={collapsed} noMotion={noMotion} />
                 </motion.button>
               </div>
 
@@ -439,7 +428,7 @@ export function EpicColumn({
               >
                 {visibleTasks.length}
               </motion.span>
-              <ProgressRing pct={pct} color={epic.color} />
+              <ProgressRing pct={pct} color={epic.color} noMotion={noMotion} />
             </div>
           </div>
         </div>
@@ -447,7 +436,7 @@ export function EpicColumn({
         {/* ── COLLAPSED SUMMARY ──────────────────────────────────── */}
         <AnimatePresence>
           {collapsed && (
-            <CollapsedSummary byStatus={byStatus} />
+            <CollapsedSummary byStatus={byStatus} noMotion={noMotion} />
           )}
         </AnimatePresence>
 
@@ -480,7 +469,13 @@ export function EpicColumn({
                       animate={noMotion ? undefined : { opacity: 1, y: 0 }}
                       transition={noMotion ? undefined : { duration: 0.3, delay: sIdx * 0.05 }}
                     >
-                      <StatusLabel status={status} count={tasks.length} meta={meta} />
+                      <StatusLabel
+                        status={status}
+                        count={tasks.length}
+                        meta={meta}
+                        lowMotion={lowMotion}
+                        noMotion={noMotion}
+                      />
 
                       <div {...getDropProps(status)}>
                         <DropZone isActive={isDropActive} color={epic.color}>

@@ -64,7 +64,7 @@ export function MainContent({ children }: { children: React.ReactNode }) {
       }}
     >
       <div
-        className="pointer-events-none fixed top-0 right-0 z-0 h-72 bg-linear-to-b from-[rgba(20,184,166,0.06)] to-transparent"
+        className="pointer-events-none fixed top-0 right-0 z-0 h-72 bg-linear-to-b from-[var(--secondary-soft)] to-transparent"
         style={{
           left: isCollapsed ? "72px" : "var(--sidebar-w)",
           transition: bgTransitionStyle,
@@ -152,9 +152,9 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
         transition: sidebarTransitionStyle,
       }}
     >
-      <div className="absolute inset-0 z-0" style={{ background: "linear-gradient(180deg, color-mix(in srgb, var(--sidebar-top) 92%, #14b8a6 8%) 0%, var(--bg-base) 100%)" }} />
+      <div className="absolute inset-0 z-0" style={{ background: "linear-gradient(180deg, color-mix(in oklch, var(--sidebar-top) 92%, var(--secondary-500) 8%) 0%, var(--bg-base) 100%)" }} />
       <div className="pointer-events-none absolute -left-16 top-8 h-48 w-48 rounded-full bg-[var(--accent-500)] opacity-[0.08] blur-3xl" />
-      <div className="pointer-events-none absolute bottom-16 right-0 h-36 w-36 rounded-full bg-teal-400 opacity-[0.06] blur-3xl" />
+      <div className="pointer-events-none absolute bottom-16 right-0 h-36 w-36 rounded-full bg-[var(--secondary-500)] opacity-[0.06] blur-3xl" />
 
       {mounted && (
         <button
@@ -182,14 +182,14 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
           style={{ height: "var(--header-h)" }}
         >
           <div className={cn("flex items-center gap-2.5", isCollapsed && "justify-center")}>
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-300 via-[var(--accent-400)] to-[var(--accent-500)] shadow-[0_0_24px_var(--accent-glow)] ring-1 ring-white/10">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent-500)] shadow-[0_0_20px_var(--accent-glow)] ring-1 ring-[var(--accent-border)]">
               <LogoSvg />
             </div>
             <span className={cn(
               "overflow-hidden whitespace-nowrap text-sm font-semibold tracking-tight text-[var(--text-primary)] transition-all duration-300",
               isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
             )}>
-              Task<span className="text-teal-300">Flow</span>
+              Task<span className="text-[var(--secondary-400)]">Flow</span>
             </span>
           </div>
         </div>
@@ -309,7 +309,7 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
           ) : isCollapsed ? (
             <Link
               href="/login"
-              className="mx-auto flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-[rgba(20,184,166,0.28)] bg-[var(--glass-01)] text-[var(--accent-400)] transition-all hover:bg-[var(--glass-02)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)]"
+              className="mx-auto flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--accent-400)] transition-all hover:bg-[var(--glass-02)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)]"
               title="Войти"
             >
               <LoginIcon />
@@ -319,7 +319,7 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
               <p className="text-xs font-semibold text-[var(--text-primary)]">Войдите в аккаунт</p>
               <p className="mt-1 text-[11px] leading-snug text-[var(--text-muted)]">Доступ к профилю и задачам после авторизации.</p>
               <div className="grid grid-cols-2 gap-2 pt-3">
-                <Link href="/login" className="cursor-pointer rounded-xl border border-[rgba(20,184,166,0.28)] bg-[var(--accent-glow)] px-3 py-2 text-center text-xs font-semibold text-[var(--accent-400)] transition-colors hover:bg-[var(--glass-02)]">
+                <Link href="/login" className="cursor-pointer rounded-xl border border-[var(--accent-border)] bg-[var(--accent-soft)] px-3 py-2 text-center text-xs font-semibold text-[var(--accent-400)] transition-colors hover:bg-[var(--glass-02)]">
                   Войти
                 </Link>
                 <Link href="/register" className="cursor-pointer rounded-xl border border-[var(--glass-border)] bg-[var(--glass-02)] px-3 py-2 text-center text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]">
@@ -376,13 +376,12 @@ function SidebarSection({ group, pathname, isCollapsed, open, onToggle }: {
                     className={cn(
                       "nav-item group relative flex cursor-pointer items-center rounded-2xl border transition-all duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)] motion-reduce:transition-none motion-reduce:hover:translate-y-0",
                       active
-                        ? "border-[rgba(20,184,166,0.32)] bg-[var(--accent-glow)] text-[var(--accent-400)] shadow-[0_10px_28px_rgba(20,184,166,0.12)]"
+                        ? "border-[var(--secondary-border)] bg-[var(--secondary-soft)] text-[var(--secondary-400)]"
                         : "border-transparent text-[var(--text-secondary)] hover:border-[var(--glass-border)] hover:bg-[var(--glass-01)] hover:text-[var(--text-primary)]",
                       isCollapsed ? "justify-center p-3" : "gap-3 px-3 py-2.5"
                     )}
                     title={isCollapsed ? label : undefined}
                   >
-                    {active && !isCollapsed && <span className="absolute left-1 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-[var(--accent-400)]" />}
                     <Icon active={active} />
                     {!isCollapsed && <span className="truncate text-xs">{label}</span>}
                   </Link>
@@ -443,7 +442,7 @@ function ChevronIcon({ isCollapsed }: { isCollapsed: boolean }) {
 
 function DashboardIcon({ active }: { active: boolean }) {
   return (
-    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="currentColor">
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--secondary-400)]" : "text-current")} viewBox="0 0 16 16" fill="currentColor">
       <rect x="1" y="1" width="6" height="6" rx="1.5" fillOpacity={active ? 1 : 0.7} />
       <rect x="9" y="1" width="6" height="6" rx="1.5" fillOpacity={active ? 0.7 : 0.4} />
       <rect x="1" y="9" width="6" height="6" rx="1.5" fillOpacity={active ? 0.7 : 0.4} />
@@ -454,7 +453,7 @@ function DashboardIcon({ active }: { active: boolean }) {
 
 function ManagementIcon({ active }: { active: boolean }) {
   return (
-    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--secondary-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 13.5h12" />
       <path d="M3.5 11V7.5" />
       <path d="M8 11V3" />
@@ -466,7 +465,7 @@ function ManagementIcon({ active }: { active: boolean }) {
 
 function TodayIcon({ active }: { active: boolean }) {
   return (
-    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--secondary-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="2.5" width="12" height="11" rx="2" />
       <path d="M5 1.5v2M11 1.5v2M2.5 6h11" />
       <path d="M5 9.2l1.6 1.6L11 7.5" />
@@ -476,10 +475,10 @@ function TodayIcon({ active }: { active: boolean }) {
 
 function OperativeIcon({ active }: { active: boolean }) {
   return (
-    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--secondary-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
       <circle cx="8" cy="4.5" r="2.2" />
       <path d="M3 14c0-2.76 2.24-5 5-5s5 2.24 5 5" />
-      <circle cx="12.5" cy="11.5" r="2.8" fill={active ? "var(--accent-400)" : "transparent"} stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="12.5" cy="11.5" r="2.8" fill={active ? "var(--secondary-400)" : "transparent"} stroke="currentColor" strokeWidth="1.2" />
       <path d="M11.2 11.5l1 1 2-2" strokeWidth="1.2" />
     </svg>
   );
@@ -487,11 +486,11 @@ function OperativeIcon({ active }: { active: boolean }) {
 
 function PersonalPlanIcon({ active }: { active: boolean }) {
   return (
-    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--secondary-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="2.5" width="12" height="11" rx="2" />
       <path d="M5 1.5v2M11 1.5v2M2.5 6h11" />
       <path d="M5 9h2.2M5 11.5h4.5" />
-      <circle cx="11.5" cy="9.5" r="1.4" fill={active ? "var(--accent-400)" : "transparent"} stroke="currentColor" strokeWidth="1.1" />
+      <circle cx="11.5" cy="9.5" r="1.4" fill={active ? "var(--secondary-400)" : "transparent"} stroke="currentColor" strokeWidth="1.1" />
     </svg>
   );
 }
@@ -507,7 +506,7 @@ function LoginIcon() {
 
 function SettingsIcon({ active }: { active: boolean }) {
   return (
-    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--accent-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round">
+    <svg className={cn("w-4 h-4 shrink-0", active ? "text-[var(--secondary-400)]" : "text-current")} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={active ? "1.8" : "1.5"} strokeLinecap="round">
       <circle cx="8" cy="8" r="2.2" />
       <path d="M8 1.5v1.3M8 13.2v1.3M1.5 8h1.3M13.2 8h1.3M3.4 3.4l.92.92M11.68 11.68l.92.92M3.4 12.6l.92-.92M11.68 4.32l.92-.92" />
     </svg>

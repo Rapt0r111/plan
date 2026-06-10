@@ -15,9 +15,11 @@
  *
  * router.refresh() убран — не нужен, store сам обновляет UI оптимистично.
  */
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useId } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
+import { useAccessibleDialog } from "@/shared/lib/hooks/useAccessibleDialog";
+import { useBodyScrollLock } from "@/shared/lib/hooks/useBodyScrollLock";
 
 interface Props {
   open: boolean;
@@ -108,16 +110,20 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (open) {
-      setTimeout(() => inputRef.current?.focus(), 80);
       setIsOfflineMode(typeof navigator !== "undefined" && !navigator.onLine);
     } else {
       setTitle(""); setDesc(""); setColor("#8b5cf6");
       setStartDate(""); setEndDate(""); setError(null); setIsOfflineMode(false);
     }
   }, [open]);
+
+  useAccessibleDialog(open, dialogRef, onClose, { initialFocusRef: inputRef });
+  useBodyScrollLock(open);
 
   // Следим за переключением офлайн/онлайн пока модал открыт
   useEffect(() => {
@@ -164,9 +170,8 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
   }, [title, description, color, startDate, endDate, saving, createEpic, onClose, onCreated]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
-  }, [onClose, handleSave]);
+  }, [handleSave]);
 
   return (
     <AnimatePresence>
@@ -186,6 +191,11 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
             style={{ pointerEvents: "none" }}
           >
             <motion.div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              tabIndex={-1}
               className="w-full flex gap-6 items-start"
               style={{ maxWidth: 860, pointerEvents: "auto" }}
               initial={{ opacity: 0, scale: 0.94, y: 24 }}
@@ -219,7 +229,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                         </svg>
                       </div>
                       <div>
-                        <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Новый эпик</h2>
+                        <h2 id={titleId} className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Новый эпик</h2>
                         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                           {isOfflineMode
                             ? "Офлайн — будет синхронизирован при подключении"
@@ -240,8 +250,8 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                           Офлайн
                         </motion.div>
                       )}
-                      <button onClick={onClose}
-                        className="w-7 h-7 rounded-xl flex items-center justify-center transition-all hover:opacity-70"
+                      <button type="button" aria-label="Закрыть создание эпика" onClick={onClose}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center transition-all hover:opacity-70"
                         style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)", color: "var(--text-muted)" }}>
                         <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                           <path d="M2 2l8 8M10 2L2 10" />
@@ -273,6 +283,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                     </label>
                     <input
                       ref={inputRef}
+                      aria-label="Название эпика"
                       type="text"
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}

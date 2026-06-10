@@ -226,10 +226,17 @@ export function BoardTaskCard({
   function handleHtmlDrag(e: React.DragEvent<HTMLDivElement>) {
     if (e.clientX !== 0) dragX.set(e.clientX);
   }
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    onClick?.();
+  }
 
   return (
     <div
       draggable
+      role="button"
+      aria-label={`Открыть задачу: ${title}`}
       data-priority={priority}
       tabIndex={0}
       className={isFocused ? "focus-heartbeat" : ""}
@@ -237,6 +244,7 @@ export function BoardTaskCard({
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
       onDragStart={handleHtmlDragStart}
       onDragEnd={handleHtmlDragEnd}
       onDrag={handleHtmlDrag}

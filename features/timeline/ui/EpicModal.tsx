@@ -7,7 +7,7 @@
  *   - Footer bg: rgba(255,255,255,0.012) → var(--glass-01)
  *   - Текстовые цвета используют CSS-переменные
  */
-import { useState, useMemo, useEffect, useSyncExternalStore } from "react";
+import { useState, useMemo, useRef, useId, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { formatDate } from "@/shared/lib/utils";
@@ -15,6 +15,8 @@ import { useTaskStore } from "@/shared/store/useTaskStore";
 import { Ring } from "./Ring";
 import { ModalTaskCard } from "./ModalTaskCard";
 import type { EpicWithTasks, TaskView, TaskStatus } from "@/shared/types";
+import { useAccessibleDialog } from "@/shared/lib/hooks/useAccessibleDialog";
+import { useBodyScrollLock } from "@/shared/lib/hooks/useBodyScrollLock";
 
 // ── SSR-safe client gate ──────────────────────────────────────────────────────
 
@@ -48,6 +50,8 @@ interface Props {
 
 export function EpicModal({ epic, onClose }: Props) {
   const isClient = useIsClient();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   const liveEpic = useTaskStore((s) => s.getEpic(epic.id)) ?? epic;
 
   const pct = liveEpic.progress.total > 0
@@ -76,11 +80,8 @@ export function EpicModal({ epic, onClose }: Props) {
     [filter, byStatus],
   );
 
-  useEffect(() => {
-    const fn = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", fn);
-    return () => window.removeEventListener("keydown", fn);
-  }, [onClose]);
+  useAccessibleDialog(isClient, panelRef, onClose);
+  useBodyScrollLock(isClient);
 
   if (!isClient) return null;
 
@@ -100,7 +101,12 @@ export function EpicModal({ epic, onClose }: Props) {
         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       >
         <motion.div
+          ref={panelRef}
           key="panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
           initial={{ opacity: 0, scale: 0.94, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 20 }}
@@ -137,7 +143,7 @@ export function EpicModal({ epic, onClose }: Props) {
                 {liveEpic.title.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+                <h2 id={titleId} className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
                   {liveEpic.title}
                 </h2>
                 {liveEpic.description && (
@@ -154,8 +160,10 @@ export function EpicModal({ epic, onClose }: Props) {
               <div className="flex items-center gap-2 shrink-0">
                 <Ring pct={pct} color={liveEpic.color} size={44} />
                 <button
+                  type="button"
+                  aria-label="Закрыть эпик"
                   onClick={onClose}
-                  className="w-7 h-7 rounded-xl flex items-center justify-center transition-all hover:opacity-70"
+                  className="w-8 h-8 rounded-xl flex items-center justify-center transition-all hover:opacity-70"
                   style={{ background: "var(--glass-02)", color: "var(--text-muted)" }}
                 >
                   <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none"

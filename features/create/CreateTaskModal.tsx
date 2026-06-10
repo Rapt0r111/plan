@@ -4,13 +4,15 @@
  * Эпик выбирается из выпадающего списка с живым поиском.
  * MULTI-ASSIGNEE: исполнители выбираются chip-пикером с мультивыбором.
  */
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useId } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { PRIORITY_META, PRIORITY_ORDER, STATUS_META } from "@/shared/config/task-meta";
 import { suggestPriority } from "@/features/ai/useAISuggestions";
 import type { TaskStatus, TaskPriority } from "@/shared/types";
 import { type UserOption } from "@/shared/lib/utils";
+import { useAccessibleDialog } from "@/shared/lib/hooks/useAccessibleDialog";
+import { useBodyScrollLock } from "@/shared/lib/hooks/useBodyScrollLock";
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -159,6 +161,8 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
   const priorityTouched = useRef(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   const selectedEpic = epics.find(e => e.id === epicId);
   const accentColor = selectedEpic?.color ?? "#8b5cf6";
@@ -175,7 +179,6 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
 
   useEffect(() => {
     if (open) {
-      setTimeout(() => inputRef.current?.focus(), 80);
       if (defaultEpicId) setEpicId(defaultEpicId);
     } else {
       setTitle(""); setDescription(""); setStatus("todo"); setPriority("medium");
@@ -183,6 +186,9 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
       priorityTouched.current = false;
     }
   }, [open, defaultEpicId]);
+
+  useAccessibleDialog(open, dialogRef, onClose, { initialFocusRef: inputRef });
+  useBodyScrollLock(open);
 
   const toggleAssignee = useCallback((id: number) => {
     setAssigneeIds(prev =>
@@ -246,9 +252,8 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
   }, [title, epicId, status, priority, dueDate, description, assigneeIds, saving, createTask, onClose]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
-  }, [onClose, handleSave]);
+  }, [handleSave]);
 
   return (
     <AnimatePresence>
@@ -268,6 +273,11 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
             style={{ pointerEvents: "none" }}
           >
             <motion.div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              tabIndex={-1}
               className="w-full max-w-lg relative rounded-3xl overflow-hidden"
               style={{
                 pointerEvents: "auto",
@@ -305,7 +315,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                       </svg>
                     </div>
                     <div>
-                      <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                      <h2 id={titleId} className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
                         Новая задача
                       </h2>
                       {selectedEpic && (
@@ -317,8 +327,10 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                     </div>
                   </div>
                   <button
+                    type="button"
+                    aria-label="Закрыть создание задачи"
                     onClick={onClose}
-                    className="w-7 h-7 rounded-xl flex items-center justify-center hover:opacity-70 transition-opacity"
+                    className="w-8 h-8 rounded-xl flex items-center justify-center hover:opacity-70 transition-opacity"
                     style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)", color: "var(--text-muted)" }}
                   >
                     <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
@@ -345,6 +357,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                 {/* Title */}
                 <input
                   ref={inputRef}
+                  aria-label="Название задачи"
                   value={title}
                   onChange={handleTitleChange}
                   placeholder="Название задачи..."

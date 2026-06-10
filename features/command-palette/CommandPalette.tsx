@@ -14,6 +14,8 @@ import { scoreFuzzy, CATEGORY_ORDER, CATEGORY_LABEL } from "./model/fuzzy";
 import { CommandRow } from "./ui/CommandRow";
 import { PaletteFooter } from "./ui/PaletteFooter";
 import type { CommandCategory } from "./model/fuzzy";
+import { useAccessibleDialog } from "@/shared/lib/hooks/useAccessibleDialog";
+import { useBodyScrollLock } from "@/shared/lib/hooks/useBodyScrollLock";
 
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -25,6 +27,7 @@ export function CommandPalette() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const inputId = useId();
 
   const debouncedQuery = useDebounce(query, SEARCH_DEBOUNCE_MS);
@@ -33,9 +36,11 @@ export function CommandPalette() {
     if (isOpen) {
       setQuery(initialQuery);
       setSelectedIndex(0);
-      requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen, initialQuery]);
+
+  useAccessibleDialog(isOpen, panelRef, close, { initialFocusRef: inputRef });
+  useBodyScrollLock(isOpen);
 
   useKeyboardShortcuts([
     { key: "k", meta: true, handler: () => (isOpen ? close() : open()) },
@@ -126,10 +131,12 @@ export function CommandPalette() {
 
           {/* Panel — was rgba(13,15,26,0.95), now var(--modal-bg) */}
           <motion.div
+            ref={panelRef}
             key="cp-panel"
             role="dialog"
             aria-label="Command palette"
             aria-modal="true"
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.96, y: -12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -8 }}

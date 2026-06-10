@@ -11,6 +11,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
 import { useBodyScrollLock } from "@/shared/lib/hooks/useBodyScrollLock";
+import { useAccessibleDialog } from "@/shared/lib/hooks/useAccessibleDialog";
 import { SubtaskList } from "./SubtaskList";
 import { AssigneeManager } from "@/shared/ui/AssigneeManager";
 import { formatDate, formatDateInput } from "@/shared/lib/utils";
@@ -234,15 +235,7 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
     updateTaskStatus(liveTask.id, nextStatus, { blockedReason: reason });
   }, [liveTask, updateTaskStatus]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [isOpen, onClose]);
-
+  useAccessibleDialog(isOpen && Boolean(liveTask), panelRef, onClose);
   useBodyScrollLock(isOpen);
 
   return (
@@ -271,6 +264,10 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
             <motion.div
               ref={panelRef}
               key="panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Задача: ${liveTask.title}`}
+              tabIndex={-1}
               className="relative flex flex-col overflow-hidden"
               variants={panelVariants}
               initial="hidden" animate="visible" exit="exit"
@@ -340,8 +337,10 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
                 </motion.button>
 
                 <button
+                  type="button"
+                  aria-label="Закрыть карточку задачи"
                   onClick={onClose}
-                  className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
+                  className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
                   style={{
                     background: "var(--glass-02)",
                     border:     "1px solid var(--glass-border)",

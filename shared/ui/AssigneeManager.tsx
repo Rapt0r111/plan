@@ -76,8 +76,10 @@ export function AssigneeManager({ taskId, assignees, users }: Props) {
             {a.roleMeta.short}
           </span>
           <button
+            type="button"
+            aria-label={`Удалить ${a.name} из исполнителей`}
             onClick={() => handleRemove(a.id)}
-            className="opacity-0 group-hover/a:opacity-100 w-4 h-4 rounded flex items-center justify-center transition-all"
+            className="opacity-0 group-hover/a:opacity-100 focus-visible:opacity-100 w-6 h-6 rounded flex items-center justify-center transition-all"
             style={{ color: "var(--text-muted)" }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "#f87171"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}

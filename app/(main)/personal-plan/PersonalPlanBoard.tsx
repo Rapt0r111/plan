@@ -15,6 +15,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   DndContext,
+  KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
@@ -24,6 +25,7 @@ import {
 import {
   SortableContext,
   arrayMove,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -209,7 +211,10 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
     [mutate],
   );
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const reorderUserBlocks = useCallback(async (userIds: number[]) => {
     if (userIds.length <= 1) return;
@@ -1109,7 +1114,7 @@ const PersonalPlanItemRow = memo(function PersonalPlanItemRow({
           onClick={handleToggle}
           aria-pressed={state.isCompleted}
           aria-label={state.isCompleted ? "Снять отметку выполнения" : "Отметить задачу выполненной"}
-          className="cursor-pointer mt-0.5 h-5 w-5 rounded-lg shrink-0 flex items-center justify-center text-[10px] leading-none transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
+          className="cursor-pointer mt-0.5 h-6 w-6 rounded-lg shrink-0 flex items-center justify-center text-[10px] leading-none transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
           style={checkBtnStyle}
           title="Отметить выполнение"
         >
@@ -1388,7 +1393,7 @@ function IconButton({
       onClick={onClick}
       aria-label={label}
       title={title}
-      className={`cursor-pointer flex h-5 min-w-5 items-center justify-center rounded-md text-[11px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
+      className={`cursor-pointer flex h-6 min-w-6 items-center justify-center rounded-md text-[11px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${
         tone === "danger"
           ? "text-red-300 focus-visible:outline-red-400 hover:bg-red-500/10"
           : "text-(--text-muted) focus-visible:outline-violet-400 hover:bg-white/[0.05] hover:text-(--text-primary)"

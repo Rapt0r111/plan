@@ -92,9 +92,10 @@ const SortableTaskCard = memo(function SortableTaskCard({
       >
         {isAdmin && (
           <button
+            type="button"
             {...attributes}
             {...listeners}
-            className="shrink-0 w-5 h-5 flex items-center justify-center opacity-30 hover:opacity-70 transition-opacity cursor-grab active:cursor-grabbing"
+            className="shrink-0 w-6 h-6 flex items-center justify-center opacity-30 hover:opacity-70 focus-visible:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
             aria-label="Перетащить задачу"
           >
             <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none"

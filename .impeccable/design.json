@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-10T00:00:00+03:00",
+  "title": "Design System: TaskFlow",
+  "extensions": {
+    "colorMeta": {
+      "base-dark": { "role": "neutral", "displayName": "Ночной фон", "canonical": "#06070d", "tonalRamp": ["#06070d", "#0a0b15", "#0f1121", "#161929"] },
+      "accent-violet": { "role": "primary", "displayName": "Диспетчерский фиолетовый", "canonical": "#a78bfa", "tonalRamp": ["#ede9fe", "#c4b5fd", "#a78bfa", "#8b5cf6", "#6d28d9"] },
+      "operational-teal": { "role": "secondary", "displayName": "Оперативный бирюзовый", "canonical": "#14b8a6", "tonalRamp": ["#ccfbf1", "#5eead4", "#2dd4bf", "#14b8a6", "#0f766e"] },
+      "progress-blue": { "role": "tertiary", "displayName": "Прогресс", "canonical": "#38bdf8", "tonalRamp": ["#e0f2fe", "#7dd3fc", "#38bdf8", "#0284c7"] },
+      "success-green": { "role": "tertiary", "displayName": "Готовность", "canonical": "#34d399", "tonalRamp": ["#d1fae5", "#6ee7b7", "#34d399", "#059669"] },
+      "warning-amber": { "role": "tertiary", "displayName": "Внимание", "canonical": "#f0b429", "tonalRamp": ["#fef3c7", "#fbbf24", "#f0b429", "#d97706"] },
+      "danger-red": { "role": "tertiary", "displayName": "Риск", "canonical": "#f87171", "tonalRamp": ["#fee2e2", "#fca5a5", "#f87171", "#dc2626"] }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Заголовки крупных рабочих разделов." },
+      "body": { "displayName": "Body", "purpose": "Основной интерфейсный текст и пояснения." },
+      "data": { "displayName": "Data", "purpose": "Даты, счётчики, проценты и метаданные." }
+    },
+    "shadows": [
+      { "name": "card-flat", "value": "none", "purpose": "Обычные рабочие карточки в тёмной теме." },
+      { "name": "elevated", "value": "0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)", "purpose": "Меню и временно поднятые элементы." },
+      { "name": "overlay", "value": "0 24px 64px rgba(0,0,0,0.8), 0 4px 16px rgba(0,0,0,0.5)", "purpose": "Модальные окна и верхние оверлеи." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "200ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Hover, active и компактные раскрытия." },
+      { "name": "shell", "value": "320ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Сворачивание боковой панели и перемещение каркаса." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Основное локальное действие.",
+      "html": "<button class=\"ds-btn-primary\">Сохранить</button>",
+      "css": ".ds-btn-primary{background:#6d28d9;color:#f0f0f0;border:0;border-radius:8px;padding:8px 12px;font:600 12px/1.3 'DM Sans',sans-serif;transition:background 200ms cubic-bezier(.16,1,.3,1)}.ds-btn-primary:hover{background:#7c3aed}.ds-btn-primary:active{background:#5b21b6}.ds-btn-primary:focus-visible{outline:2px solid #a78bfa;outline-offset:2px}"
+    },
+    {
+      "name": "Operational Action Button",
+      "kind": "button",
+      "refersTo": "action-button-primary",
+      "description": "Shared ActionButton used for operational submit and review actions, with primary, success, danger, warning, and muted variants.",
+      "html": "<button class=\"ds-action-button\">Сохранить</button>",
+      "css": ".ds-action-button{background:rgba(34,197,94,.16);color:#34d399;border:1px solid rgba(34,197,94,.34);border-radius:8px;padding:8px 16px;font:600 14px/1.3 'DM Sans',sans-serif;transition:background 200ms cubic-bezier(.16,1,.3,1)}.ds-action-button:hover{background:rgba(34,197,94,.22)}.ds-action-button:active{background:rgba(34,197,94,.12)}.ds-action-button:focus-visible{outline:2px solid #34d399;outline-offset:2px}.ds-action-button:disabled{cursor:wait;opacity:.6}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Вторичное действие без конкуренции с главным.",
+      "html": "<button class=\"ds-btn-secondary\">Отмена</button>",
+      "css": ".ds-btn-secondary{background:#0f1121;color:#f0f0f0;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:8px 12px;font:600 12px/1.3 'DM Sans',sans-serif;transition:background 200ms cubic-bezier(.16,1,.3,1)}.ds-btn-secondary:hover{background:#161929}.ds-btn-secondary:focus-visible{outline:2px solid #a78bfa;outline-offset:2px}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Компактное поле ввода для рабочих форм.",
+      "html": "<input class=\"ds-field\" value=\"Название задачи\" aria-label=\"Название задачи\">",
+      "css": ".ds-field{width:240px;background:#0a0b15;color:#f0f0f0;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:10px 12px;font:400 14px/1.5 'DM Sans',sans-serif}.ds-field:hover{border-color:rgba(255,255,255,.17)}.ds-field:focus-visible{outline:2px solid #a78bfa;outline-offset:1px}"
+    },
+    {
+      "name": "Operational Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Плоский рабочий контейнер с ясной иерархией.",
+      "html": "<article class=\"ds-card\"><strong>Оперативная задача</strong><span>Сегодня · 14:00</span></article>",
+      "css": ".ds-card{display:flex;flex-direction:column;gap:8px;width:260px;background:#0a0b15;color:#f0f0f0;border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:16px;font-family:'DM Sans',sans-serif}.ds-card strong{font-size:14px;font-weight:600}.ds-card span{color:#8a8a8f;font:400 11px/1.35 'DM Mono',monospace}.ds-card:focus-within{border-color:#a78bfa}"
+    },
+    {
+      "name": "Progress Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Семантическая метка работы в процессе.",
+      "html": "<span class=\"ds-chip-progress\">В работе</span>",
+      "css": ".ds-chip-progress{display:inline-flex;align-items:center;background:rgba(14,165,233,.15);color:#38bdf8;border-radius:999px;padding:4px 8px;font:500 11px/1.35 'DM Mono',monospace}"
+    },
+    {
+      "name": "Sidebar Navigation Item",
+      "kind": "nav",
+      "description": "Активный пункт основной навигации.",
+      "html": "<a class=\"ds-nav-active\" href=\"#\">Сегодня</a>",
+      "css": ".ds-nav-active{display:flex;align-items:center;background:rgba(109,40,217,.22);color:#a78bfa;border:1px solid rgba(20,184,166,.32);border-radius:14px;padding:10px 12px;text-decoration:none;font:500 12px/1.3 'DM Sans',sans-serif;transition:background 200ms cubic-bezier(.16,1,.3,1)}.ds-nav-active:hover{background:rgba(109,40,217,.3)}.ds-nav-active:focus-visible{outline:2px solid #a78bfa;outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Спокойная диспетчерская",
+    "overview": "TaskFlow удерживает много рабочих сигналов в устойчивой иерархии. Тональные поверхности задают глубину, цвет объясняет состояние, а второстепенные действия раскрываются по необходимости.",
+    "keyCharacteristics": ["Плотная предсказуемая иерархия", "Тональная глубина", "Редкие акценты", "Закреплённые семантические цвета", "Компактные знакомые компоненты"],
+    "rules": [
+      { "name": "Правило редкого акцента", "body": "Фиолетовый и бирюзовый отмечают действие или состояние, а не заполняют свободное пространство.", "section": "colors" },
+      { "name": "Правило рабочей шкалы", "body": "Иерархия строится весом и отступом, а не рекламным размером текста.", "section": "typography" },
+      { "name": "Правило структурной глубины", "body": "Сначала поверхность и граница; тень только при реальном изменении уровня.", "section": "elevation" }
+    ],
+    "dos": ["Сохранять связанные данные рядом", "Использовать цвет как код действия или состояния", "Поддерживать полные состояния интерактивных компонентов"],
+    "donts": ["Не перегружать экран декоративными эффектами и конкурирующими акцентами", "Не использовать стекло как стандартную поверхность", "Не добавлять тяжёлую тень обычной карточке", "Не использовать семантический цвет как случайный декор"]
+  }
+}

@@ -4,6 +4,7 @@ import { memo, useCallback, useMemo, useState, useTransition, type CSSProperties
 import { useRouter, useSearchParams } from "next/navigation";
 import type { VariableSectionData } from "@/entities/variable/variableRepository";
 import type { VariableDutySlot, VariableLeaveStatus, VariableLeaveType } from "@/shared/db/schema";
+import { ActionButton } from "@/shared/ui/ActionButton";
 
 const DUTY_SLOTS: Array<{ key: VariableDutySlot; label: string; short: string }> = [
   { key: "day_orderly_1", label: "Дневальный 1", short: "Д1" },
@@ -307,7 +308,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
               </label>
               <div className="flex gap-2">
                 <input name="date" type="date" defaultValue={data.selectedDate} className={inputClassName} style={inputStyle} />
-                <button disabled={isPending} className="cursor-pointer rounded-xl px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Показать</button>
+                <ActionButton type="submit" disabled={isPending} className="px-3">Показать</ActionButton>
               </div>
             </form>
 
@@ -367,7 +368,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                 <Field label="Дата задачи"><input name="taskDate" type="date" min={data.todayDate} defaultValue={data.todayDate} className={inputClassName} style={inputStyle} /></Field>
                 <Field label="Задача"><input name="title" required maxLength={200} placeholder="Что нужно сделать" className={inputClassName} style={inputStyle} /></Field>
                 <Field label="Комментарий"><textarea name="description" rows={4} placeholder="Детали, место, ограничение по времени" className={inputClassName} style={inputStyle} /></Field>
-                <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Добавить задачу</button>
+                <ActionButton type="submit" disabled={isPending}>Добавить задачу</ActionButton>
               </form>
             </CollapsiblePanel>
 
@@ -410,7 +411,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                     <Field label="Выбрать дату">
                       <input name="date" type="date" defaultValue={data.selectedDate} className={inputClassName} style={inputStyle} />
                     </Field>
-                    <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Показать дату</button>
+                    <ActionButton type="submit" disabled={isPending}>Показать дату</ActionButton>
                   </form>
                 </div>
                 {!selectedDateMatchesToday && !selectedDateMatchesTomorrow && (
@@ -473,7 +474,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                   <Field label="Время прибытия"><input name="arrivalTime" type="time" className={inputClassName} style={inputStyle} /></Field>
                 </div>
                 <Field label="Комментарий"><textarea name="comment" rows={4} placeholder="Причина, маршрут, дополнительные условия" className={inputClassName} style={inputStyle} /></Field>
-                <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Отправить заявку</button>
+                <ActionButton type="submit" disabled={isPending}>Отправить заявку</ActionButton>
               </form>
             </CollapsiblePanel>
 
@@ -513,12 +514,12 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                       <div className="flex shrink-0 flex-wrap justify-end gap-2">
                         {isAdmin && request.status === "pending" && (
                           <>
-                            <button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "approved")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={successButtonStyle}>Одобрить</button>
-<button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "rejected")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={dangerButtonStyle}>Отклонить</button>
+                            <ActionButton variant="success" size="sm" disabled={isPending} onClick={() => reviewLeave(request.id, "approved")}>Одобрить</ActionButton>
+                            <ActionButton variant="danger" size="sm" disabled={isPending} onClick={() => reviewLeave(request.id, "rejected")}>Отклонить</ActionButton>
                           </>
                         )}
                         {request.status === "approved" && (isAdmin || request.profileUserId === currentProfileId) && (
-                          <button type="button" disabled={isPending} onClick={() => reviewLeave(request.id, "revoked")} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={warningButtonStyle}>Отозвать</button>
+                          <ActionButton variant="warning" size="sm" disabled={isPending} onClick={() => reviewLeave(request.id, "revoked")}>Отозвать</ActionButton>
                         )}
                       </div>
                     </div>
@@ -539,7 +540,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                     {DUTY_SLOTS.map((slot) => (
                       <Field key={slot.key} label={slot.label}><UserOptionSelect name={slot.key} users={data.variableUsers} /></Field>
                     ))}
-                    <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Сохранить наряд</button>
+                    <ActionButton type="submit" disabled={isPending}>Сохранить наряд</ActionButton>
                   </form>
                 </CollapsiblePanel>
 
@@ -552,7 +553,7 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
                     {WORK_GROUP_SLOTS.map((slot) => (
                       <Field key={slot.key} label={slot.label}><UserOptionSelect name={slot.key} users={data.variableUsers} /></Field>
                     ))}
-                    <button disabled={isPending} className="cursor-pointer rounded-xl px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Сохранить РГ</button>
+                    <ActionButton type="submit" disabled={isPending}>Сохранить РГ</ActionButton>
                   </form>
                 </CollapsiblePanel>
               </div>
@@ -668,7 +669,7 @@ function CollapsiblePanel({ title, subtitle, actionLabel, children, icon, accent
               <p className="mt-1 text-xs leading-5 text-(--text-muted)">{subtitle}</p>
             </span>
           </span>
-          <span className="flex shrink-0 items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors" style={primaryButtonStyle}>
+          <span className="flex shrink-0 items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors" style={primaryBadgeStyle}>
             {actionLabel}
             <ChevronDownIcon className="h-4 w-4 transition-transform group-open:rotate-180" />
           </span>
@@ -802,8 +803,8 @@ function TaskRow({
           <Field label="Задача"><input name="title" required maxLength={200} defaultValue={task.title} className={inputClassName} style={inputStyle} /></Field>
           <Field label="Комментарий"><textarea name="description" rows={3} defaultValue={task.description ?? ""} className={inputClassName} style={inputStyle} /></Field>
           <div className="flex gap-2">
-            <button disabled={isPending} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold disabled:cursor-wait disabled:opacity-60" style={successButtonStyle}>Сохранить</button>
-            <button type="button" onClick={() => onEdit(null)} className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold" style={mutedButtonStyle}>Отмена</button>
+            <ActionButton type="submit" variant="success" size="sm" disabled={isPending}>Сохранить</ActionButton>
+            <ActionButton variant="muted" size="sm" onClick={() => onEdit(null)}>Отмена</ActionButton>
           </div>
         </form>
       </article>
@@ -824,11 +825,11 @@ function TaskRow({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <span className="rounded-lg px-2 py-1 text-xs font-mono" style={task.status === "done" ? successBadgeStyle : mutedBadgeStyle}>{task.status === "done" ? "готово" : "план"}</span>
-          <button type="button" disabled={isPending || !canEdit} onClick={() => onToggle(task.id, task.status === "done" ? "todo" : "done")} className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50" style={task.status === "done" ? mutedButtonStyle : successButtonStyle}>
+          <ActionButton variant={task.status === "done" ? "muted" : "success"} size="sm" disabled={isPending || !canEdit} onClick={() => onToggle(task.id, task.status === "done" ? "todo" : "done")} className="px-2.5 disabled:cursor-not-allowed disabled:opacity-50">
             {task.status === "done" ? "Вернуть" : "Готово"}
-          </button>
-          {canEdit && <button type="button" disabled={isPending} onClick={() => onEdit(task.id)} className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={primaryButtonStyle}>Изменить</button>}
-          {canEdit && <button type="button" disabled={isPending} onClick={() => onDelete(task.id)} className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-60" style={dangerButtonStyle}>В корзину</button>}
+          </ActionButton>
+          {canEdit && <ActionButton size="sm" disabled={isPending} onClick={() => onEdit(task.id)} className="px-2.5">Изменить</ActionButton>}
+          {canEdit && <ActionButton variant="danger" size="sm" disabled={isPending} onClick={() => onDelete(task.id)} className="px-2.5">В корзину</ActionButton>}
         </div>
       </div>
     </article>
@@ -1311,11 +1312,8 @@ const filterStyle: CSSProperties = { background: "rgba(15,23,42,0.48)", border: 
 const metricStyle: CSSProperties = { background: "rgba(15,23,42,0.42)", border: "1px solid var(--glass-border)", contentVisibility: "auto", containIntrinsicSize: "96px" };
 const inputStyle: CSSProperties = { background: "rgba(15,23,42,0.72)", border: "1px solid var(--glass-border)", color: "var(--text-primary)", colorScheme: "dark" };
 const selectStyle: CSSProperties = { ...inputStyle, paddingRight: "2.5rem", WebkitAppearance: "none", appearance: "none" };
-const primaryButtonStyle: CSSProperties = { background: "rgba(34,197,94,0.16)", border: "1px solid rgba(34,197,94,0.34)", color: "#34d399" };
+const primaryBadgeStyle: CSSProperties = { background: "rgba(34,197,94,0.16)", border: "1px solid rgba(34,197,94,0.34)", color: "#34d399" };
 const mutedButtonStyle: CSSProperties = { background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)" };
-const successButtonStyle: CSSProperties = { background: "rgba(52,211,153,0.13)", border: "1px solid rgba(52,211,153,0.30)", color: "#34d399" };
-const dangerButtonStyle: CSSProperties = { background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.28)", color: "#f87171" };
-const warningButtonStyle: CSSProperties = { background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)", color: "#fbbf24" };
 const tabCardStyle: CSSProperties = { background: "rgba(15,23,42,0.58)", border: "1px solid var(--glass-border)", boxShadow: "0 10px 24px rgba(2,6,23,0.16)" };
 const activeTabCardStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(34,197,94,0.18), rgba(56,189,248,0.09))", border: "1px solid rgba(52,211,153,0.38)", boxShadow: "0 12px 30px rgba(34,197,94,0.10)" };
 const iconBoxStyle: CSSProperties = { background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)" };

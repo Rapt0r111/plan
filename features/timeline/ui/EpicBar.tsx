@@ -1,8 +1,6 @@
 // features/timeline/ui/EpicBar.tsx
 "use client";
-import { motion } from "framer-motion";
 import { formatDate } from "@/shared/lib/utils";
-import { useShinyEffect } from "@/shared/lib/hooks/useShinyEffect";
 import type { Bar } from "../model/useTimelineLayout";
 import { LANE_H } from "../model/useTimelineLayout";
 
@@ -18,12 +16,8 @@ export function EpicBar({ bar, hovered, onHover, onClick }: Props) {
   const donePct = Math.round(pct * 100);
   const accentColor = overdue ? "#dc2626" : epic.color;
 
-  const { shineStyle, auroraStyle, onMouseMove, onMouseLeave: shineLeave } = useShinyEffect({
-    accentColor, intensity: 0.09, auroraIntensity: 0.14, stiffness: 300, damping: 22,
-  });
-
   return (
-    <motion.div
+    <div
       className="absolute top-1/2 -translate-y-1/2 rounded-lg overflow-hidden"
       style={{
         left: barX,
@@ -34,22 +28,16 @@ export function EpicBar({ bar, hovered, onHover, onClick }: Props) {
         background: hovered ? `${accentColor}22` : `${accentColor}12`,
         border: `1px solid ${accentColor}${hovered ? "60" : "35"}`,
         pointerEvents: "auto",
-      }}
-      animate={{
         boxShadow: hovered
           ? `0 0 16px ${accentColor}30, 0 2px 8px rgba(0,0,0,0.15)`
           : "none",
+        transition: "background 0.18s, border-color 0.18s, box-shadow 0.18s",
       }}
-      transition={{ duration: 0.18 }}
       onMouseEnter={() => onHover(true)}
-      onMouseLeave={() => { onHover(false); shineLeave(); }}
-      onMouseMove={onMouseMove}
+      onMouseLeave={() => onHover(false)}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <motion.div className="absolute inset-0 pointer-events-none" style={shineStyle} />
-      <motion.div className="absolute inset-0 pointer-events-none" style={auroraStyle} />
-
       {/* Top accent line — более заметная */}
       <div
         className="absolute top-0 left-0 right-0"
@@ -96,11 +84,7 @@ export function EpicBar({ bar, hovered, onHover, onClick }: Props) {
 
       {/* Hover label */}
       {hovered && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="relative h-full flex items-center justify-center gap-1.5"
-        >
+        <div className="relative h-full flex items-center justify-center gap-1.5">
           <span
             className="text-[11px] font-medium font-mono"
             style={{ color: accentColor }}
@@ -118,8 +102,8 @@ export function EpicBar({ bar, hovered, onHover, onClick }: Props) {
           >
             <path d="M2 6h8M6 2l4 4-4 4" />
           </svg>
-        </motion.div>
+        </div>
       )}
-    </motion.div>
+    </div>
   );
 }

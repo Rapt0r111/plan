@@ -1,5 +1,6 @@
 // features/timeline/ui/TimelineRow.tsx
 "use client";
+import { useState } from "react";
 import { EpicBar } from "./EpicBar";
 import type { Bar } from "../model/useTimelineLayout";
 import { LANE_H, LEFT_W } from "../model/useTimelineLayout";
@@ -7,12 +8,11 @@ import { LANE_H, LEFT_W } from "../model/useTimelineLayout";
 interface Props {
   bar: Bar;
   index: number;
-  hovered: boolean;
-  onHover: (v: boolean) => void;
   onOpenModal: (epicId: number) => void;
 }
 
-export function TimelineRow({ bar, index, hovered, onHover, onOpenModal }: Props) {
+export function TimelineRow({ bar, index, onOpenModal }: Props) {
+  const [hovered, setHovered] = useState(false);
   const { epic, pct, overdue } = bar;
   const donePct = Math.round(pct * 100);
   const accentHex   = overdue ? "#dc2626" : epic.color; // нужен hex для rgba()
@@ -78,7 +78,7 @@ export function TimelineRow({ bar, index, hovered, onHover, onOpenModal }: Props
         <EpicBar
           bar={bar}
           hovered={hovered}
-          onHover={onHover}
+          onHover={setHovered}
           onClick={() => onOpenModal(epic.id)}
         />
       </div>

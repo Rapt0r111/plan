@@ -33,6 +33,7 @@ import { STATUS_META, PRIORITY_META, STATUS_ORDER, PRIORITY_ORDER } from "@/shar
 import { AssigneeManager } from "@/shared/ui/AssigneeManager";
 import { SelectField } from "@/shared/ui/SelectField";
 import { useTaskStore } from "@/shared/store/useTaskStore";
+import { useShallow } from "zustand/react/shallow";
 import { useRouter } from "next/navigation";
 import type { EpicWithTasks, TaskView, TaskStatus, TaskPriority, UserWithMeta } from "@/shared/types";
 
@@ -92,11 +93,19 @@ function TaskCard({
     const [cyclePriority, setCyclePriority] = useState(false);
 
     // ── Store actions (offline-safe) ──────────────────────────────────────────
-    const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
-    const updateTaskPriority = useTaskStore((s) => s.updateTaskPriority);
-    const updateTaskTitle = useTaskStore((s) => s.updateTaskTitle);
-    const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription);
-    const updateTaskDueDate = useTaskStore((s) => s.updateTaskDueDate);
+    const {
+        updateTaskStatus,
+        updateTaskPriority,
+        updateTaskTitle,
+        updateTaskDescription,
+        updateTaskDueDate,
+    } = useTaskStore(useShallow((state) => ({
+        updateTaskStatus: state.updateTaskStatus,
+        updateTaskPriority: state.updateTaskPriority,
+        updateTaskTitle: state.updateTaskTitle,
+        updateTaskDescription: state.updateTaskDescription,
+        updateTaskDueDate: state.updateTaskDueDate,
+    })));
 
     const saveTitle = () => {
         setEditingTitle(false);
@@ -399,10 +408,12 @@ function CreateTaskForm({
     const [err, setErr] = useState<string | null>(null);
 
     // ✅ Используем store.createTask — offline-safe
-    const createTask = useTaskStore((s) => s.createTask);
-    const updateTaskDueDate = useTaskStore((s) => s.updateTaskDueDate);
-    const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription);
-    const addAssignee = useTaskStore((s) => s.addAssignee);
+    const { createTask, updateTaskDueDate, updateTaskDescription, addAssignee } = useTaskStore(useShallow((state) => ({
+        createTask: state.createTask,
+        updateTaskDueDate: state.updateTaskDueDate,
+        updateTaskDescription: state.updateTaskDescription,
+        addAssignee: state.addAssignee,
+    })));
 
     async function submit() {
         if (!form.title.trim()) { setErr("Введите название"); return; }
@@ -557,7 +568,10 @@ function CreateTaskForm({
 
 export function TasksTab({ initialEpics, users }: Props) {
     const router = useRouter();
-    const storeEpics = useTaskStore((s) => s.epics);
+    const { storeEpics, storeDeleteTask } = useTaskStore(useShallow((state) => ({
+        storeEpics: state.epics,
+        storeDeleteTask: state.deleteTask,
+    })));
     // Пока store гидратится, рисуем серверный снапшот, чтобы UI не пустел.
     const epicsForUI = storeEpics.length > 0 ? storeEpics : initialEpics;
     const [filterEpic, setFilterEpic] = useState<number | "all">("all");
@@ -566,8 +580,6 @@ export function TasksTab({ initialEpics, users }: Props) {
     const [error, setError] = useState<string | null>(null);
 
     // ✅ Store actions для offline-safe мутаций
-    const storeDeleteTask = useTaskStore((s) => s.deleteTask);
-
     const allTasks = useMemo<(TaskView & { epicColor: string; epicTitle: string })[]>(
         () => epicsForUI.flatMap((e) => e.tasks.map((t) => ({ ...t, epicColor: e.color, epicTitle: e.title }))),
         [epicsForUI],

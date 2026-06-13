@@ -42,7 +42,7 @@
  *   - Все стили карточки
  */
 
-import { useRef, useId, useEffect, useCallback } from "react";
+import { useId } from "react";
 import { motion } from "framer-motion";
 import { formatDate } from "@/shared/lib/utils";
 import type { EpicSummary } from "@/shared/types";
@@ -198,54 +198,6 @@ function MeshBackground({ color }: { color: string }) {
   );
 }
 
-// ── CSS-only tilt hook ────────────────────────────────────────────────────────
-//
-// ОПТИМИЗАЦИЯ: заменяет useMotionValue + useSpring × 2 (rotateX/rotateY).
-// Framer springs держат 2 активные подписки на карточку и пересчитываются
-// при каждом mousemove синхронно с React рендером.
-//
-// Новый подход:
-// 1. Обновляем CSS custom properties --rotX/--rotY напрямую через rAF
-// 2. CSS transform читает эти переменные — никакого React state/re-render
-// 3. Плавность достигается через CSS transition на transform (compositor)
-// 4. rAF throttle — один style.setProperty в кадр максимум
-
-function useCssTilt(ref: React.RefObject<HTMLDivElement | null>) {
-  const rafRef = useRef<number | null>(null);
-
-  const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (rafRef.current !== null) return; // throttle: один rAF в кадр
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      const r = ref.current?.getBoundingClientRect();
-      if (!r) return;
-      const mx = (e.clientX - r.left) / r.width - 0.5;
-      const my = (e.clientY - r.top) / r.height - 0.5;
-      ref.current?.style.setProperty("--rotX", `${-my * 4}deg`);
-      ref.current?.style.setProperty("--rotY", `${mx * 4}deg`);
-    });
-  }, [ref]);
-
-  const onMouseLeave = useCallback(() => {
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-    // Плавный возврат обеспечивает CSS transition
-    ref.current?.style.setProperty("--rotX", "0deg");
-    ref.current?.style.setProperty("--rotY", "0deg");
-  }, [ref]);
-
-  // Cleanup при unmount
-  useEffect(() => {
-    return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
-  return { onMouseMove, onMouseLeave };
-}
-
 // ── Card component ────────────────────────────────────────────────────────────
 
 interface EpicCardProps {
@@ -255,44 +207,17 @@ interface EpicCardProps {
 }
 
 export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
-  const cardRef = useRef<HTMLDivElement>(null);
-
   const progress = epic.taskCount > 0 ? epic.doneCount / epic.taskCount : 0;
   const pct = Math.round(progress * 100);
   const phase = epicPhase(epic);
   const meta = PHASE_META[phase];
 
-  const { onMouseMove, onMouseLeave } = useCssTilt(cardRef);
-
   return (
-    /*
-     * Корневой div — держит CSS custom properties для tilt.
-     * perspective задаётся здесь, transform читается через var().
-     * isolate — stacking context без 3D.
-     *
-     * CSS transition на transform обеспечивает плавность через compositor
-     * без каких-либо Framer springs. Это намного дешевле при скролле:
-     * compositor не нужен React/JS для анимации между кадрами.
-     */
-    <div
-      ref={cardRef}
-      className="relative isolate epic-card-tilt-root"
-      style={{
-        perspective: "1200px",
-        // CSS custom properties для tilt — обновляются через rAF, без re-render
-        "--rotX": "0deg",
-        "--rotY": "0deg",
-      } as React.CSSProperties}
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
-    >
+    <div className="relative isolate epic-card-root">
       {/*
        * layoutId — FLIP-анимация открытия workspace.
        * Оставлен только layoutId и mount animation (opacity/y).
-       * Убраны: whileHover с Framer, kinetic typography spring.
-       *
-       * CSS tilt задаётся через style.transform с CSS-переменными.
-       * transition на transform (0.25s) — compositor-only плавность.
+       * Убраны: pointer tilt, whileHover с Framer, kinetic typography spring.
        */}
       <motion.div
         layoutId={`epic-card-${epic.id}`}
@@ -305,13 +230,7 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
           y: { duration: 0.45, delay: index * 0.07, ease: [0.16, 1, 0.3, 1] },
         }}
         style={{
-          // CSS tilt через переменные — обновляется вне React render cycle
-          transform: "perspective(1200px) rotateX(var(--rotX)) rotateY(var(--rotY))",
-          // Плавность через CSS transition (compositor, не Framer spring)
-          transition: "transform 0.25s cubic-bezier(0.16,1,0.3,1)",
           cursor: "pointer",
-          // will-change: transform подсказывает браузеру создать composited layer
-          willChange: "transform",
         }}
         onClick={() => onOpen(epic.id)}
         // Hover-эффект карточки — только через CSS (см. .epic-card-shell:hover в globals)

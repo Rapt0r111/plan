@@ -2,18 +2,15 @@
 /**
  * @file MagneticCheckbox.tsx — shared/ui
  *
- * 2026 UI primitive: a checkbox that magnetically follows the cursor
- * within its hover radius, then snaps back with spring physics.
+ * Compact animated checkbox used in task lists and dialogs.
  *
  * Features:
- *  - Magnetic pull: element floats toward cursor (max offset = size × 0.4)
  *  - Soft Pop: keyframe burst on check (scale 1 → 1.35 → 0.95 → 1)
  *  - Hover aura: radial gradient glow with accent color
  *  - Animated SVG checkmark with backOut entrance
  *  - Fully accessible: role="checkbox", aria-checked, keyboard-friendly
  */
-import { useRef, useCallback } from "react";
-import { motion, useMotionValue, useSpring, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface MagneticCheckboxProps {
   checked: boolean;
@@ -25,9 +22,9 @@ interface MagneticCheckboxProps {
 }
 
 const SIZE_MAP = {
-  sm: { box: 16, radius: 32, stroke: 1.5 },
-  md: { box: 20, radius: 40, stroke: 1.8 },
-  lg: { box: 24, radius: 52, stroke: 2 },
+  sm: { box: 16, stroke: 1.5 },
+  md: { box: 20, stroke: 1.8 },
+  lg: { box: 24, stroke: 2 },
 };
 
 export function MagneticCheckbox({
@@ -38,43 +35,12 @@ export function MagneticCheckbox({
   disabled = false,
   className = "",
 }: MagneticCheckboxProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { box, radius, stroke } = SIZE_MAP[size];
-
-  // Magnetic motion values
-  const mx = useMotionValue(0);
-  const my = useMotionValue(0);
-  const tx = useSpring(mx, { stiffness: 280, damping: 18, mass: 0.6 });
-  const ty = useSpring(my, { stiffness: 280, damping: 18, mass: 0.6 });
-
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (disabled) return;
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = e.clientX - cx;
-    const dy = e.clientY - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < radius) {
-      const pull = 1 - dist / radius;
-      mx.set(dx * pull * 0.45);
-      my.set(dy * pull * 0.45);
-    }
-  }, [disabled, mx, my, radius]);
-
-  const handleMouseLeave = useCallback(() => {
-    mx.set(0);
-    my.set(0);
-  }, [mx, my]);
+  const { box, stroke } = SIZE_MAP[size];
 
   return (
     <div
-      ref={containerRef}
       className={`relative inline-flex items-center justify-center select-none ${className}`}
       style={{ width: box + 16, height: box + 16, cursor: disabled ? "not-allowed" : "pointer" }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
       onClick={disabled ? undefined : onChange}
       role="checkbox"
       aria-checked={checked}
@@ -101,9 +67,8 @@ export function MagneticCheckbox({
         }}
       />
 
-      {/* The magnetic checkbox itself */}
+      {/* Keep the feedback local: pointer-tracking caused a layout read on every mouse move. */}
       <motion.div
-        style={{ x: tx, y: ty }}
         animate={checked
           ? { scale: [1, 1.35, 0.95, 1] }
           : { scale: 1 }

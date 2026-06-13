@@ -16,6 +16,7 @@ import {
 import { cn } from "@/shared/lib/utils";
 import { formatDate } from "@/shared/lib/utils";
 import { useTaskStore } from "@/shared/store/useTaskStore";
+import { useShallow } from "zustand/react/shallow";
 import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
 import { usePerformanceMode } from "@/shared/lib/usePerformanceMode";
 import type { TaskView, TaskStatus } from "@/shared/types";
@@ -385,9 +386,11 @@ interface Props {
 
 export const TaskCard = memo(function TaskCard({ task, onOpen, isFocused }: Props) {
   const offline = useIsOffline();
-  const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
-  const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
-  const liveTask = useTaskStore((s) => s.getTask(task.id)) ?? task;
+  const { updateTaskStatus, toggleSubtask, liveTask } = useTaskStore(useShallow((state) => ({
+    updateTaskStatus: state.updateTaskStatus,
+    toggleSubtask: state.toggleSubtask,
+    liveTask: state.getTask(task.id) ?? task,
+  })));
   const [subtasksOpen, setSubtasksOpen] = useState(false);
   const { lowMotion, noMotion } = usePerformanceMode();
 

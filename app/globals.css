@@ -839,12 +839,12 @@ html.light ::-webkit-scrollbar-thumb:hover {
     opacity: 1 !important;
   }
 
-  .epic-card-tilt-root:hover .epic-card-glow-layer {
+  .epic-card-root:hover .epic-card-glow-layer {
     opacity: 1 !important;
   }
 
   .epic-card-shell:hover .epic-card-affordance,
-  .epic-card-tilt-root:hover .epic-card-affordance {
+  .epic-card-root:hover .epic-card-affordance {
     opacity: 1 !important;
     transform: translateX(0) !important;
   }
@@ -865,8 +865,8 @@ html.light ::-webkit-scrollbar-thumb:hover {
 
   @media (hover: none) {
 
-    /* На touch — убираем will-change полностью (нет hover, нет tilt) */
-    .epic-card-tilt-root>* {
+    /* На touch — убираем hover transforms и отдельные compositor layers. */
+    .epic-card-root>* {
       will-change: auto !important;
       transform: none !important;
       transition: none !important;
@@ -893,7 +893,7 @@ html.light ::-webkit-scrollbar-thumb:hover {
       }
     }
 
-    .epic-card-tilt-root>* {
+    .epic-card-root>* {
       transition: none !important;
       transform: none !important;
     }
@@ -1214,8 +1214,17 @@ html[data-animation-level="subtle"] .animate-pulse,
 html[data-animation-level="subtle"] .animate-pulse-glow,
 html[data-animation-level="subtle"] .animate-hue,
 html[data-animation-level="subtle"] .hue-breathe,
-html[data-animation-level="subtle"] .liquid-bar {
+html[data-animation-level="subtle"] .liquid-bar,
+html[data-animation-level="subtle"] .iridescent-header,
+html[data-animation-level="subtle"] .focus-heartbeat,
+html[data-animation-level="subtle"] .animate-spatial,
+html[data-animation-level="subtle"] .stagger > * {
   animation: none !important;
+}
+
+.scroll-optimized-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 520px;
 }
 
 html[data-animation-level="none"] .glass,

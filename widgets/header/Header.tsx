@@ -1,7 +1,7 @@
 /**
  * @file Header.tsx — widgets/header
  *
- * Sticky frosted-glass top bar.
+ * Sticky solid top bar.
  * Includes CommandPaletteTrigger and ThemeToggle.
  * Background uses var(--header-bg) — theme-aware token.
  */
@@ -22,8 +22,6 @@ export function Header({ title, subtitle, actions }: Props) {
       style={{
         height: "var(--header-h)",
         background: "var(--header-bg)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
         borderBottom: "1px solid var(--glass-border)",
       }}
     >

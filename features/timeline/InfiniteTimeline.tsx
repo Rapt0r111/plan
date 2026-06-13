@@ -25,7 +25,6 @@ export function InfiniteTimeline() {
   const { scrollRef, isDrag, onPointerDown, onPointerMove, onPointerUp } = useTimelinePan();
 
   const [modalId, setModalId] = useState<number | null>(null);
-  const [hoveredId, setHoveredId] = useState<number | null>(null);
   const modalEpic = useMemo(() => epics.find((e) => e.id === modalId) ?? null, [epics, modalId]);
 
   useEffect(() => {
@@ -179,8 +178,6 @@ export function InfiniteTimeline() {
               key={bar.epic.id}
               bar={bar}
               index={idx}
-              hovered={hoveredId === bar.epic.id}
-              onHover={(v) => setHoveredId(v ? bar.epic.id : null)}
               onOpenModal={setModalId}
             />
           ))}

@@ -16,6 +16,7 @@
 import type { Metadata, Viewport } from "next";
 import { GlobalClientComponents } from "./GlobalClientComponents";
 import { ThemeProvider } from "@/shared/ui/ThemeProvider";
+import { PerformanceMotionConfig } from "@/shared/ui/PerformanceMotionConfig";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -52,17 +53,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var s=localStorage.getItem('theme');var t=s==='light'||s==='dark'?s:window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.classList.add(t);}catch(e){document.documentElement.classList.add('dark');}})();`,
+            __html: `(function(){var d=document.documentElement;try{var s=localStorage.getItem('theme');var t=s==='light'||s==='dark'?s:window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';d.classList.add(t);var raw=localStorage.getItem('ui-prefs-v1');var parsed=raw?JSON.parse(raw):null;var p=parsed&&parsed.state&&parsed.state.prefs;d.dataset.animationLevel=p&&p.animationLevel||'subtle';d.dataset.glassIntensity=p&&p.glassIntensity||'solid';d.dataset.showAmbientGlow=String(p&&p.showAmbientGlow||false);d.dataset.showGrainTexture=String(p&&p.showGrainTexture||false);}catch(e){d.classList.add('dark');d.dataset.animationLevel='subtle';d.dataset.glassIntensity='solid';d.dataset.showAmbientGlow='false';d.dataset.showGrainTexture='false';}})();`,
           }}
         />
       </head>
       <body className="antialiased">
         <ThemeProvider>
+          <PerformanceMotionConfig>
+            {children}
 
-          {children}
-
-          {/* ── Global UI Layer ─────────────────────────────────── */}
-          <GlobalClientComponents />
+            {/* ── Global UI Layer ─────────────────────────────────── */}
+            <GlobalClientComponents />
+          </PerformanceMotionConfig>
         </ThemeProvider>
       </body>
     </html>

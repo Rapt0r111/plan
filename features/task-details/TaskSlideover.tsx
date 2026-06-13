@@ -10,6 +10,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaskStore } from "@/shared/store/useTaskStore";
+import { useShallow } from "zustand/react/shallow";
 import { useBodyScrollLock } from "@/shared/lib/hooks/useBodyScrollLock";
 import { useAccessibleDialog } from "@/shared/lib/hooks/useAccessibleDialog";
 import { SubtaskList } from "./SubtaskList";
@@ -198,19 +199,28 @@ export function TaskSlideover({ task, isOpen: isOpenProp, onClose }: TaskSlideov
   const isOpen = isOpenProp ?? task !== null;
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const updateTaskStatus      = useTaskStore((s) => s.updateTaskStatus);
-  const updateTaskPriority    = useTaskStore((s) => s.updateTaskPriority);
-  const updateTaskTitle       = useTaskStore((s) => s.updateTaskTitle);
-  const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription);
-  const updateTaskDueDate     = useTaskStore((s) => s.updateTaskDueDate);
-
-  const liveTask = useTaskStore((s) => (task ? s.getTask(task.id) : null)) ?? task;
-
-  const epicColor = useTaskStore((s) => {
-    if (!liveTask) return "#7c3aed";
-    const epic = s.epics.find((e) => e.id === liveTask.epicId);
-    return epic?.color ?? "#7c3aed";
-  });
+  const {
+    updateTaskStatus,
+    updateTaskPriority,
+    updateTaskTitle,
+    updateTaskDescription,
+    updateTaskDueDate,
+    liveTask,
+    epicColor,
+  } = useTaskStore(useShallow((state) => {
+    const resolvedTask = (task ? state.getTask(task.id) : null) ?? task;
+    return {
+      updateTaskStatus: state.updateTaskStatus,
+      updateTaskPriority: state.updateTaskPriority,
+      updateTaskTitle: state.updateTaskTitle,
+      updateTaskDescription: state.updateTaskDescription,
+      updateTaskDueDate: state.updateTaskDueDate,
+      liveTask: resolvedTask,
+      epicColor: resolvedTask
+        ? state.epics.find((epic) => epic.id === resolvedTask.epicId)?.color ?? "#7c3aed"
+        : "#7c3aed",
+    };
+  }));
 
   const users = useUsers();
   const isDone = liveTask?.status === "done";

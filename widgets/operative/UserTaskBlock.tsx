@@ -14,7 +14,7 @@
  *   - Редактирование дедлайна
  *   - Добавление подзадач
  */
-import { useState, useRef, useCallback, useEffect, memo } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   DndContext,
@@ -98,10 +98,9 @@ function getDeadlineStyle(info: DeadlineInfo | null, isDone: boolean) {
 // ── Status pill ───────────────────────────────────────────────────────────────
 
 const StatusPill = memo(function StatusPill({
-  status, onClick, disabled = false,
-}: { status: OperativeTaskStatus; onClick: (e: React.MouseEvent) => void; disabled?: boolean }) {
+  status, onClick, disabled = false, lowMotion,
+}: { status: OperativeTaskStatus; onClick: (e: React.MouseEvent) => void; disabled?: boolean; lowMotion: boolean }) {
   const s = STATUS[status];
-  const { lowMotion } = usePerformanceMode();
   return (
     <button
       onClick={onClick}
@@ -123,10 +122,9 @@ const StatusPill = memo(function StatusPill({
 
 // ── Due date badge ────────────────────────────────────────────────────────────
 
-function DueBadge({ dueDate, isDone }: { dueDate: string | null | undefined; isDone: boolean }) {
+function DueBadge({ dueDate, isDone, lowMotion }: { dueDate: string | null | undefined; isDone: boolean; lowMotion: boolean }) {
   const info  = deadlineInfo(dueDate);
   const style = getDeadlineStyle(info, isDone);
-  const { lowMotion } = usePerformanceMode();
   if (!info) return null;
   if (isDone) return <span className="text-[10px] font-mono shrink-0" style={{ color: "var(--text-muted)" }}>{info.label}</span>;
   if (!style) return <span className="text-[10px] font-mono shrink-0 px-1.5 py-0.5 rounded" style={{ color: "#64748b" }}>{info.label}</span>;
@@ -145,23 +143,20 @@ function DueBadge({ dueDate, isDone }: { dueDate: string | null | undefined; isD
 // ── Subtask row ───────────────────────────────────────────────────────────────
 
 const SubtaskRow = memo(function SubtaskRow({
-  subtask, accentColor, onToggle, onDelete, isAdmin,
+  subtask, accentColor, onToggle, onDelete, isAdmin, lowMotion,
 }: {
   subtask:      OperativeSubtaskView;
   accentColor:  string;
   onToggle:     () => void;
   onDelete:     () => void;
   isAdmin:      boolean;
+  lowMotion:    boolean;
 }) {
-  const [hovered, setHovered] = useState(false);
-  const { lowMotion } = usePerformanceMode();
   return (
     <motion.div
       layout={!lowMotion}
       initial={lowMotion ? false : { opacity: 0, x: -8 }} animate={lowMotion ? undefined : { opacity: 1, x: 0 }}
       className="flex items-center gap-2.5 py-1.5 group/st"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
       <div
         className="w-4 h-4 rounded-md shrink-0 flex items-center justify-center border transition-all duration-150 cursor-pointer"
@@ -196,13 +191,10 @@ const SubtaskRow = memo(function SubtaskRow({
         {subtask.title}
       </span>
 
-      <AnimatePresence>
-        {isAdmin && hovered && (
-          <motion.button
-            initial={lowMotion ? false : { opacity: 0, scale: 0.8 }} animate={lowMotion ? undefined : { opacity: 1, scale: 1 }} exit={lowMotion ? undefined : { opacity: 0, scale: 0.8 }}
-            transition={lowMotion ? undefined : { duration: 0.1 }}
+      {isAdmin && (
+          <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="shrink-0 w-5 h-5 rounded-md flex items-center justify-center transition-colors"
+            className="shrink-0 w-5 h-5 rounded-md flex items-center justify-center opacity-0 transition-[opacity,color,background-color] group-hover/st:opacity-100 group-focus-within/st:opacity-100"
             style={{ color: "var(--text-muted)" }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#f87171"; (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.10)"; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
@@ -211,9 +203,8 @@ const SubtaskRow = memo(function SubtaskRow({
             <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M2 2l8 8M10 2L2 10" />
             </svg>
-          </motion.button>
-        )}
-      </AnimatePresence>
+          </button>
+      )}
     </motion.div>
   );
 });
@@ -379,8 +370,8 @@ function QuickAddForm({ accentColor, onAdd, onCancel }: {
 // ── Sortable Task Card wrapper ─────────────────────────────────────────────────
 
 function SortableTaskCard({
-  task, userId, accentColor, isAdmin, canEditTask, isDragEnabled,
-}: { task: OperativeTaskView; userId: number; accentColor: string; isAdmin: boolean; canEditTask: boolean; isDragEnabled: boolean }) {
+  task, userId, accentColor, isAdmin, canEditTask, isDragEnabled, lowMotion, noMotion,
+}: { task: OperativeTaskView; userId: number; accentColor: string; isAdmin: boolean; canEditTask: boolean; isDragEnabled: boolean; lowMotion: boolean; noMotion: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id, disabled: !isDragEnabled,
   });
@@ -397,6 +388,7 @@ function SortableTaskCard({
       <TaskCardInner
         task={task} userId={userId} accentColor={accentColor}
         isAdmin={isAdmin} canEditTask={canEditTask} dragHandleProps={isDragEnabled ? { ...attributes, ...listeners } : null}
+        lowMotion={lowMotion} noMotion={noMotion}
       />
     </div>
   );
@@ -405,7 +397,7 @@ function SortableTaskCard({
 // ── Task Card (inner) ─────────────────────────────────────────────────────────
 
 function TaskCardInner({
-  task, userId, accentColor, isAdmin, canEditTask, dragHandleProps,
+  task, userId, accentColor, isAdmin, canEditTask, dragHandleProps, lowMotion, noMotion,
 }: {
   task:             OperativeTaskView;
   userId:           number;
@@ -413,20 +405,33 @@ function TaskCardInner({
   isAdmin:          boolean;
   canEditTask:      boolean;
   dragHandleProps:  Record<string, unknown> | null;
+  lowMotion:        boolean;
+  noMotion:         boolean;
 }) {
   const [open,          setOpen]          = useState(false);
   const [addingSub,     setAddingSub]     = useState(false);
   const [editingDate,   setEditingDate]   = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const liveTask     = useOperativeStore(s => s.getTask(task.id)) ?? task;
-  const updateStatus = useOperativeStore(s => s.updateStatus);
-  const updateDueDate = useOperativeStore(s => s.updateDueDate);
-  const addSubtask   = useOperativeStore(s => s.addSubtask);
-  const addComment   = useOperativeStore(s => s.addComment);
-  const toggleSubtask = useOperativeStore(s => s.toggleSubtask);
-  const deleteTask   = useOperativeStore(s => s.deleteTask);
-  const deleteSubtask = useOperativeStore(s => s.deleteSubtask);
+  const {
+    liveTask,
+    updateStatus,
+    updateDueDate,
+    addSubtask,
+    addComment,
+    toggleSubtask,
+    deleteTask,
+    deleteSubtask,
+  } = useOperativeStore(useShallow((state) => ({
+    liveTask: state.getTask(task.id) ?? task,
+    updateStatus: state.updateStatus,
+    updateDueDate: state.updateDueDate,
+    addSubtask: state.addSubtask,
+    addComment: state.addComment,
+    toggleSubtask: state.toggleSubtask,
+    deleteTask: state.deleteTask,
+    deleteSubtask: state.deleteSubtask,
+  })));
 
   const isDone    = liveTask.status === "done";
   const dl        = deadlineInfo(liveTask.dueDate);
@@ -436,8 +441,6 @@ function TaskCardInner({
   const subTotal  = liveTask.progress.total;
   const subPct    = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
   const commentCount = liveTask.comments?.length ?? 0;
-  const { lowMotion, noMotion } = usePerformanceMode();
-
   const cycleStatus = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canEditTask) return;
@@ -486,9 +489,9 @@ function TaskCardInner({
             </button>
           )}
 
-          <StatusPill status={liveTask.status} onClick={cycleStatus} disabled={!canEditTask} />
+          <StatusPill status={liveTask.status} onClick={cycleStatus} disabled={!canEditTask} lowMotion={lowMotion} />
           <div className="flex-1 min-w-0" />
-          <DueBadge dueDate={liveTask.dueDate} isDone={isDone} />
+          <DueBadge dueDate={liveTask.dueDate} isDone={isDone} lowMotion={lowMotion} />
 
           <button
             onClick={e => { e.stopPropagation(); setOpen(true); }}
@@ -606,6 +609,7 @@ function TaskCardInner({
                         subtask={st}
                         accentColor={accentColor}
                         isAdmin={isAdmin}
+                        lowMotion={lowMotion}
                         onToggle={() => { if (canEditTask) toggleSubtask(liveTask.id, userId, st.id, st.isCompleted); }}
                         onDelete={() => deleteSubtask(liveTask.id, userId, st.id)}
                       />
@@ -728,8 +732,8 @@ function TaskCardInner({
 
 // ── Sortable task list (admin with DnD) ───────────────────────────────────────
 
-function SortableTaskList({ tasks, userId, accentColor, isAdmin, canEditTask }: {
-  tasks: OperativeTaskView[]; userId: number; accentColor: string; isAdmin: boolean; canEditTask: boolean;
+function SortableTaskList({ tasks, userId, accentColor, isAdmin, canEditTask, lowMotion, noMotion }: {
+  tasks: OperativeTaskView[]; userId: number; accentColor: string; isAdmin: boolean; canEditTask: boolean; lowMotion: boolean; noMotion: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [optimisticTasks, setOptimisticTasks] = useOptimistic(
@@ -765,7 +769,7 @@ function SortableTaskList({ tasks, userId, accentColor, isAdmin, canEditTask }: 
           <AnimatePresence mode="popLayout">
             {optimisticTasks.map(task => (
               <SortableTaskCard key={task.id} task={task} userId={userId} accentColor={accentColor}
-                isAdmin={isAdmin} canEditTask={canEditTask} isDragEnabled={isAdmin} />
+                isAdmin={isAdmin} canEditTask={canEditTask} isDragEnabled={isAdmin} lowMotion={lowMotion} noMotion={noMotion} />
             ))}
           </AnimatePresence>
         </div>
@@ -781,6 +785,8 @@ function TaskStatusSection({
   accentColor,
   isAdmin,
   canEditTask,
+  lowMotion,
+  noMotion,
   open,
   onToggle,
 }: {
@@ -790,6 +796,8 @@ function TaskStatusSection({
   accentColor: string;
   isAdmin: boolean;
   canEditTask: boolean;
+  lowMotion: boolean;
+  noMotion: boolean;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -838,13 +846,13 @@ function TaskStatusSection({
             <div className="p-2.5 max-h-[420px] overflow-y-auto" style={{ borderTop: "1px solid var(--glass-border)" }}>
               {tasks.length > 0 ? (
                 isAdmin ? (
-                  <SortableTaskList tasks={tasks} userId={userId} accentColor={accentColor} isAdmin={isAdmin} canEditTask={canEditTask} />
+                  <SortableTaskList tasks={tasks} userId={userId} accentColor={accentColor} isAdmin={isAdmin} canEditTask={canEditTask} lowMotion={lowMotion} noMotion={noMotion} />
                 ) : (
                   <div className="grid gap-2">
                     <AnimatePresence mode="popLayout">
                       {tasks.map(task => (
                         <TaskCardInner key={task.id} task={task} userId={userId} accentColor={accentColor}
-                          isAdmin={false} canEditTask={canEditTask} dragHandleProps={null} />
+                          isAdmin={false} canEditTask={canEditTask} dragHandleProps={null} lowMotion={lowMotion} noMotion={noMotion} />
                       ))}
                     </AnimatePresence>
                   </div>
@@ -895,14 +903,25 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
   const { lowMotion, noMotion } = usePerformanceMode();
 
   const accentColor = user.roleMeta.hex;
-  const groupedTasks = groupOperativeTasksByStatus(tasks);
+  const { groupedTasks, overdue, urgent } = useMemo(() => {
+    const grouped = groupOperativeTasksByStatus(tasks);
+    let overdueCount = 0;
+    let urgentCount = 0;
+
+    for (const task of tasks) {
+      if (task.status === "done") continue;
+      const deadline = deadlineInfo(task.dueDate);
+      if (deadline?.isOverdue) overdueCount++;
+      else if (deadline?.isSoon) urgentCount++;
+    }
+
+    return { groupedTasks: grouped, overdue: overdueCount, urgent: urgentCount };
+  }, [tasks]);
 
   const total    = tasks.length;
-  const done     = tasks.filter(t => t.status === "done").length;
-  const inProg   = tasks.filter(t => t.status === "in_progress").length;
+  const done     = groupedTasks.done.length;
+  const inProg   = groupedTasks.in_progress.length;
   const hasNewTasks = groupedTasks.todo.length > 0;
-  const overdue  = tasks.filter(t => { const dl = deadlineInfo(t.dueDate); return dl?.isOverdue && t.status !== "done"; }).length;
-  const urgent   = tasks.filter(t => { const dl = deadlineInfo(t.dueDate); return dl?.isSoon && !dl.isOverdue && t.status !== "done"; }).length;
   const pct      = total > 0 ? Math.round((done / total) * 100) : 0;
 
   const handleAdd = useCallback(async (title: string, dueDate: string | null) => {
@@ -920,7 +939,7 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
       layout={!lowMotion}
       animate={{ opacity: isDragging ? 0.4 : 1, scale: isDragging ? 0.98 : 1 }}
       transition={noMotion ? { duration: 0 } : { duration: 0.15 }}
-      className="flex flex-col rounded-2xl overflow-hidden"
+      className={`${isDragging ? "" : "scroll-optimized-block "}flex flex-col rounded-2xl overflow-hidden`}
       style={{
         background:  "var(--bg-elevated)",
         border:      "1px solid var(--glass-border)",
@@ -1139,6 +1158,8 @@ export function UserTaskBlock({ block, isAdmin, currentUserId, dragHandleProps, 
                       accentColor={accentColor}
                       isAdmin={isAdmin}
                       canEditTask={canEditTask}
+                      lowMotion={lowMotion}
+                      noMotion={noMotion}
                       open={openGroups[group.status]}
                       onToggle={() => toggleGroup(group.status)}
                     />

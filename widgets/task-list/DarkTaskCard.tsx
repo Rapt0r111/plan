@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/shared/lib/utils";
 import { formatDate } from "@/shared/lib/utils";
 import { useTaskStore } from "@/shared/store/useTaskStore";
+import { useShallow } from "zustand/react/shallow";
 import { STATUS_META, PRIORITY_META, STATUS_CYCLE } from "@/shared/config/task-meta";
 import { usePrefsStore } from "@/shared/store/usePrefsStore";
 import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
@@ -26,9 +27,11 @@ interface Props {
 export const DarkTaskCard = memo(function DarkTaskCard({ task, epicColor, onOpen }: Props) {
   const [subtasksOpen, setSubtasksOpen] = useState(false);
   const offline          = useIsOffline();
-  const toggleSubtask    = useTaskStore((s) => s.toggleSubtask);
-  const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
-  const liveTask         = useTaskStore((s) => s.getTask(task.id)) ?? task;
+  const { toggleSubtask, updateTaskStatus, liveTask } = useTaskStore(useShallow((state) => ({
+    toggleSubtask: state.toggleSubtask,
+    updateTaskStatus: state.updateTaskStatus,
+    liveTask: state.getTask(task.id) ?? task,
+  })));
 
   const {
     showTaskDescriptions,

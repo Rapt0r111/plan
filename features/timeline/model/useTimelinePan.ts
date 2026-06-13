@@ -1,5 +1,5 @@
 // features/timeline/model/useTimelinePan.ts
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 
 export interface PanHandlers {
   scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -13,6 +13,8 @@ export function useTimelinePan(): PanHandlers {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const dragging = useRef(false);
   const dragStart = useRef({ x: 0, scroll: 0 });
+  const pendingX = useRef(0);
+  const frameRef = useRef<number | null>(null);
   const moved = useRef(false);
   const [isDrag, setIsDrag] = useState(false);
 
@@ -31,14 +33,22 @@ export function useTimelinePan(): PanHandlers {
     if (!dragging.current) return;
     const dx = dragStart.current.x - e.clientX;
     if (Math.abs(dx) > 10) moved.current = true;
-    if (scrollRef.current) {
-      scrollRef.current.scrollLeft = dragStart.current.scroll + dx;
-    }
+    pendingX.current = dragStart.current.scroll + dx;
+    if (frameRef.current !== null) return;
+
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      if (scrollRef.current) scrollRef.current.scrollLeft = pendingX.current;
+    });
   }, []);
 
   const onPointerUp = useCallback(() => {
     dragging.current = false;
     setIsDrag(false);
+  }, []);
+
+  useEffect(() => () => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
   }, []);
 
   return { scrollRef, isDrag, onPointerDown, onPointerMove, onPointerUp };

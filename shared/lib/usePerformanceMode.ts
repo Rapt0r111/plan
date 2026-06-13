@@ -44,6 +44,10 @@ export function resolvePerformanceMode(animationLevel: "none" | "subtle" | "full
   return { noMotion, lowMotion: noMotion || animationLevel === "subtle" };
 }
 
+export function resolveMotionPolicy(animationLevel: "none" | "subtle" | "full") {
+  return animationLevel === "full" ? "user" as const : "always" as const;
+}
+
 export function usePerformanceMode() {
   const prefs = usePrefsStore((s) => s.prefs);
   const prefersReducedMotion = useSyncExternalStore(

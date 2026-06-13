@@ -269,7 +269,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
           />
 
           <motion.div
-            className="fixed inset-0 z-[9501] flex items-center justify-center p-4"
+            className="fixed inset-0 z-[9501] flex items-end justify-center p-0 sm:items-center sm:p-4"
             style={{ pointerEvents: "none" }}
           >
             <motion.div
@@ -278,7 +278,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
               aria-modal="true"
               aria-labelledby={titleId}
               tabIndex={-1}
-              className="w-full max-w-lg relative rounded-3xl overflow-hidden"
+              className="relative max-h-[calc(100dvh-env(safe-area-inset-top))] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl"
               style={{
                 pointerEvents: "auto",
                 background: "var(--modal-bg)",
@@ -301,7 +301,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                 style={{ background: `radial-gradient(ellipse at 50% 0%, ${accentColor}10 0%, transparent 70%)` }}
               />
 
-              <div className="relative px-6 pt-6 pb-5 space-y-4">
+              <div className="relative space-y-4 px-4 pt-5 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-6 sm:pb-5">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -330,7 +330,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                     type="button"
                     aria-label="Закрыть создание задачи"
                     onClick={onClose}
-                    className="w-8 h-8 rounded-xl flex items-center justify-center hover:opacity-70 transition-opacity"
+                    className="flex h-11 w-11 items-center justify-center rounded-xl transition-opacity hover:opacity-70 sm:h-8 sm:w-8"
                     style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)", color: "var(--text-muted)" }}
                   >
                     <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
@@ -397,13 +397,13 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                   <label className="text-xs font-semibold uppercase tracking-widest mb-2 block" style={{ color: "var(--text-muted)" }}>
                     Эпик *
                   </label>
-                  <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+                  <div className="grid max-h-36 grid-cols-1 gap-2 overflow-y-auto pr-1 min-[420px]:grid-cols-2">
                     {epics.map(epic => (
                       <motion.button
                         key={epic.id}
                         type="button"
                         onClick={() => setEpicId(epic.id)}
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-left transition-all"
+                        className="flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium transition-all"
                         style={{
                           background: epicId === epic.id ? `${epic.color}18` : "var(--glass-01)",
                           border: `1px solid ${epicId === epic.id ? epic.color + "45" : "var(--glass-border)"}`,
@@ -420,7 +420,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                 </div>
 
                 {/* Status + Priority row */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2">
                   <div>
                     <label className="text-xs font-semibold uppercase tracking-widest mb-2 block" style={{ color: "var(--text-muted)" }}>
                       Статус
@@ -433,7 +433,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                             key={opt.value}
                             type="button"
                             onClick={() => setStatus(opt.value)}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium"
+                            className="flex min-h-11 items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-medium sm:min-h-0 sm:py-1.5"
                             style={{
                               background: status === opt.value ? meta.bg : "var(--glass-01)",
                               border: `1px solid ${status === opt.value ? meta.border : "var(--glass-border)"}`,
@@ -466,7 +466,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                               setPriority(p);
                               setAiSuggested(null);
                             }}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium"
+                            className="flex min-h-11 items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-medium sm:min-h-0 sm:py-1.5"
                             style={{
                               background: priority === p ? meta.bg : "var(--glass-01)",
                               border: `1px solid ${priority === p ? meta.border : "var(--glass-border)"}`,
@@ -485,7 +485,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                 </div>
 
                 {/* Description + Due date */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className="text-xs font-semibold uppercase tracking-widest mb-2 block" style={{ color: "var(--text-muted)" }}>
                       Описание
@@ -576,18 +576,18 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                 )}
 
                 {/* Footer */}
-                <div className="flex items-center justify-between pt-1 border-t" style={{ borderColor: "var(--glass-border)" }}>
-                  <span className="text-xs flex items-center gap-1.5" style={{ color: "var(--text-muted)" }}>
+                <div className="sticky bottom-0 -mx-4 flex flex-col-reverse gap-3 border-t px-4 py-3 sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:px-0 sm:py-0" style={{ background: "var(--modal-bg)", borderColor: "var(--glass-border)" }}>
+                  <span className="hidden items-center gap-1.5 text-xs sm:flex" style={{ color: "var(--text-muted)" }}>
                     <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono" style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)" }}>
                       ⌘↵
                     </kbd>
                     создать
                   </span>
-                  <div className="flex gap-2">
+                  <div className="flex w-full gap-2 sm:w-auto">
                     <motion.button
                       type="button"
                       onClick={onClose}
-                      className="px-4 py-2 rounded-xl text-xs font-medium"
+                      className="min-h-11 flex-1 rounded-xl px-4 py-2 text-xs font-medium sm:min-h-0 sm:flex-none"
                       style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)" }}
                       whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
                     >
@@ -597,7 +597,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
                       type="button"
                       onClick={handleSave}
                       disabled={!title.trim() || !epicId || saving}
-                      className="relative px-5 py-2 rounded-xl text-xs font-semibold overflow-hidden"
+                      className="relative min-h-11 flex-[1.35] overflow-hidden rounded-xl px-5 py-2 text-xs font-semibold sm:min-h-0 sm:flex-none"
                       style={{
                         background: title.trim() && epicId ? `${accentColor}25` : "var(--glass-01)",
                         border: `1px solid ${title.trim() && epicId ? accentColor + "50" : "var(--glass-border)"}`,

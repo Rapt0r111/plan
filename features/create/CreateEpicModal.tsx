@@ -187,7 +187,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
           />
 
           <motion.div
-            className="fixed inset-0 z-[9501] flex items-center justify-center p-4"
+            className="fixed inset-0 z-[9501] flex items-end justify-center p-0 sm:items-center sm:p-4"
             style={{ pointerEvents: "none" }}
           >
             <motion.div
@@ -196,7 +196,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
               aria-modal="true"
               aria-labelledby={titleId}
               tabIndex={-1}
-              className="w-full flex gap-6 items-start"
+              className="w-full max-h-[calc(100dvh-env(safe-area-inset-top))] flex items-start gap-6 sm:max-h-[calc(100dvh-2rem)]"
               style={{ maxWidth: 860, pointerEvents: "auto" }}
               initial={{ opacity: 0, scale: 0.94, y: 24 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -206,7 +206,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
             >
               {/* Form panel */}
               <div
-                className="flex-1 rounded-3xl overflow-hidden relative"
+                className="relative max-h-[inherit] flex-1 overflow-hidden rounded-t-2xl sm:rounded-2xl"
                 style={{
                   background: "var(--modal-bg)",
                   border: `1px solid ${color}30`,
@@ -218,7 +218,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                 <div className="absolute top-0 left-0 right-0 h-48 pointer-events-none"
                   style={{ background: `radial-gradient(ellipse at 50% 0%, ${color}12 0%, transparent 65%)` }} />
 
-                <div className="relative px-7 pt-7 pb-6 space-y-5">
+                <div className="relative max-h-[inherit] space-y-5 overflow-y-auto overscroll-contain px-4 pt-5 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-7 sm:pt-7 sm:pb-6">
                   {/* Header */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -251,7 +251,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                         </motion.div>
                       )}
                       <button type="button" aria-label="Закрыть создание эпика" onClick={onClose}
-                        className="w-8 h-8 rounded-xl flex items-center justify-center transition-all hover:opacity-70"
+                        className="flex h-11 w-11 items-center justify-center rounded-xl transition-all hover:opacity-70 sm:h-8 sm:w-8"
                         style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)", color: "var(--text-muted)" }}>
                         <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                           <path d="M2 2l8 8M10 2L2 10" />
@@ -328,7 +328,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                   </div>
 
                   {/* Dates */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {[
                       { label: "Дата начала", value: startDate, onChange: setStartDate },
                       { label: "Дата окончания", value: endDate, onChange: setEndDate },
@@ -362,7 +362,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                           key={c}
                           type="button"
                           onClick={() => setColor(c)}
-                          className="relative w-7 h-7 rounded-xl"
+                          className="relative h-11 w-11 rounded-xl sm:h-7 sm:w-7"
                           style={{ backgroundColor: c }}
                           whileHover={{ scale: 1.2, y: -2 }}
                           whileTap={{ scale: 0.9 }}
@@ -388,7 +388,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                       ))}
                       <div className="relative">
                         <motion.label
-                          className="w-7 h-7 rounded-xl flex items-center justify-center cursor-pointer"
+                          className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl sm:h-7 sm:w-7"
                           style={{ background: "var(--glass-02)", border: "1.5px dashed var(--glass-border)" }}
                           whileHover={{ scale: 1.1 }}
                           title="Свой цвет"
@@ -406,8 +406,9 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                   </div>
 
                   {/* Footer */}
-                  <div className="flex items-center justify-between pt-1">
-                    <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+                  <div className="sticky bottom-0 -mx-4 flex flex-col-reverse gap-3 border-t px-4 py-3 sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:border-0 sm:px-0 sm:py-0"
+                    style={{ background: "var(--modal-bg)", borderColor: "var(--glass-border)" }}>
+                    <div className="hidden items-center gap-1.5 text-xs sm:flex" style={{ color: "var(--text-muted)" }}>
                       <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono"
                         style={{ background: "var(--glass-02)", border: "1px solid var(--glass-border)" }}>
                         ⌘↵
@@ -420,16 +421,16 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                       </kbd>
                       <span>отмена</span>
                     </div>
-                    <div className="flex gap-2.5">
+                    <div className="flex w-full gap-2.5 sm:w-auto">
                       <motion.button type="button" onClick={onClose}
-                        className="px-4 py-2 rounded-xl text-sm font-medium"
+                        className="min-h-11 flex-1 rounded-xl px-4 py-2 text-sm font-medium sm:min-h-0 sm:flex-none"
                         style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)", color: "var(--text-secondary)" }}
                         whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
                         Отмена
                       </motion.button>
                       <motion.button type="button" onClick={handleSave}
                         disabled={!title.trim() || saving}
-                        className="relative px-5 py-2 rounded-xl text-sm font-semibold overflow-hidden"
+                        className="relative min-h-11 flex-[1.35] overflow-hidden rounded-xl px-5 py-2 text-sm font-semibold sm:min-h-0 sm:flex-none"
                         style={{
                           background: title.trim() ? `linear-gradient(135deg, ${color}30, ${color}18)` : "var(--glass-01)",
                           border: `1px solid ${title.trim() ? color + "50" : "var(--glass-border)"}`,
@@ -458,7 +459,7 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
 
               {/* Live preview */}
               <motion.div
-                className="w-72 shrink-0"
+                className="hidden w-72 shrink-0 lg:block"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1 }}

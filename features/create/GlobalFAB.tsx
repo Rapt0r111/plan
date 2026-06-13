@@ -7,11 +7,21 @@
  */
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useSpring, useMotionValue } from "framer-motion";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useIsOffline } from "@/shared/lib/hooks/useIsOffline";
 import { usePerformanceMode } from "@/shared/lib/usePerformanceMode";
-import { CreateEpicModal } from "./CreateEpicModal";
-import { CreateTaskModal } from "./CreateTaskModal";
+
+const loadCreateEpicModal = () => import("./CreateEpicModal");
+const loadCreateTaskModal = () => import("./CreateTaskModal");
+const CreateEpicModal = dynamic(
+  () => loadCreateEpicModal().then((module) => module.CreateEpicModal),
+  { ssr: false },
+);
+const CreateTaskModal = dynamic(
+  () => loadCreateTaskModal().then((module) => module.CreateTaskModal),
+  { ssr: false },
+);
 
 const actions = [
   {
@@ -62,17 +72,19 @@ function ActionButton({
   action,
   index,
   onAction,
+  onIntent,
 }: {
   action: typeof actions[0];
   index: number;
   onAction: (id: string) => void;
+  onIntent: (id: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const { lowMotion, noMotion } = usePerformanceMode();
 
   return (
     <motion.div
-      className="flex items-center gap-3 justify-end"
+      className="global-fab-action flex items-center gap-3 justify-end"
       initial={noMotion ? false : { opacity: 0, x: 40, scale: 0.7, filter: lowMotion ? "none" : "blur(8px)" }}
       animate={noMotion ? undefined : { opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
       exit={noMotion ? undefined : { opacity: 0, x: 30, scale: 0.75, filter: lowMotion ? "none" : "blur(6px)" }}
@@ -85,7 +97,7 @@ function ActionButton({
             animate={noMotion ? undefined : { opacity: 1, x: 0, scale: 1 }}
             exit={noMotion ? undefined : { opacity: 0, x: 6, scale: 0.9 }}
             transition={noMotion ? undefined : { duration: 0.15 }}
-            className="flex flex-col items-end"
+            className="global-fab-desktop-label flex flex-col items-end"
           >
             <span
               className="text-[13px] font-semibold leading-tight whitespace-nowrap px-3 py-1.5 rounded-xl"
@@ -106,10 +118,17 @@ function ActionButton({
       </AnimatePresence>
 
       <motion.button
+        type="button"
+        aria-label={action.label}
         onClick={() => onAction(action.id)}
-        onHoverStart={() => setHovered(true)}
+        onPointerDown={() => onIntent(action.id)}
+        onFocus={() => onIntent(action.id)}
+        onHoverStart={() => {
+          setHovered(true);
+          onIntent(action.id);
+        }}
         onHoverEnd={() => setHovered(false)}
-        className="relative w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+        className="global-fab-action-button relative w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden"
         style={{ color: action.color }}
         whileHover={lowMotion ? undefined : { scale: 1.1 }}
         whileTap={lowMotion ? undefined : { scale: 0.88 }}
@@ -130,7 +149,15 @@ function ActionButton({
           className="absolute top-0 left-0 right-0 h-px rounded-full"
           style={{ background: `linear-gradient(90deg, transparent, ${action.color}60, transparent)` }}
         />
-        <span className="relative z-10">{action.icon}</span>
+        <span className="relative z-10 shrink-0">{action.icon}</span>
+        <span className="global-fab-action-label relative z-10 hidden min-w-0 flex-col items-start text-left">
+          <span className="text-sm font-semibold leading-tight" style={{ color: action.color }}>
+            {action.label}
+          </span>
+          <span className="text-xs leading-tight" style={{ color: "var(--text-muted)" }}>
+            {action.sublabel}
+          </span>
+        </span>
       </motion.button>
     </motion.div>
   );
@@ -163,6 +190,8 @@ export function GlobalFAB() {
   const [open, setOpen] = useState(false);
   const [epicOpen, setEpicOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
+  const [epicModalLoaded, setEpicModalLoaded] = useState(false);
+  const [taskModalLoaded, setTaskModalLoaded] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const safeOpen = open && !offline;
 
@@ -202,9 +231,20 @@ export function GlobalFAB() {
 
   const handleAction = (id: string) => {
     setOpen(false);
-    if (id === "epic") setEpicOpen(true);
-    else if (id === "task") setTaskOpen(true);
-    else router.push("/settings");
+    if (id === "epic") {
+      setEpicModalLoaded(true);
+      setEpicOpen(true);
+    } else if (id === "task") {
+      setTaskModalLoaded(true);
+      setTaskOpen(true);
+    } else {
+      router.push("/settings");
+    }
+  };
+
+  const handleActionIntent = (id: string) => {
+    if (id === "epic") void loadCreateEpicModal();
+    if (id === "task") void loadCreateTaskModal();
   };
 
   return (
@@ -229,14 +269,19 @@ export function GlobalFAB() {
       {/* FAB stack */}
       <div
         ref={ref}
-        className="fixed z-[9000] flex flex-col items-end gap-2.5"
-        style={{ bottom: 28, right: 28 }}
+        className="global-fab fixed z-[9000] flex flex-col items-end gap-2.5"
       >
         {/* Actions */}
         <AnimatePresence>
           {open &&
             actions.map((action, i) => (
-              <ActionButton key={action.id} action={action} index={i} onAction={handleAction} />
+              <ActionButton
+                key={action.id}
+                action={action}
+                index={i}
+                onAction={handleAction}
+                onIntent={handleActionIntent}
+              />
             ))}
         </AnimatePresence>
 
@@ -259,6 +304,9 @@ export function GlobalFAB() {
           {!open && !offline && <PulseRings color="rgba(139,92,246,0.6)" />}
 
           <motion.button
+            type="button"
+            aria-label={open ? "Закрыть меню создания" : "Открыть меню создания"}
+            aria-expanded={safeOpen}
             onClick={handleFabClick}
             onMouseMove={handleMouse}
             onMouseLeave={() => { mx.set(0); my.set(0); }}
@@ -342,8 +390,12 @@ export function GlobalFAB() {
         </AnimatePresence>
       </div>
 
-      <CreateEpicModal open={epicOpen} onClose={() => setEpicOpen(false)} />
-      <CreateTaskModal open={taskOpen} onClose={() => setTaskOpen(false)} />
+      {epicModalLoaded && (
+        <CreateEpicModal open={epicOpen} onClose={() => setEpicOpen(false)} />
+      )}
+      {taskModalLoaded && (
+        <CreateTaskModal open={taskOpen} onClose={() => setTaskOpen(false)} />
+      )}
     </>
   );
 }

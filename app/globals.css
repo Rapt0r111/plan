@@ -1183,6 +1183,33 @@ html[data-animation-level="none"] *::after {
   scroll-behavior: auto !important;
 }
 
+/* Global create controls adapt to notches and touch-first input without changing desktop density. */
+.global-fab {
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+@media (hover: none), (pointer: coarse) {
+  .global-fab-action {
+    width: min(18rem, calc(100vw - 2rem));
+  }
+
+  .global-fab-desktop-label {
+    display: none;
+  }
+
+  .global-fab-action-button {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    padding-inline: 1rem;
+  }
+
+  .global-fab-action-label {
+    display: flex;
+  }
+}
+
 html[data-animation-level="subtle"] .animate-pulse,
 html[data-animation-level="subtle"] .animate-pulse-glow,
 html[data-animation-level="subtle"] .animate-hue,

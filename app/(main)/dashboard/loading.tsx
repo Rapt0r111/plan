@@ -51,7 +51,6 @@ export default function DashboardLoading() {
                 style={{
                   background: "var(--bg-elevated)",
                   border: "1px solid var(--glass-border)",
-                  borderLeft: "3px solid var(--glass-03)",
                 }}
               >
                 <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-3">

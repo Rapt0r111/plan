@@ -159,13 +159,11 @@ function EpicCard({
       className="rounded-xl overflow-hidden group"
       style={{
         background: "var(--bg-elevated)",
-        border: "1px solid var(--glass-border)",
-        borderLeft: `3px solid ${epic.color}`,
+        border: `1px solid color-mix(in oklch, ${epic.color} 24%, var(--glass-border))`,
       }}
     >
       <div
         className="px-4 pt-4 pb-3 space-y-3"
-        style={{ background: `linear-gradient(135deg, ${epic.color}10 0%, transparent 55%)` }}
       >
         {/* Row 1: color + title + ring */}
         <div className="flex items-center gap-3">

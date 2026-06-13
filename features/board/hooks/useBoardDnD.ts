@@ -50,14 +50,11 @@ function createGhostElement(task: TaskView, isDark: boolean): HTMLElement {
     display:flex;flex-direction:column;gap:8px;
     padding:10px 12px;
     background:${bg};
-    border:1px solid ${borderColor};
-    border-left:3px solid ${priorityColor};
+    border:1px solid color-mix(in oklch, ${priorityColor} 34%, ${borderColor});
     border-radius:12px;
-    box-shadow:0 16px 48px rgba(0,0,0,0.45),0 0 0 1px rgba(139,92,246,0.12);
-    backdrop-filter:blur(16px);
-    -webkit-backdrop-filter:blur(16px);
+    box-shadow:0 8px 20px rgba(0,0,0,0.28);
     pointer-events:none;
-    transform:scale(1.04) rotate(-1deg);
+    transform:scale(1.01);
     font-family:'DM Sans',sans-serif;
     width:240px;
   `;

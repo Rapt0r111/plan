@@ -315,8 +315,6 @@ export function PersonalPlanBoard({ data, isAdmin }: Props) {
             boxShadow: PANEL_SHADOW,
           }}
         >
-          <div className="absolute -right-16 -top-28 h-56 w-56 rounded-full bg-[rgba(37,99,235,0.13)] blur-3xl pointer-events-none" />
-          <div className="absolute -left-24 bottom-0 h-44 w-44 rounded-full bg-[rgba(52,211,153,0.06)] blur-3xl pointer-events-none" />
           <div className="absolute bottom-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent pointer-events-none" />
           <div className="relative grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
             <div className="min-w-0">
@@ -692,11 +690,12 @@ function ProgressRail({ value }: { value: number }) {
         aria-hidden="true"
       >
         <div
-          className="h-full rounded-full"
+          className="h-full origin-left rounded-full"
           style={{
-            width: `${animated}%`,
-            background: "linear-gradient(90deg, #8b5cf6, #38bdf8, #34d399)",
-            transition: "width 0.48s cubic-bezier(0.16, 1, 0.3, 1)",
+            width: "100%",
+            transform: `scaleX(${animated / 100})`,
+            background: "var(--accent-500)",
+            transition: "transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         />
       </div>
@@ -863,8 +862,10 @@ const UserPlanHeader = memo(function UserPlanHeader({
   const progressFillStyle: CSSProperties = useMemo(
     () => ({
       background: block.user.roleMeta.hex,
-      width: `${animatedPct}%`,
-      transition: "width 0.48s cubic-bezier(0.16, 1, 0.3, 1)",
+      width: "100%",
+      transform: `scaleX(${animatedPct / 100})`,
+      transformOrigin: "left center",
+      transition: "transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)",
     }),
     [block.user.roleMeta.hex, animatedPct],
   );

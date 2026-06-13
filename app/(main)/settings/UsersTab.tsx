@@ -130,8 +130,7 @@ function UserCard({
             className="rounded-xl p-4 flex items-center gap-4 group"
             style={{
                 background: "var(--bg-elevated)",
-                border: "1px solid var(--glass-border)",
-                borderLeft: `3px solid ${user.roleMeta.hex}`,
+                border: `1px solid color-mix(in oklch, ${user.roleMeta.hex} 24%, var(--glass-border))`,
             }}
         >
             {/* Avatar */}

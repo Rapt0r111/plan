@@ -46,14 +46,14 @@ export function DashboardClientWidgets() {
   return (
     <>
       <section>
-        <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">
+      <h2 className="mb-3 text-sm font-medium text-[var(--text-secondary)]">
           Нагрузка
         </h2>
         <WorkloadBalancer />
       </section>
 
       <section>
-        <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">
+      <h2 className="mb-3 text-sm font-medium text-[var(--text-secondary)]">
           Хронолента
         </h2>
         <InfiniteTimeline />

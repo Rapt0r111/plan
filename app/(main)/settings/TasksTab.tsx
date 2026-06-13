@@ -120,8 +120,7 @@ function TaskCard({
             className="rounded-xl overflow-visible group"
             style={{
                 background: "var(--bg-elevated)",
-                border: "1px solid var(--glass-border)",
-                borderLeft: `2px solid ${epicColor}`,
+                border: `1px solid color-mix(in oklch, ${epicColor} 22%, var(--glass-border))`,
             }}>
 
             {/* ── Main row ─────────────────────────────────────── */}

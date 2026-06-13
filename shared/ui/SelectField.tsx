@@ -184,7 +184,7 @@ export function SelectField({
         style={{ ...selectButtonStyle(open, resolvedAccent), ["--select-accent" as string]: resolvedAccent }}
       >
         <span className="pointer-events-none absolute inset-y-1 left-1 w-0.5 rounded-full opacity-80" style={{ background: resolvedAccent }} />
-        {selectedOption?.color && <span className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_12px_currentColor]" style={{ background: selectedOption.color, color: selectedOption.color }} />}
+          {selectedOption?.color && <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: selectedOption.color }} />}
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold text-[var(--text-primary)]">{selectedLabel}</span>
           {label && <span className="block truncate text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">{label}</span>}

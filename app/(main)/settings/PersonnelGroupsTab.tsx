@@ -112,7 +112,7 @@ export function PersonnelGroupsTab({ initialGroups }: Props) {
 
       <div className="grid gap-3">
         {groups.map((group) => (
-          <div key={group.id} className="rounded-xl p-4 flex items-center gap-3 group" style={{ background: "var(--bg-elevated)", border: "1px solid var(--glass-border)", borderLeft: `3px solid ${group.color}` }}>
+          <div key={group.id} className="rounded-xl p-4 flex items-center gap-3 group" style={{ background: "var(--bg-elevated)", border: `1px solid color-mix(in oklch, ${group.color} 24%, var(--glass-border))` }}>
             <input type="color" value={group.color} onChange={(e) => patchGroup(group, { color: e.target.value })} className="w-8 h-8 rounded cursor-pointer border-0 p-0 bg-transparent" />
             <div className="flex-1 min-w-0">
               <input

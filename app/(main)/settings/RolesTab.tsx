@@ -223,8 +223,7 @@ function RoleCard({
       className="rounded-xl p-4 flex items-center gap-4 group"
       style={{
         background: "var(--bg-elevated)",
-        border: "1px solid var(--glass-border)",
-        borderLeft: `3px solid ${role.hex}`,
+        border: `1px solid color-mix(in oklch, ${role.hex} 24%, var(--glass-border))`,
       }}
     >
       {/* Color picker */}

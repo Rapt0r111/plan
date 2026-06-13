@@ -152,9 +152,7 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
         transition: sidebarTransitionStyle,
       }}
     >
-      <div className="absolute inset-0 z-0" style={{ background: "linear-gradient(180deg, color-mix(in oklch, var(--sidebar-top) 92%, var(--secondary-500) 8%) 0%, var(--bg-base) 100%)" }} />
-      <div className="pointer-events-none absolute -left-16 top-8 h-48 w-48 rounded-full bg-[var(--accent-500)] opacity-[0.08] blur-3xl" />
-      <div className="pointer-events-none absolute bottom-16 right-0 h-36 w-36 rounded-full bg-[var(--secondary-500)] opacity-[0.06] blur-3xl" />
+      <div className="absolute inset-0 z-0 bg-[var(--sidebar-top)]" />
 
       {mounted && (
         <button
@@ -162,8 +160,8 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
           onClick={toggle}
           className={cn(
             "absolute top-6 right-0 z-30 flex h-7 w-7 translate-x-1/2 cursor-pointer items-center justify-center rounded-full border border-[var(--glass-border)]",
-            "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[0_10px_30px_rgba(0,0,0,0.22)] backdrop-blur-xl",
-            "opacity-80 transition-all duration-200 hover:scale-105 hover:text-[var(--text-primary)] hover:opacity-100 active:scale-95",
+            "bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-sm",
+            "opacity-80 transition-colors duration-200 hover:text-[var(--text-primary)] hover:opacity-100",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)]"
           )}
           aria-label={isCollapsed ? "Развернуть меню" : "Свернуть меню"}
@@ -182,7 +180,7 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
           style={{ height: "var(--header-h)" }}
         >
           <div className={cn("flex items-center gap-2.5", isCollapsed && "justify-center")}>
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent-500)] shadow-[0_0_20px_var(--accent-glow)] ring-1 ring-[var(--accent-border)]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-500)] ring-1 ring-[var(--accent-border)]">
               <LogoSvg />
             </div>
             <span className={cn(
@@ -220,7 +218,7 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
                 <button
                   type="button"
                   onClick={() => toggleGroup("epics")}
-                  className="group flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-01)] hover:text-[var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)]"
+                  className="group flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--glass-01)] hover:text-[var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)]"
                   aria-expanded={openGroups.epics ?? true}
                 >
                   <span className="flex-1">Эпики</span>
@@ -246,9 +244,9 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
                             key={epic.id}
                             href={`/epics/${epic.id}`}
                             className={cn(
-                              "group flex cursor-pointer items-center rounded-2xl border transition-all duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)]",
+                              "group flex cursor-pointer items-center rounded-xl border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)]",
                               isActive
-                                ? "border-[var(--glass-border-active)] bg-[var(--glass-02)] text-[var(--text-primary)] shadow-[0_10px_28px_rgba(0,0,0,0.16)]"
+                                ? "border-[var(--glass-border-active)] bg-[var(--glass-02)] text-[var(--text-primary)]"
                                 : "border-transparent text-[var(--text-secondary)] hover:border-[var(--glass-border)] hover:bg-[var(--glass-01)] hover:text-[var(--text-primary)]",
                               isCollapsed ? "justify-center p-2.5" : "gap-2.5 px-3 py-2.5"
                             )}
@@ -315,7 +313,7 @@ export function Sidebar({ epics, users: _users, session, isVariableRestricted = 
               <LoginIcon />
             </Link>
           ) : (
-            <div className="rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-01)] p-3 shadow-[0_12px_32px_rgba(0,0,0,0.12)]">
+            <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-01)] p-3">
               <p className="text-xs font-semibold text-[var(--text-primary)]">Войдите в аккаунт</p>
               <p className="mt-1 text-[11px] leading-snug text-[var(--text-muted)]">Доступ к профилю и задачам после авторизации.</p>
               <div className="grid grid-cols-2 gap-2 pt-3">
@@ -351,7 +349,7 @@ function SidebarSection({ group, pathname, isCollapsed, open, onToggle }: {
           aria-expanded={open}
         >
           <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]">{group.title}</span>
+            <span className="block text-[11px] font-medium text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]">{group.title}</span>
             <span className="block truncate text-[9px] text-[var(--text-muted)] opacity-70">{group.caption}</span>
           </span>
           <ChevronDownIcon open={open} />
@@ -374,7 +372,7 @@ function SidebarSection({ group, pathname, isCollapsed, open, onToggle }: {
                     key={href}
                     href={href}
                     className={cn(
-                      "nav-item group relative flex cursor-pointer items-center rounded-2xl border transition-all duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)] motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+                      "nav-item group relative flex cursor-pointer items-center rounded-xl border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)] motion-reduce:transition-none",
                       active
                         ? "border-[var(--secondary-border)] bg-[var(--secondary-soft)] text-[var(--secondary-400)]"
                         : "border-transparent text-[var(--text-secondary)] hover:border-[var(--glass-border)] hover:bg-[var(--glass-01)] hover:text-[var(--text-primary)]",

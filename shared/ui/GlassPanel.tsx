@@ -44,7 +44,7 @@ export function GlassPanel({
       className={cn(
         "rounded-2xl transition-all duration-200",
         variantClasses[variant],
-        accent && "border-[rgba(139,92,246,0.35)] shadow-[0_0_20px_rgba(139,92,246,0.15)]",
+        accent && "border-[var(--accent-border)] bg-[var(--accent-soft)]",
         highlight && "before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-linear-to-r before:from-transparent before:via-white/15 before:to-transparent before:rounded-t-2xl before:content-[''] relative overflow-hidden",
         className
       )}

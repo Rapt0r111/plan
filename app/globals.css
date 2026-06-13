@@ -61,7 +61,7 @@
   --glass-02: color-mix(in oklch, oklch(82% 0.045 285) 8%, transparent);
   --glass-03: color-mix(in oklch, oklch(82% 0.045 285) 13%, transparent);
   --glass-border: color-mix(in oklch, oklch(82% 0.045 285) 11%, transparent);
-  --glass-border-active: color-mix(in oklch, oklch(74% 0.16 286) 38%, transparent);
+  --glass-border-active: color-mix(in oklch, oklch(72% 0.12 286) 26%, transparent);
 
   --filter-bar-bg: rgba(8, 9, 18, 0.88);
 
@@ -78,19 +78,19 @@
   --accent-h: 262;
   --accent-s: 83%;
   --accent-l: 70%;
-  --accent-500: oklch(63% 0.21 286);
-  --accent-400: oklch(72% 0.17 286);
-  --accent-300: oklch(82% 0.11 286);
-  --accent-soft: color-mix(in oklch, var(--accent-500) 14%, transparent);
-  --accent-border: color-mix(in oklch, var(--accent-400) 36%, transparent);
-  --accent-glow: color-mix(in oklch, var(--accent-500) 24%, transparent);
-  --accent-glow-strong: color-mix(in oklch, var(--accent-500) 42%, transparent);
+  --accent-500: oklch(61% 0.16 286);
+  --accent-400: oklch(71% 0.13 286);
+  --accent-300: oklch(81% 0.08 286);
+  --accent-soft: color-mix(in oklch, var(--accent-500) 9%, transparent);
+  --accent-border: color-mix(in oklch, var(--accent-400) 24%, transparent);
+  --accent-glow: color-mix(in oklch, var(--accent-500) 10%, transparent);
+  --accent-glow-strong: color-mix(in oklch, var(--accent-500) 18%, transparent);
 
   /* Secondary brand hue: navigation, information, and wayfinding only. */
-  --secondary-500: oklch(67% 0.13 184);
-  --secondary-400: oklch(76% 0.12 184);
-  --secondary-soft: color-mix(in oklch, var(--secondary-500) 12%, transparent);
-  --secondary-border: color-mix(in oklch, var(--secondary-400) 30%, transparent);
+  --secondary-500: oklch(65% 0.10 184);
+  --secondary-400: oklch(74% 0.09 184);
+  --secondary-soft: color-mix(in oklch, var(--secondary-500) 8%, transparent);
+  --secondary-border: color-mix(in oklch, var(--secondary-400) 22%, transparent);
 
   --cursor-x: 50%;
   --cursor-y: 50%;
@@ -136,7 +136,7 @@
   --notification-border-base: rgba(255, 255, 255, 0.06);
   --notification-surface: rgba(255, 255, 255, 0.015);
 
-  --bg-card-done: linear-gradient(155deg, rgba(13, 20, 28, 0.98) 0%, rgba(10, 18, 22, 0.98) 100%);
+  --bg-card-done: color-mix(in oklch, var(--bg-elevated) 94%, var(--color-done) 6%);
   --border-card-done: rgba(52, 211, 153, 0.16);
   --track-bg: rgba(255, 255, 255, 0.06);
   --track-bg-sm: rgba(255, 255, 255, 0.05);
@@ -149,7 +149,7 @@
   --orb-ring: rgba(255, 255, 255, 0.08);
   --panel-border: rgba(255, 255, 255, 0.09);
   --section-border: rgba(255, 255, 255, 0.06);
-  --fab-backdrop: radial-gradient(ellipse at bottom right, var(--accent-soft) 0%, color-mix(in oklch, black 50%, transparent) 70%);
+  --fab-backdrop: color-mix(in oklch, var(--bg-overlay) 96%, transparent);
 }
 
 /* ── Light Theme ───────────────────────────────────────────────────────────── */
@@ -168,7 +168,7 @@ html.light {
   --glass-02: color-mix(in oklch, white 84%, var(--accent-300) 16%);
   --glass-03: color-mix(in oklch, white 92%, var(--accent-300) 8%);
   --glass-border: color-mix(in oklch, oklch(38% 0.05 286) 15%, transparent);
-  --glass-border-active: color-mix(in oklch, var(--accent-500) 38%, transparent);
+  --glass-border-active: color-mix(in oklch, var(--accent-500) 26%, transparent);
   --glass-r: rgba(255, 80, 80, 0.03);
   --glass-b: rgba(80, 120, 255, 0.03);
 
@@ -179,18 +179,18 @@ html.light {
   --accent-h: 267;
   --accent-s: 75%;
   --accent-l: 52%;
-  --accent-500: oklch(47% 0.2 286);
-  --accent-400: oklch(55% 0.19 286);
-  --accent-300: oklch(66% 0.15 286);
-  --accent-soft: color-mix(in oklch, var(--accent-500) 10%, transparent);
-  --accent-border: color-mix(in oklch, var(--accent-500) 28%, transparent);
-  --accent-glow: color-mix(in oklch, var(--accent-500) 10%, transparent);
-  --accent-glow-strong: color-mix(in oklch, var(--accent-500) 20%, transparent);
+  --accent-500: oklch(46% 0.16 286);
+  --accent-400: oklch(54% 0.15 286);
+  --accent-300: oklch(65% 0.11 286);
+  --accent-soft: color-mix(in oklch, var(--accent-500) 7%, transparent);
+  --accent-border: color-mix(in oklch, var(--accent-500) 22%, transparent);
+  --accent-glow: color-mix(in oklch, var(--accent-500) 6%, transparent);
+  --accent-glow-strong: color-mix(in oklch, var(--accent-500) 12%, transparent);
 
-  --secondary-500: oklch(45% 0.11 184);
-  --secondary-400: oklch(54% 0.12 184);
-  --secondary-soft: color-mix(in oklch, var(--secondary-500) 9%, transparent);
-  --secondary-border: color-mix(in oklch, var(--secondary-500) 25%, transparent);
+  --secondary-500: oklch(44% 0.09 184);
+  --secondary-400: oklch(53% 0.10 184);
+  --secondary-soft: color-mix(in oklch, var(--secondary-500) 6%, transparent);
+  --secondary-border: color-mix(in oklch, var(--secondary-500) 20%, transparent);
 
   --status-todo-bg: color-mix(in oklch, oklch(48% 0.04 255) 10%, transparent);
   --status-todo-text: oklch(42% 0.045 255);
@@ -237,7 +237,7 @@ html.light {
   --notification-border-base: rgba(0, 0, 0, 0.07);
   --notification-surface: rgba(0, 0, 0, 0.02);
 
-  --bg-card-done: linear-gradient(155deg, rgba(232, 248, 241, 0.99) 0%, rgba(221, 241, 232, 0.99) 100%);
+  --bg-card-done: color-mix(in oklch, var(--bg-elevated) 94%, var(--color-done) 6%);
   --border-card-done: rgba(5, 150, 105, 0.25);
   --track-bg: rgba(0, 0, 0, 0.07);
   --track-bg-sm: rgba(0, 0, 0, 0.06);
@@ -250,7 +250,7 @@ html.light {
   --orb-ring: rgba(0, 0, 0, 0.07);
   --panel-border: rgba(0, 0, 0, 0.08);
   --section-border: rgba(0, 0, 0, 0.06);
-  --fab-backdrop: radial-gradient(ellipse at bottom right, var(--accent-soft) 0%, color-mix(in oklch, oklch(38% 0.025 278) 30%, transparent) 70%);
+  --fab-backdrop: color-mix(in oklch, var(--bg-overlay) 96%, transparent);
 }
 
 /* ── Reset & Base ──────────────────────────────────────────────────────────── */
@@ -375,19 +375,19 @@ html.light ::-webkit-scrollbar-thumb:hover {
 
 /* ── Priority borders ──────────────────────────────────────────────────────── */
 [data-priority="critical"] {
-  border-left: 2px solid var(--priority-critical);
+  border-color: color-mix(in oklch, var(--priority-critical) 42%, var(--glass-border));
 }
 
 [data-priority="high"] {
-  border-left: 2px solid var(--priority-high);
+  border-color: color-mix(in oklch, var(--priority-high) 38%, var(--glass-border));
 }
 
 [data-priority="medium"] {
-  border-left: 2px solid var(--priority-medium);
+  border-color: color-mix(in oklch, var(--priority-medium) 34%, var(--glass-border));
 }
 
 [data-priority="low"] {
-  border-left: 2px solid var(--priority-low);
+  border-color: color-mix(in oklch, var(--priority-low) 28%, var(--glass-border));
 }
 
 /* ── Keyframes ─────────────────────────────────────────────────────────────── */
@@ -1227,4 +1227,10 @@ html[data-glass-intensity="solid"] [class*="backdrop-blur"] {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   will-change: auto !important;
+}
+/* Quiet mode: the workspace background stays still and lets task content lead. */
+body::before,
+body::after {
+  content: none !important;
+  display: none !important;
 }

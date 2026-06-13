@@ -298,7 +298,7 @@ export function CreateTaskModal({ open, onClose, defaultEpicId }: Props) {
               />
               <div
                 className="absolute top-0 left-0 right-0 h-32 pointer-events-none"
-                style={{ background: `radial-gradient(ellipse at 50% 0%, ${accentColor}10 0%, transparent 70%)` }}
+                  style={{ background: `radial-gradient(ellipse at 50% 0%, ${accentColor}04 0%, transparent 70%)` }}
               />
 
               <div className="relative space-y-4 px-4 pt-5 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-6 sm:pb-5">

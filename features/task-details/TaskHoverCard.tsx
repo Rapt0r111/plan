@@ -93,10 +93,9 @@ export function TaskHoverCard({ task, anchorEl, visible }: Props) {
           zIndex:       9997,
           /* ── ИСПРАВЛЕНО: CSS vars вместо hardcoded dark colors ── */
           background:   "var(--bg-elevated)",
-          border:       `1px solid var(--glass-border)`,
-          borderLeft:   `3px solid ${priorityColor}`,
+          border:       `1px solid color-mix(in oklch, ${priorityColor} 30%, var(--glass-border))`,
           borderRadius: 14,
-          boxShadow: `var(--shadow-overlay), 0 0 20px ${priorityColor}14`,
+          boxShadow: `var(--shadow-elevated)`,
           padding: "12px 14px",
         }}
       >

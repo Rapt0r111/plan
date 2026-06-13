@@ -144,8 +144,8 @@ function DropZone({
             exit={{ opacity: 0 }}
             className="absolute inset-0 rounded-xl pointer-events-none"
             style={{
-              background: `radial-gradient(ellipse at 50% 0%, ${color}14 0%, transparent 65%)`,
-              boxShadow: `inset 0 0 20px ${color}06`,
+              background: `radial-gradient(ellipse at 50% 0%, ${color}06 0%, transparent 65%)`,
+              boxShadow: "none",
             }}
           />
         )}
@@ -267,7 +267,7 @@ export function EpicColumn({
         className="epic-column-shell flex flex-col rounded-2xl overflow-hidden relative"
         style={{
           background: "var(--bg-elevated)",
-          borderLeft: `3px solid ${epic.color}`,
+          border: `1px solid color-mix(in oklch, ${epic.color} 22%, var(--glass-border))`,
         }}
       >
         {/* Ambient mesh background */}
@@ -275,8 +275,8 @@ export function EpicColumn({
           className="epic-column-ambient absolute inset-0 pointer-events-none"
           style={{
             background: `
-              radial-gradient(ellipse 75% 45% at 8% 0%, ${epic.color}12 0%, transparent 55%),
-              radial-gradient(ellipse 45% 55% at 92% 100%, ${epic.color}08 0%, transparent 52%)
+              radial-gradient(ellipse 75% 45% at 8% 0%, ${epic.color}06 0%, transparent 55%),
+              radial-gradient(ellipse 45% 55% at 92% 100%, ${epic.color}04 0%, transparent 52%)
             `,
           }}
         />
@@ -285,7 +285,7 @@ export function EpicColumn({
         <div
           className="absolute top-0 left-0 right-0 h-px pointer-events-none"
           style={{
-            background: `linear-gradient(90deg, ${epic.color}90 0%, rgba(255,255,255,0.18) 35%, transparent 65%)`,
+            background: `linear-gradient(90deg, ${epic.color}30 0%, transparent 65%)`,
           }}
         />
 

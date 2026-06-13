@@ -41,9 +41,7 @@ function EpicPreviewCard({
       className="rounded-2xl overflow-hidden transition-all duration-300"
       style={{
         background: "var(--bg-elevated)",
-        border: "1px solid var(--glass-border)",
-        borderLeft: `3px solid ${color}`,
-        backgroundImage: `radial-gradient(ellipse at top left, ${color}12 0%, transparent 50%)`,
+        border: `1px solid color-mix(in oklch, ${color} 24%, var(--glass-border))`,
       }}
     >
       <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-3">
@@ -209,21 +207,21 @@ export function CreateEpicModal({ open, onClose, onCreated }: Props) {
                 className="relative max-h-[inherit] flex-1 overflow-hidden rounded-t-2xl sm:rounded-2xl"
                 style={{
                   background: "var(--modal-bg)",
-                  border: `1px solid ${color}30`,
-                  boxShadow: `0 0 0 1px ${color}15, 0 32px 80px rgba(0,0,0,0.7)`,
+                  border: `1px solid color-mix(in oklch, ${color} 24%, var(--glass-border))`,
+                  boxShadow: "var(--shadow-overlay)",
                 }}
               >
                 <div className="absolute top-0 left-0 right-0 h-px"
-                  style={{ background: `linear-gradient(90deg, transparent 0%, ${color} 30%, ${color} 70%, transparent 100%)` }} />
+                  style={{ background: `linear-gradient(90deg, transparent 0%, ${color}24 50%, transparent 100%)` }} />
                 <div className="absolute top-0 left-0 right-0 h-48 pointer-events-none"
-                  style={{ background: `radial-gradient(ellipse at 50% 0%, ${color}12 0%, transparent 65%)` }} />
+                  style={{ background: `radial-gradient(ellipse at 50% 0%, ${color}05 0%, transparent 65%)` }} />
 
                 <div className="relative max-h-[inherit] space-y-5 overflow-y-auto overscroll-contain px-4 pt-5 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-7 sm:pt-7 sm:pb-6">
                   {/* Header */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-                        style={{ background: `${color}20`, border: `1px solid ${color}40`, boxShadow: `0 0 16px ${color}25` }}>
+                        style={{ background: `${color}14`, border: `1px solid ${color}30` }}>
                         <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.7" strokeLinecap="round">
                           <circle cx="8" cy="8" r="6" /><path d="M8 5v3l2 2" />
                         </svg>

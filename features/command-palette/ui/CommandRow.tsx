@@ -104,11 +104,10 @@ export const CommandRow = memo(function CommandRow({
       style={
         isSelected
           ? {
-              background:   "rgba(139,92,246,0.12)",
-              borderLeft:   "2px solid var(--accent-500)",
-              paddingLeft:  "14px",
+              background:   "var(--accent-soft)",
+              boxShadow:    "inset 0 0 0 1px var(--accent-border)",
             }
-          : { borderLeft: "2px solid transparent" }
+          : undefined
       }
     >
       <CommandIcon icon={cmd.icon} color={cmd.color} />

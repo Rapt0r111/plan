@@ -1,12 +1,12 @@
 /**
- * @file layout.tsx — app (root)
+ * @file layout.tsx: app root
  *
- * ШАГ 2 — PWA:
+ * ШАГ 2, PWA:
  *   Добавлены мета-теги и ссылка на manifest.json для PWA.
  *   Добавлены apple-touch-icon и mobile-web-app-capable для iOS.
  *
  * LIGHT THEME v4:
- *  - Убран className="dark" с <html> — управляется скриптом + ThemeProvider
+ *  - Убран className="dark" с <html>; тема управляется скриптом + ThemeProvider
  *  - Инлайн-скрипт в <head> устраняет FOUC (flash of unstyled content)
  *  - ThemeProvider читает localStorage/prefers-color-scheme при гидрации
  *
@@ -20,7 +20,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "TaskFlow",
-  description: "Premium intranet task management — 2026",
+  description: "TaskFlow intranet task management",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

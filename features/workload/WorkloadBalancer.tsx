@@ -320,7 +320,7 @@ export function WorkloadBalancer() {
                     transition={{ duration: 0.3, ease: "easeOut" }}
                     className="space-y-2"
                   >
-                    <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest">
+        <p className="text-sm font-medium text-[var(--text-secondary)]">
                       Рекомендации
                     </p>
                     {suggestions.map((s, i) => (

@@ -466,8 +466,7 @@ function TaskCardInner({
       className="rounded-xl overflow-hidden relative group/card"
       style={{
         background:  "var(--bg-overlay)",
-        border:      `1px solid ${dlStyle && !isDone ? dlStyle.border : "var(--glass-border)"}`,
-        borderLeft:  `2px solid ${dlStyle?.border && !isDone ? dlStyle.border.replace("0.4", "1") : isDone ? "#34d399" : s.dot}`,
+        border:      `1px solid ${dlStyle && !isDone ? dlStyle.border : isDone ? "rgba(52,211,153,0.24)" : "var(--glass-border)"}`,
         opacity:     isDone ? 0.72 : 1,
       }}
     >

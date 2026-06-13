@@ -69,9 +69,9 @@ export function UserMenu({ name, login, role, compact = false }: Props) {
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          "group flex w-full cursor-pointer items-center rounded-2xl border transition-all duration-200 hover:-translate-y-0.5 hover:bg-[var(--glass-02)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)] motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+          "group flex w-full cursor-pointer items-center rounded-xl border transition-colors duration-200 hover:bg-[var(--glass-02)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-400)] motion-reduce:transition-none",
           compact ? "h-11 justify-center px-0" : "gap-2.5 px-3 py-2.5",
-          open ? "border-[var(--glass-border-active)] bg-[var(--glass-02)] shadow-[0_12px_28px_rgba(0,0,0,0.16)]" : "border-[var(--glass-border)] bg-[var(--glass-01)]"
+          open ? "border-[var(--glass-border-active)] bg-[var(--glass-02)]" : "border-[var(--glass-border)] bg-[var(--glass-01)]"
         )}
         aria-haspopup="menu"
         aria-expanded={open}

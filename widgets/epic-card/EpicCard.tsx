@@ -188,9 +188,9 @@ function MeshBackground({ color }: { color: string }) {
       className="absolute inset-0 pointer-events-none"
       style={{
         background: `
-          radial-gradient(ellipse 70% 55% at 20% 75%, ${color}1a 0%, transparent 55%),
-          radial-gradient(ellipse 55% 45% at 80% 30%, ${color}10 0%, transparent 50%),
-          radial-gradient(ellipse 40% 60% at 50% 110%, ${color}0d 0%, transparent 55%)
+        radial-gradient(ellipse 70% 55% at 20% 75%, ${color}08 0%, transparent 55%),
+        radial-gradient(ellipse 55% 45% at 80% 30%, ${color}05 0%, transparent 50%),
+        radial-gradient(ellipse 40% 60% at 50% 110%, ${color}04 0%, transparent 55%)
         `,
         // NO transition — статичный, без repaint при hover
       }}
@@ -320,8 +320,8 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
         {/* ── Outer glow on hover — CSS :hover, не Framer whileHover ── */}
         <div className="epic-card-glow-layer absolute -inset-px rounded-2xl pointer-events-none"
           style={{
-            background: `linear-gradient(135deg, ${epic.color}20 0%, transparent 60%)`,
-            boxShadow: `0 0 0 0.5px ${epic.color}40, 0 12px 40px ${epic.color}18, 0 0 60px ${epic.color}0e`,
+            background: "transparent",
+            boxShadow: "none",
             borderRadius: 16,
             opacity: 0,
             // CSS transition для hover glow — compositor-friendly (opacity)
@@ -334,14 +334,8 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
           className="epic-card-shell relative overflow-hidden rounded-2xl"
           style={{
             background: "var(--bg-elevated)",
-            border: `0.5px solid ${epic.color}30`,
-            borderLeft: `2.5px solid ${epic.color}`,
-            boxShadow: `
-              0 0 0 0.5px var(--inset-light),
-              0 2px 4px rgba(0,0,0,0.25),
-              0 8px 24px rgba(0,0,0,0.15),
-              inset 0 1px 0 var(--inset-light)
-            `,
+            border: `1px solid color-mix(in oklch, ${epic.color} 24%, var(--glass-border))`,
+            boxShadow: "none",
           }}
         >
           <MeshBackground color={epic.color} />
@@ -350,7 +344,7 @@ export function EpicCard({ epic, index = 0, onOpen }: EpicCardProps) {
           <div
             className="absolute top-0 left-0 right-0 h-px pointer-events-none"
             style={{
-              background: `linear-gradient(90deg, transparent 0%, ${epic.color}40 30%, var(--shimmer-line) 50%, ${epic.color}20 70%, transparent 100%)`
+              background: "transparent"
             }}
           />
 

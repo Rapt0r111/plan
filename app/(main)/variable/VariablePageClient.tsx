@@ -288,8 +288,6 @@ export function VariablePageClient({ data, isAdmin, currentProfileId }: Props) {
     <main className="flex-1 overflow-y-auto p-3 lg:p-5" style={pageShellStyle} aria-busy={isPending}>
       <div className="mx-auto max-w-[1600px] space-y-4">
         <section className="relative overflow-hidden rounded-[28px] p-4 lg:p-5" style={heroStyle}>
-          <div className="pointer-events-none absolute -right-24 -top-28 hidden h-72 w-72 rounded-full bg-emerald-400/10 blur-3xl lg:block" />
-          <div className="pointer-events-none absolute -left-24 bottom-0 hidden h-64 w-64 rounded-full bg-sky-400/10 blur-3xl lg:block" />
           <div className="relative grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
             <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -874,7 +872,7 @@ function LeaveDayModal({ day, rows, onClose }: { day: string; rows: VariableSect
           {rows.length === 0 ? <Empty text="На этот день увольнений нет." /> : (
             <div className="grid gap-2">
               {rows.map((request) => (
-                <article key={request.id} className="rounded-2xl p-3" style={{ ...calendarItemStyle, borderLeft: `3px solid ${leaveTone(request.status)}` }}>
+                <article key={request.id} className="rounded-xl p-3" style={{ ...calendarItemStyle, borderColor: `color-mix(in oklch, ${leaveTone(request.status)} 32%, var(--glass-border))` }}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 flex-wrap items-start gap-2">
@@ -1023,7 +1021,7 @@ function LeaveDayEvents({ rows, day, onOpenDay }: { rows: VariableSectionData["l
   return (
     <>
       {visible.map((request) => (
-        <div key={`${request.id}-${day}`} className="min-w-0 rounded-lg p-2.5" style={{ ...calendarItemStyle, borderLeft: `3px solid ${leaveTone(request.status)}` }}>
+        <div key={`${request.id}-${day}`} className="min-w-0 rounded-lg p-2.5" style={{ ...calendarItemStyle, borderColor: `color-mix(in oklch, ${leaveTone(request.status)} 32%, var(--glass-border))` }}>
           <div className="flex min-w-0 items-start justify-between gap-2">
             <PersonNameText name={request.profile.name} compact />
             <span className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px]" style={leaveBadgeStyle(request.status)}>{STATUS_LABELS[request.status]}</span>
@@ -1338,9 +1336,9 @@ const calendarItemStyle: CSSProperties = { background: "rgba(255,255,255,0.045)"
 const calendarEmptyDayStyle: CSSProperties = { background: "rgba(148,163,184,0.055)", border: "1px dashed rgba(148,163,184,0.14)" };
 const calendarMoreStyle: CSSProperties = { background: "rgba(56,189,248,0.10)", border: "1px solid rgba(56,189,248,0.22)", color: "#38bdf8" };
 const dailySectionStyle: CSSProperties = { background: "rgba(34,197,94,0.045)", border: "1px solid rgba(52,211,153,0.14)" };
-const workGroupSectionStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(124,58,237,0.13), rgba(56,189,248,0.055))", border: "1px solid rgba(167,139,250,0.30)" };
-const dailyCalendarItemStyle: CSSProperties = { ...calendarItemStyle, borderLeft: "3px solid #34d399" };
-const workGroupCalendarItemStyle: CSSProperties = { background: "linear-gradient(135deg, rgba(124,58,237,0.18), rgba(56,189,248,0.08))", border: "1px solid rgba(167,139,250,0.28)", borderLeft: "3px solid #a78bfa", boxShadow: "inset 0 0 0 1px rgba(167,139,250,0.06)" };
+const workGroupSectionStyle: CSSProperties = { background: "rgba(124,58,237,0.07)", border: "1px solid rgba(167,139,250,0.20)" };
+const dailyCalendarItemStyle: CSSProperties = { ...calendarItemStyle, borderColor: "rgba(52,211,153,0.24)" };
+const workGroupCalendarItemStyle: CSSProperties = { background: "rgba(124,58,237,0.08)", border: "1px solid rgba(167,139,250,0.22)" };
 const dailyLabelStyle: CSSProperties = { color: "#34d399" };
 const workGroupLabelStyle: CSSProperties = { color: "#c4b5fd" };
 const workGroupBadgeStyle: CSSProperties = { background: "rgba(124,58,237,0.18)", border: "1px solid rgba(167,139,250,0.34)", color: "#c4b5fd" };

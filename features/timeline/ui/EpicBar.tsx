@@ -63,12 +63,13 @@ export function EpicBar({ bar, hovered, onHover, onClick }: Props) {
       {/* Progress fill */}
       {pct > 0 && (
         <div
-          className="absolute inset-y-0 left-0 rounded-l-lg"
+          className="absolute inset-y-0 left-0 origin-left rounded-l-lg"
           style={{
-            width: `${donePct}%`,
+            width: "100%",
+            transform: `scaleX(${donePct / 100})`,
             background: `${accentColor}20`,
             borderRight: `1px solid ${accentColor}40`,
-            transition: "width 0.5s ease",
+            transition: "transform 0.24s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         />
       )}

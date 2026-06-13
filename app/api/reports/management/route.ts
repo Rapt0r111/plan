@@ -76,7 +76,7 @@ function renderHtmlReport(overview: Awaited<ReturnType<typeof getManagementOverv
     .join("");
   return `<!doctype html>
 <html lang="ru"><meta charset="utf-8"><title>TaskFlow Management Report</title>
-<style>body{font-family:Inter,Arial,sans-serif;padding:24px;color:#111827}table{border-collapse:collapse;width:100%;margin-top:16px}td,th{border:1px solid #d1d5db;padding:8px;text-align:left}.kpi{display:flex;gap:12px}.card{border:1px solid #d1d5db;border-radius:12px;padding:12px}</style>
+<style>body{font-family:"DM Sans",Arial,sans-serif;padding:24px;color:#111827}table{border-collapse:collapse;width:100%;margin-top:16px}td,th{border:1px solid #d1d5db;padding:8px;text-align:left}.kpi{display:flex;gap:12px}.card{border:1px solid #d1d5db;border-radius:12px;padding:12px}</style>
 <h1>TaskFlow: управленческий отчет</h1>
 <p>Сформирован: ${overview.generatedAt}</p>
 <div class="kpi"><div class="card">Открыто: ${overview.kpi.openTasks}</div><div class="card">Выполнено: ${overview.kpi.completionRate}%</div><div class="card">Требует внимания: ${overview.kpi.attentionRequired}</div></div>

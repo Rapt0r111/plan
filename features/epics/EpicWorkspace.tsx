@@ -302,18 +302,11 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
           style={{
             maxHeight: "calc(100vh - 48px)",
             background: "var(--bg-elevated)",
-            border: `0.5px solid ${summary.color}35`,
-            borderLeft: `3px solid ${summary.color}`,
+            border: `1px solid color-mix(in oklch, ${summary.color} 24%, var(--glass-border))`,
             borderRadius: 20,
             pointerEvents: "auto",
             willChange: "transform",
-            boxShadow: `
-              0 0 0 0.5px var(--inset-light),
-              0 4px 24px rgba(0,0,0,0.3),
-              0 24px 64px rgba(0,0,0,0.25),
-              0 0 80px ${summary.color}15,
-              inset 0 1px 0 var(--inset-light)
-            `,
+            boxShadow: "var(--shadow-overlay)",
           }}
           transition={SPRING}
         >
@@ -321,8 +314,8 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
             className="absolute inset-0 pointer-events-none"
             style={{
               background: `
-                radial-gradient(ellipse 80% 40% at 10% 0%, ${summary.color}14 0%, transparent 50%),
-                radial-gradient(ellipse 50% 60% at 90% 100%, ${summary.color}0c 0%, transparent 55%)
+                radial-gradient(ellipse 80% 40% at 10% 0%, ${summary.color}05 0%, transparent 50%),
+                radial-gradient(ellipse 50% 60% at 90% 100%, ${summary.color}03 0%, transparent 55%)
               `,
             }}
           />
@@ -330,7 +323,7 @@ export function EpicWorkspace({ epicId, summary, onClose, onOpenTask }: EpicWork
           <div
             className="absolute top-0 left-0 right-0 h-px pointer-events-none"
             style={{
-              background: `linear-gradient(90deg, transparent 0%, ${summary.color}50 30%, var(--shimmer-line) 50%, ${summary.color}30 70%, transparent 100%)`
+              background: `linear-gradient(90deg, transparent 0%, ${summary.color}20 35%, transparent 70%)`
             }}
           />
 

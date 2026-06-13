@@ -327,8 +327,7 @@ function LivePreview({ prefs }: { prefs: UIPrefs }) {
                 style={{
                     borderRadius: r,
                     background: "var(--bg-elevated)",
-                    border: "1px solid var(--glass-border)",
-                    borderLeft: `3px solid ${accent}`,
+                    border: `1px solid color-mix(in oklch, ${accent} 24%, var(--glass-border))`,
                 }}
             >
                 <div style={{ padding: pad }}>

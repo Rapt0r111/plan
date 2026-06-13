@@ -68,18 +68,9 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
             className="relative rounded-2xl overflow-hidden p-5"
             style={{
               background:  "var(--bg-elevated)",
-              border:      "1px solid var(--glass-border)",
-              borderLeft:  `4px solid ${epic.color}`,
+              border:      `1px solid color-mix(in oklch, ${epic.color} 24%, var(--glass-border))`,
             }}
           >
-            {/* Ambient glow */}
-            <div
-              className="absolute inset-0 pointer-events-none"
-              style={{
-                background: `radial-gradient(ellipse at top left, ${epic.color}18 0%, transparent 55%)`,
-              }}
-            />
-
             <div className="relative flex items-start gap-5">
               {/* Color dot */}
               <div
@@ -87,7 +78,6 @@ export function EpicDetailClient({ epic }: { epic: EpicWithTasks }) {
                 style={{
                   backgroundColor: `${epic.color}20`,
                   border:          `1px solid ${epic.color}40`,
-                  boxShadow:       `0 0 20px ${epic.color}30`,
                 }}
               >
                 <span

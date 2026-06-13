@@ -54,7 +54,7 @@ async function HeavyWidgets({ scope }: { scope: WorkspaceAccessScope }) {
 
       {/* ── Эпики (рендерятся после загрузки задач) ── */}
       <section>
-        <h2 className="text-xs font-semibold text-(--text-muted) uppercase tracking-widest mb-3">
+        <h2 className="mb-3 text-sm font-medium text-(--text-secondary)">
           Эпики
         </h2>
         <EpicInteractionLayer epics={epicSummaries} />
@@ -81,7 +81,6 @@ function HeavyWidgetsSkeleton() {
               style={{
                 background: "var(--bg-elevated)",
                 border: "1px solid var(--glass-border)",
-                borderLeft: "3px solid var(--glass-03)",
                 height: 140,
               }}
             />

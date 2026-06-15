@@ -35,6 +35,7 @@ interface SelectFieldProps {
   buttonClassName?: string;
   accentColor?: string;
   title?: string;
+  ariaLabel?: string;
 }
 
 interface FloatingPosition {
@@ -60,6 +61,7 @@ export function SelectField({
   buttonClassName,
   accentColor,
   title,
+  ariaLabel,
 }: SelectFieldProps) {
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -169,6 +171,7 @@ export function SelectField({
         ref={triggerRef}
         type="button"
         title={title ?? selectedLabel}
+        aria-label={ariaLabel}
         disabled={disabled || options.length === 0}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -214,7 +217,7 @@ export function SelectField({
           ref={listRef}
           id={listboxId}
           role="listbox"
-          aria-label={label ?? title ?? placeholder}
+          aria-label={ariaLabel ?? label ?? title ?? placeholder}
           className="z-[9999] overflow-y-auto rounded-xl p-1 shadow-2xl backdrop-blur-xl"
           style={{
             position: "fixed",

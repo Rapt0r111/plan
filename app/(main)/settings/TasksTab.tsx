@@ -215,8 +215,8 @@ function TaskCard({
                     </button>
 
                     {/* Delete */}
-                    <button onClick={onDelete}
-                        className="w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                    <button type="button" aria-label={`Удалить задачу ${task.title}`} onClick={onDelete}
+                        className="w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]"
                         style={{ color: "var(--text-muted)" }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = "#f87171"; e.currentTarget.style.background = "rgba(239,68,68,0.1)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "transparent"; }}>
@@ -454,18 +454,18 @@ function CreateTaskForm({
             className="rounded-xl p-4 space-y-4"
             style={{ background: "var(--bg-elevated)", border: "1px solid var(--accent-500)" }}>
 
-            {err && <p className="text-xs text-red-400 px-1">{err}</p>}
+            {err && <p role="alert" className="text-xs text-red-400 px-1">{err}</p>}
 
             <div>
-                <label className="text-xs text-(--text-muted) block mb-1">Название *</label>
-                <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                <label htmlFor="new-task-title" className="text-xs text-(--text-muted) block mb-1">Название *</label>
+                <input id="new-task-title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                     placeholder="Название задачи"
                     className="w-full bg-(--glass-01) border border-(--glass-border) rounded-lg px-3 py-1.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) outline-none focus:border-(--accent-500) transition-colors" />
             </div>
 
             <div>
-                <label className="text-xs text-(--text-muted) block mb-1">Описание</label>
-                <textarea value={form.description} rows={2}
+                <label htmlFor="new-task-description" className="text-xs text-(--text-muted) block mb-1">Описание</label>
+                <textarea id="new-task-description" value={form.description} rows={2}
                     onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                     placeholder="Описание задачи..."
                     className="w-full bg-(--glass-01) border border-(--glass-border) rounded-lg px-3 py-1.5 text-sm text-(--text-primary) placeholder:text-(--text-muted) outline-none focus:border-(--accent-500) transition-colors resize-none" />
@@ -473,13 +473,13 @@ function CreateTaskForm({
 
             <div className="grid grid-cols-2 gap-3">
                 <div>
-                    <label className="text-xs text-(--text-muted) block mb-1">Статус</label>
-                    <div className="flex flex-wrap gap-1">
+                    <p id="new-task-status-label" className="text-xs text-(--text-muted) block mb-1">Статус</p>
+                    <div role="group" aria-labelledby="new-task-status-label" className="flex flex-wrap gap-1">
                         {STATUS_ORDER.map((s) => {
                             const meta = STATUS_META[s as TaskStatus];
                             const active = form.status === s;
                             return (
-                                <button key={s} onClick={() => setForm((f) => ({ ...f, status: s as TaskStatus }))}
+                                <button type="button" aria-pressed={active} key={s} onClick={() => setForm((f) => ({ ...f, status: s as TaskStatus }))}
                                     className="px-2 py-0.5 rounded-full text-xs font-medium transition-all"
                                     style={active
                                         ? { background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }
@@ -492,13 +492,13 @@ function CreateTaskForm({
                 </div>
 
                 <div>
-                    <label className="text-xs text-(--text-muted) block mb-1">Приоритет</label>
-                    <div className="flex flex-wrap gap-1">
+                    <p id="new-task-priority-label" className="text-xs text-(--text-muted) block mb-1">Приоритет</p>
+                    <div role="group" aria-labelledby="new-task-priority-label" className="flex flex-wrap gap-1">
                         {PRIORITY_ORDER.map((p) => {
                             const meta = PRIORITY_META[p as TaskPriority];
                             const active = form.priority === p;
                             return (
-                                <button key={p} onClick={() => setForm((f) => ({ ...f, priority: p as TaskPriority }))}
+                                <button type="button" aria-pressed={active} key={p} onClick={() => setForm((f) => ({ ...f, priority: p as TaskPriority }))}
                                     className="px-2 py-0.5 rounded-full text-xs font-medium transition-all"
                                     style={active
                                         ? { background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }
@@ -513,6 +513,7 @@ function CreateTaskForm({
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Эпик *</label>
                     <SelectField
+                        ariaLabel="Эпик"
                         value={form.epicId}
                         onValueChange={(nextValue) => setForm((f) => ({ ...f, epicId: Number(nextValue) }))}
                         options={epics.map((ep) => ({ value: ep.id, label: ep.title, color: ep.color }))}
@@ -522,6 +523,7 @@ function CreateTaskForm({
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Исполнитель</label>
                     <SelectField
+                        ariaLabel="Исполнитель"
                         value={form.assigneeId}
                         onValueChange={(nextValue) => setForm((f) => ({ ...f, assigneeId: Number(nextValue) }))}
                         options={[
@@ -537,8 +539,8 @@ function CreateTaskForm({
                 </div>
 
                 <div className="col-span-2">
-                    <label className="text-xs text-(--text-muted) block mb-1">Дедлайн</label>
-                    <input type="date" value={form.dueDate}
+                    <label htmlFor="new-task-due-date" className="text-xs text-(--text-muted) block mb-1">Дедлайн</label>
+                    <input id="new-task-due-date" type="date" value={form.dueDate}
                         onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
                         style={{ colorScheme: "dark" }}
                         className="w-full bg-(--glass-01) border border-(--glass-border) rounded-lg px-3 py-1.5 text-sm text-(--text-primary) outline-none focus:border-(--accent-500) transition-colors" />
@@ -546,7 +548,7 @@ function CreateTaskForm({
             </div>
 
             <div className="flex gap-2 pt-1">
-                <button onClick={submit} disabled={loading}
+                <button type="button" onClick={submit} disabled={loading}
                     className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
                     style={{
                         background: "var(--accent-glow)", color: "var(--accent-400)",
@@ -554,7 +556,7 @@ function CreateTaskForm({
                     }}>
                     {loading ? "Создание..." : "Создать задачу"}
                 </button>
-                <button onClick={onCancel}
+                <button type="button" onClick={onCancel}
                     className="px-4 py-2 rounded-xl text-sm text-(--text-muted) transition-all"
                     style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>
                     Отмена
@@ -675,11 +677,11 @@ export function TasksTab({ initialEpics, users }: Props) {
             {/* Error toast */}
             <AnimatePresence>
                 {error && (
-                    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    <motion.div role="alert" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                         className="px-4 py-3 rounded-xl text-sm flex items-center gap-3"
                         style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
                         {error}
-                        <button onClick={() => setError(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">✕</button>
+                        <button type="button" aria-label="Закрыть сообщение об ошибке" onClick={() => setError(null)} className="ml-auto text-xs opacity-60 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]">✕</button>
                     </motion.div>
                 )}
             </AnimatePresence>

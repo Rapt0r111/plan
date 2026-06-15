@@ -9,7 +9,7 @@
  * - Создание нового пользователя
  * - Оптимистичные обновления через локальный стейт + rollback
  */
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useId } from "react";
 import type { UserWithMeta, DbRole, DbPersonnelGroup } from "@/shared/types";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
 import { SelectField } from "@/shared/ui/SelectField";
@@ -142,6 +142,7 @@ function UserCard({
                 {editField === "name" ? (
                     <input
                         autoFocus
+                        aria-label={`Имя пользователя ${user.name}`}
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
                         onBlur={() => saveField("name")}
@@ -154,6 +155,7 @@ function UserCard({
                     />
                 ) : (
                     <button
+                        type="button"
                         onClick={() => startEdit("name")}
                         className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--accent-400)] transition-colors group/n flex items-center gap-1"
                     >
@@ -166,6 +168,7 @@ function UserCard({
                 {editField === "login" ? (
                     <input
                         autoFocus
+                        aria-label={`Логин пользователя ${user.name}`}
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
                         onBlur={() => saveField("login")}
@@ -178,6 +181,7 @@ function UserCard({
                     />
                 ) : (
                     <button
+                        type="button"
                         onClick={() => startEdit("login")}
                         className="text-xs font-mono text-(--text-muted) hover:text-[var(--text-secondary)] transition-colors group/l flex items-center gap-1"
                     >
@@ -208,8 +212,10 @@ function UserCard({
             </span>
 
             <button
+                type="button"
+                aria-label={`Принудительно сменить пароль для ${user.name}`}
                 onClick={onForcePasswordChange}
-                className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-(--text-muted) hover:text-amber-400 hover:bg-amber-500/10"
+                className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all text-(--text-muted) hover:text-amber-400 hover:bg-amber-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]"
                 title="Принудительно сменить пароль"
             >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -221,8 +227,10 @@ function UserCard({
 
             {/* Delete */}
             <button
+                type="button"
+                aria-label={`Удалить пользователя ${user.name}`}
                 onClick={onDelete}
-                className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-(--text-muted) hover:text-red-400 hover:bg-red-500/10"
+                className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all text-(--text-muted) hover:text-red-400 hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]"
                 title="Удалить пользователя"
             >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor"
@@ -543,7 +551,7 @@ function CreateUserForm({
             </div>
 
             {err && (
-                <p className="text-xs text-red-400 px-1">{err}</p>
+                <p role="alert" className="text-xs text-red-400 px-1">{err}</p>
             )}
 
             <div className="grid grid-cols-2 gap-3">
@@ -563,6 +571,7 @@ function CreateUserForm({
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Состав</label>
                     <SelectField
+                        ariaLabel="Состав"
                         value={selectedGroupKey}
                         onValueChange={(nextValue) => changeGroup(nextValue)}
                         options={personnelGroups.map((group) => ({
@@ -575,6 +584,7 @@ function CreateUserForm({
                 <div>
                     <label className="text-xs text-(--text-muted) block mb-1">Роль</label>
                     <SelectField
+                        ariaLabel="Роль"
                         value={form.roleId}
                         onValueChange={(nextValue) => setForm((f) => ({ ...f, roleId: Number(nextValue) }))}
                         disabled={rolesForGroup.length === 0}
@@ -602,6 +612,7 @@ function CreateUserForm({
 
             <div className="flex gap-2 pt-1">
                 <button
+                    type="button"
                     onClick={submit}
                     disabled={loading}
                     className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
@@ -615,6 +626,7 @@ function CreateUserForm({
                     {loading ? "Создание..." : "Создать"}
                 </button>
                 <button
+                    type="button"
                     onClick={onCancel}
                     className="px-4 py-2 rounded-xl text-sm text-(--text-muted) transition-all"
                     style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}
@@ -634,10 +646,12 @@ function Field({
     placeholder?: string;
     mono?: boolean;
 }) {
+    const inputId = useId();
     return (
         <div>
-            <label className="text-xs text-(--text-muted) block mb-1">{label}</label>
+            <label htmlFor={inputId} className="text-xs text-(--text-muted) block mb-1">{label}</label>
             <input
+                id={inputId}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={placeholder}
@@ -846,6 +860,7 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
 
             {notice && (
                 <div
+                    role="status"
                     className="px-4 py-3 rounded-xl text-sm flex items-center gap-3"
                     style={{
                         background: "rgba(52,211,153,0.1)",
@@ -854,7 +869,7 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
                     }}
                 >
                     {notice}
-                    <button onClick={() => setNotice(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">
+                    <button type="button" aria-label="Закрыть уведомление" onClick={() => setNotice(null)} className="ml-auto text-xs opacity-60 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]">
                         ✕
                     </button>
                 </div>
@@ -863,6 +878,7 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
             {/* Error toast */}
             {error && (
                 <div
+                    role="alert"
                     className="px-4 py-3 rounded-xl text-sm flex items-center gap-3"
                     style={{
                         background: "rgba(239,68,68,0.1)",
@@ -871,7 +887,7 @@ export function UsersTab({ initialUsers, roles, personnelGroups }: Props) {
                     }}
                 >
                     {error}
-                    <button onClick={() => setError(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">
+                    <button type="button" aria-label="Закрыть сообщение об ошибке" onClick={() => setError(null)} className="ml-auto text-xs opacity-60 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]">
                         ✕
                     </button>
                 </div>

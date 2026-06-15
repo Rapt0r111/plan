@@ -1,9 +1,10 @@
 "use client";
 
-import { memo, useCallback, useMemo, useState, useTransition, type CSSProperties, type FormEvent, type ReactNode, type SelectHTMLAttributes } from "react";
+import { memo, useCallback, useMemo, useRef, useState, useTransition, type CSSProperties, type FormEvent, type ReactNode, type SelectHTMLAttributes } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { VariableSectionData } from "@/entities/variable/variableRepository";
 import type { VariableDutySlot, VariableLeaveStatus, VariableLeaveType } from "@/shared/db/schema";
+import { useAccessibleDialog } from "@/shared/lib/hooks/useAccessibleDialog";
 import { ActionButton } from "@/shared/ui/ActionButton";
 
 const DUTY_SLOTS: Array<{ key: VariableDutySlot; label: string; short: string }> = [
@@ -849,14 +850,19 @@ function WorkGroupToggle({ show, count, onToggle }: { show: boolean; count: numb
 }
 
 function LeaveDayModal({ day, rows, onClose }: { day: string; rows: VariableSectionData["leaveRequests"]; onClose: () => void }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  useAccessibleDialog(true, dialogRef, onClose);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={modalOverlayStyle} role="presentation" onMouseDown={onClose}>
       <section
+        ref={dialogRef}
         className="max-h-[82vh] w-full max-w-3xl overflow-hidden rounded-3xl"
         style={modalPanelStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="leave-day-modal-title"
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3" style={{ borderColor: "var(--glass-border)" }}>
@@ -897,14 +903,19 @@ function LeaveDayModal({ day, rows, onClose }: { day: string; rows: VariableSect
 function DutyDayModal({ state, rows, onClose }: { state: DutyModalState; rows: DutyAssignments; onClose: () => void }) {
   const slots = state.tone === "workGroup" ? WORK_GROUP_SLOTS : DUTY_SLOTS;
   const isWorkGroup = state.tone === "workGroup";
+  const dialogRef = useRef<HTMLElement>(null);
+  useAccessibleDialog(true, dialogRef, onClose);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={modalOverlayStyle} role="presentation" onMouseDown={onClose}>
       <section
+        ref={dialogRef}
         className="max-h-[82vh] w-full max-w-3xl overflow-hidden rounded-3xl"
         style={modalPanelStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="duty-day-modal-title"
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3" style={{ borderColor: "var(--glass-border)" }}>

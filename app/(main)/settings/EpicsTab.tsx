@@ -272,8 +272,10 @@ function EpicCard({
             )}
           </AnimatePresence>
           <button
+            type="button"
+            aria-label={`Удалить эпик ${epic.title}`}
             onClick={handleDelete}
-            className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+            className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]"
             style={{ color: "var(--text-muted)" }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "#f87171"; e.currentTarget.style.background = "rgba(239,68,68,0.1)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "transparent"; }}
@@ -339,8 +341,9 @@ function CreateEpicForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
-          <label className="text-xs text-(--text-muted) block mb-1">Название *</label>
+          <label htmlFor="new-epic-title" className="text-xs text-(--text-muted) block mb-1">Название *</label>
           <input
+            id="new-epic-title"
             value={form.title}
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             placeholder="Название эпика"
@@ -349,8 +352,9 @@ function CreateEpicForm({
         </div>
 
         <div className="col-span-2">
-          <label className="text-xs text-(--text-muted) block mb-1">Описание</label>
+          <label htmlFor="new-epic-description" className="text-xs text-(--text-muted) block mb-1">Описание</label>
           <textarea
+            id="new-epic-description"
             value={form.description} rows={2}
             onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             placeholder="Краткое описание эпика..."
@@ -359,9 +363,10 @@ function CreateEpicForm({
         </div>
 
         <div>
-          <label className="text-xs text-(--text-muted) block mb-1">Цвет</label>
+          <label htmlFor="new-epic-color" className="text-xs text-(--text-muted) block mb-1">Цвет</label>
           <div className="flex items-center gap-2">
             <input
+              id="new-epic-color"
               type="color" value={form.color}
               onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
               className="w-8 h-8 rounded-lg cursor-pointer border-0"
@@ -372,8 +377,9 @@ function CreateEpicForm({
         </div>
 
         <div>
-          <label className="text-xs text-(--text-muted) block mb-1">Дата начала</label>
+          <label htmlFor="new-epic-start-date" className="text-xs text-(--text-muted) block mb-1">Дата начала</label>
           <input
+            id="new-epic-start-date"
             type="date" value={form.startDate}
             onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
             style={{ colorScheme: "dark" }}
@@ -382,8 +388,9 @@ function CreateEpicForm({
         </div>
 
         <div>
-          <label className="text-xs text-(--text-muted) block mb-1">Дата окончания</label>
+          <label htmlFor="new-epic-end-date" className="text-xs text-(--text-muted) block mb-1">Дата окончания</label>
           <input
+            id="new-epic-end-date"
             type="date" value={form.endDate}
             onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
             style={{ colorScheme: "dark" }}
@@ -510,12 +517,13 @@ export function EpicsTab({ initialEpics }: Props) {
       <AnimatePresence>
         {error && (
           <motion.div
+            role="alert"
             initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="px-4 py-3 rounded-xl text-sm flex items-center gap-3"
             style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}
           >
             {error}
-            <button onClick={() => setError(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">✕</button>
+            <button type="button" aria-label="Закрыть сообщение об ошибке" onClick={() => setError(null)} className="ml-auto text-xs opacity-60 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]">✕</button>
           </motion.div>
         )}
       </AnimatePresence>

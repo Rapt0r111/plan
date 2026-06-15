@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import type { DbPersonnelGroup } from "@/shared/types";
 
 interface Props {
@@ -104,21 +104,22 @@ export function PersonnelGroupsTab({ initialGroups }: Props) {
       </div>
 
       {error && (
-        <div className="px-4 py-3 rounded-xl text-sm flex items-center gap-3" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
+        <div className="px-4 py-3 rounded-xl text-sm flex items-center gap-3" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }} role="alert">
           {error}
-          <button onClick={() => setError(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">×</button>
+          <button type="button" onClick={() => setError(null)} className="ml-auto rounded-md px-2 py-1 text-xs opacity-60 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring-color)" aria-label="Закрыть сообщение об ошибке">×</button>
         </div>
       )}
 
       <div className="grid gap-3">
         {groups.map((group) => (
           <div key={group.id} className="rounded-xl p-4 flex items-center gap-3 group" style={{ background: "var(--bg-elevated)", border: `1px solid color-mix(in oklch, ${group.color} 24%, var(--glass-border))` }}>
-            <input type="color" value={group.color} onChange={(e) => patchGroup(group, { color: e.target.value })} className="w-8 h-8 rounded cursor-pointer border-0 p-0 bg-transparent" />
+            <input type="color" value={group.color} onChange={(e) => patchGroup(group, { color: e.target.value })} className="w-8 h-8 rounded cursor-pointer border-0 p-0 bg-transparent" aria-label={`Цвет состава ${group.label}`} />
             <div className="flex-1 min-w-0">
               <input
                 value={group.label}
                 onChange={(e) => patchGroup(group, { label: e.target.value })}
                 className="w-full bg-transparent text-sm font-medium text-[var(--text-primary)] outline-none"
+                aria-label={`Название состава ${group.label}`}
               />
               <p className="text-xs font-mono text-(--text-muted)">@{group.key}</p>
             </div>
@@ -126,7 +127,7 @@ export function PersonnelGroupsTab({ initialGroups }: Props) {
               <input type="checkbox" checked={group.isActive} onChange={(e) => patchGroup(group, { isActive: e.target.checked })} />
               Активен
             </label>
-            <button onClick={() => deleteGroup(group)} className="w-7 h-7 rounded-lg opacity-0 group-hover:opacity-100 transition-all text-(--text-muted) hover:text-red-400 hover:bg-red-500/10" title="Удалить состав">
+            <button type="button" onClick={() => deleteGroup(group)} className="w-7 h-7 rounded-lg opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all text-(--text-muted) hover:text-red-400 hover:bg-red-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400" aria-label={`Удалить состав ${group.label}`} title="Удалить состав">
               ×
             </button>
           </div>
@@ -140,17 +141,17 @@ export function PersonnelGroupsTab({ initialGroups }: Props) {
             <Field label="Название" value={draft.label} onChange={(label) => setDraft((cur) => ({ ...cur, label }))} placeholder="Резерв" />
             <Field label="Описание" value={draft.description ?? ""} onChange={(description) => setDraft((cur) => ({ ...cur, description }))} placeholder="Краткое описание" />
             <div>
-              <label className="text-xs text-(--text-muted) block mb-1">Цвет</label>
-              <input type="color" value={draft.color} onChange={(e) => setDraft((cur) => ({ ...cur, color: e.target.value }))} className="w-9 h-9 rounded cursor-pointer border-0 p-0" />
+              <label htmlFor="new-personnel-group-color" className="text-xs text-(--text-muted) block mb-1">Цвет</label>
+              <input id="new-personnel-group-color" type="color" value={draft.color} onChange={(e) => setDraft((cur) => ({ ...cur, color: e.target.value }))} className="w-9 h-9 rounded cursor-pointer border-0 p-0" />
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={createGroup} className="px-4 py-2 rounded-xl text-sm font-medium" style={{ background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.3)" }}>Создать</button>
-            <button onClick={() => setCreating(false)} className="px-4 py-2 rounded-xl text-sm text-(--text-muted)" style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>Отмена</button>
+            <button type="button" onClick={createGroup} className="px-4 py-2 rounded-xl text-sm font-medium" style={{ background: "var(--accent-glow)", color: "var(--accent-400)", border: "1px solid rgba(139,92,246,0.3)" }}>Создать</button>
+            <button type="button" onClick={() => setCreating(false)} className="px-4 py-2 rounded-xl text-sm text-(--text-muted)" style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}>Отмена</button>
           </div>
         </div>
       ) : (
-        <button onClick={() => setCreating(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all" style={{ border: "1px dashed var(--glass-border)", color: "var(--text-muted)" }}>
+        <button type="button" onClick={() => setCreating(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all" style={{ border: "1px dashed var(--glass-border)", color: "var(--text-muted)" }}>
           <span className="text-lg leading-none">+</span>
           Добавить состав
         </button>
@@ -160,10 +161,13 @@ export function PersonnelGroupsTab({ initialGroups }: Props) {
 }
 
 function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
+  const inputId = useId();
+
   return (
     <div>
-      <label className="text-xs text-(--text-muted) block mb-1">{label}</label>
+      <label htmlFor={inputId} className="text-xs text-(--text-muted) block mb-1">{label}</label>
       <input
+        id={inputId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

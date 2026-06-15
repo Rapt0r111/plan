@@ -19,7 +19,7 @@
  *         b) Правильный fallback на SSR-данные до первой гидрации без useEffect
  *         c) Одну строку вместо деструктуризации + ручного условия
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useId } from "react";
 import { useRoleStore } from "@/shared/store/useRoleStore";
 import { hexToRoleStyles } from "@/shared/lib/roleStyles";
 import { SelectField } from "@/shared/ui/SelectField";
@@ -104,11 +104,12 @@ export function RolesTab({ initialRoles, personnelGroups }: Props) {
       {/* Error toast */}
       {error && (
         <div
+          role="alert"
           className="px-4 py-3 rounded-xl text-sm flex items-center gap-3"
           style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}
         >
           {error}
-          <button onClick={() => setError(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">
+          <button type="button" aria-label="Закрыть сообщение об ошибке" onClick={() => setError(null)} className="ml-auto text-xs opacity-60 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]">
             ✕
           </button>
         </div>
@@ -180,6 +181,7 @@ function PersonnelGroupSelect({
     <SelectField
       value={selected?.id}
       title={selected?.label ?? "Состав"}
+      ariaLabel="Состав"
       onValueChange={(nextValue) => {
         const group = groups.find((item) => item.id === Number(nextValue));
         if (group) onChange(group);
@@ -230,6 +232,7 @@ function RoleCard({
       <div className="relative shrink-0">
         <input
           type="color"
+          aria-label={`Цвет роли ${role.label}`}
           value={role.hex}
           onChange={(e) => onUpdate({ hex: e.target.value })}
           className="w-8 h-8 rounded-lg cursor-pointer border-0 p-0 bg-transparent"
@@ -251,6 +254,7 @@ function RoleCard({
         {editingLabel ? (
           <input
             autoFocus
+            aria-label={`Название роли ${role.label}`}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={saveLabel}
@@ -263,6 +267,7 @@ function RoleCard({
           />
         ) : (
           <button
+            type="button"
             onClick={startEdit}
             className="text-sm font-medium text-(--text-primary) hover:text-(--accent-400) transition-colors group/lbl"
           >
@@ -298,8 +303,10 @@ function RoleCard({
 
       {/* Delete */}
       <button
+        type="button"
+        aria-label={`Удалить роль ${role.label}`}
         onClick={onDelete}
-        className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all text-(--text-muted) hover:text-red-400 hover:bg-red-500/10"
+        className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all text-(--text-muted) hover:text-red-400 hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]"
         title="Удалить роль"
       >
         <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor"
@@ -364,7 +371,7 @@ function CreateRoleForm({
       className="rounded-xl p-4 space-y-3"
       style={{ background: "var(--bg-elevated)", border: "1px solid var(--accent-500)" }}
     >
-      {err && <p className="text-xs text-red-400">{err}</p>}
+      {err && <p role="alert" className="text-xs text-red-400">{err}</p>}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Ключ (snake_case)" value={form.key}
           onChange={(v) => setForm((f) => ({ ...f, key: v }))}
@@ -393,6 +400,7 @@ function CreateRoleForm({
           <label className="text-xs text-(--text-muted) block mb-1">Цвет</label>
           <div className="flex items-center gap-2">
             <input type="color" value={form.hex}
+              aria-label="Цвет новой роли"
               onChange={(e) => setForm((f) => ({ ...f, hex: e.target.value }))}
               className="w-8 h-8 rounded cursor-pointer border-0 p-0"
               style={styles}
@@ -406,6 +414,7 @@ function CreateRoleForm({
         placeholder="Краткое описание роли..." />
       <div className="flex gap-2 pt-1">
         <button
+          type="button"
           onClick={submit}
           disabled={loading}
           className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
@@ -419,6 +428,7 @@ function CreateRoleForm({
           {loading ? "Создание..." : "Создать"}
         </button>
         <button
+          type="button"
           onClick={onCancel}
           className="px-4 py-2 rounded-xl text-sm text-(--text-muted) transition-all"
           style={{ background: "var(--glass-01)", border: "1px solid var(--glass-border)" }}
@@ -438,10 +448,12 @@ function Field({
   onChange: (v: string) => void;
   placeholder?: string;
 }) {
+  const inputId = useId();
   return (
     <div>
-      <label className="text-xs text-(--text-muted) block mb-1">{label}</label>
+      <label htmlFor={inputId} className="text-xs text-(--text-muted) block mb-1">{label}</label>
       <input
+        id={inputId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

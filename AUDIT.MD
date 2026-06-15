@@ -102,12 +102,12 @@
 
   ## Рекомендуемый порядок
 
-  1. [P1] $impeccable harden — модальные окна и клавиатурные операции.
-  2. [P1] $impeccable colorize — контраст токенов обеих тем.
-  3. [P1] $impeccable optimize — blur, layers и layout-анимации.
-  4. [P1] $impeccable adapt — targets и мобильные таблицы.
-  5. [P2] $impeccable quieter — убрать AI-визуальные паттерны.
-  6. $impeccable polish — финальная унификация.
+  1. [P1] $impeccable harden variable settings
+  2. [P1] $impeccable colorize variable settings
+  3. [P1] $impeccable adapt app-shell
+  4. [P1] $impeccable optimize motion typography
+  5. [P2] $impeccable quieter app
+  6. [Final] $impeccable polish app
 
   You can ask me to run these one at a time, all at once, or in any order you prefer.
 
